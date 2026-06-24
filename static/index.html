@@ -1,362 +1,779 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>VORA — AI E-Commerce Intelligence</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VORA AI MVP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:#0B0C10; --bg2:#13141A; --bg3:#1C1D26; --border:#2A2B36;
-    --accent:#7B6EF6; --accent2:#5B4FD4; --text:#F0F0F5; --muted:#8B8C9E;
-    --go:#2DD4A0; --nogo:#F0556A; --gold:#F5C842;
-    --font-head:'Space Grotesk',sans-serif; --font-body:'Inter',sans-serif;
+    --bg: #f4efe6;
+    --panel: rgba(255, 255, 255, 0.78);
+    --panel-strong: #fffaf2;
+    --line: rgba(54, 40, 18, 0.12);
+    --text: #1f1a12;
+    --muted: #685844;
+    --accent: #0f766e;
+    --accent-strong: #115e59;
+    --warning: #a16207;
+    --danger: #b91c1c;
+    --low: #92400e;
+    --medium: #1d4ed8;
+    --high: #047857;
+    --shadow: 0 24px 60px rgba(53, 37, 17, 0.08);
   }
-  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-  body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;line-height:1.6;}
 
-  header{display:flex;align-items:center;justify-content:space-between;padding:1.25rem 2rem;border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(11,12,16,0.92);backdrop-filter:blur(12px);z-index:100;}
-  .logo{display:flex;align-items:center;gap:10px;font-family:var(--font-head);font-size:20px;font-weight:700;}
-  .logo-icon{width:32px;height:32px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;}
-  .logo-v{color:var(--accent);}
-  .badge{font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(123,110,246,0.15);color:var(--accent);border:1px solid rgba(123,110,246,0.3);font-weight:500;letter-spacing:.05em;}
+  * { box-sizing: border-box; }
 
-  .hero{padding:3rem 2rem 2rem;max-width:720px;margin:0 auto;text-align:center;}
-  .hero-eyebrow{font-size:11px;font-weight:500;letter-spacing:.12em;color:var(--accent);text-transform:uppercase;margin-bottom:14px;}
-  .hero h1{font-family:var(--font-head);font-size:clamp(26px,5vw,40px);font-weight:700;line-height:1.15;letter-spacing:-.03em;margin-bottom:12px;}
-  .hero h1 em{color:var(--accent);font-style:normal;}
-  .hero p{color:var(--muted);font-size:15px;max-width:480px;margin:0 auto 1.75rem;}
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "Manrope", sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 34%),
+      radial-gradient(circle at top right, rgba(180, 83, 9, 0.16), transparent 28%),
+      linear-gradient(180deg, #f6f0e6 0%, #f1eadf 52%, #efe6d8 100%);
+  }
 
-  .search-wrap{display:flex;max-width:560px;margin:0 auto;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--bg2);transition:border-color .2s;}
-  .search-wrap:focus-within{border-color:var(--accent);}
-  #pInput{flex:1;padding:14px 18px;background:transparent;border:none;outline:none;color:var(--text);font-family:var(--font-body);font-size:15px;}
-  #pInput::placeholder{color:var(--muted);}
-  #aBtn{padding:14px 24px;background:var(--accent);border:none;color:#fff;font-family:var(--font-head);font-size:14px;font-weight:600;cursor:pointer;transition:background .2s;white-space:nowrap;}
-  #aBtn:hover{background:var(--accent2);}
-  #aBtn:disabled{opacity:.5;cursor:not-allowed;}
-  .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:7px;}
-  @keyframes spin{to{transform:rotate(360deg);}}
+  .shell {
+    width: min(1100px, calc(100% - 32px));
+    margin: 24px auto 56px;
+  }
 
-  main{max-width:880px;margin:0 auto;padding:0 2rem 4rem;}
-  .placeholder{text-align:center;padding:4rem 1rem;color:var(--muted);}
-  .placeholder-icon{font-size:48px;display:block;margin-bottom:12px;opacity:.3;}
-  .loading{text-align:center;padding:3rem 1rem;}
-  .loading-spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px;}
-  .loading-text{color:var(--muted);font-size:14px;}
-  .loading-steps{display:flex;flex-direction:column;gap:6px;margin-top:16px;}
-  .loading-step{font-size:12px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:8px;}
-  .loading-step::before{content:'·';}
-  .loading-step.active{color:var(--accent);}
-  .loading-step.active::before{content:'▶';}
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 22px;
+    border: 1px solid var(--line);
+    background: rgba(255, 250, 242, 0.74);
+    backdrop-filter: blur(18px);
+    border-radius: 24px;
+    box-shadow: var(--shadow);
+  }
 
-  #results{padding-top:2rem;}
-  .results-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:10px;}
-  .results-title{font-family:var(--font-head);font-size:18px;font-weight:600;}
-  .results-title span{color:var(--accent);}
-  .btn-pdf{display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-weight:500;cursor:pointer;transition:border-color .2s,background .2s;font-family:var(--font-body);}
-  .btn-pdf:hover{border-color:var(--accent);background:rgba(123,110,246,.08);}
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: "Space Grotesk", sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
 
-  .verdict{display:flex;align-items:center;gap:20px;padding:20px 24px;border-radius:14px;margin-bottom:1.5rem;border:1px solid;}
-  .verdict.go{background:rgba(45,212,160,.08);border-color:rgba(45,212,160,.3);}
-  .verdict.nogo{background:rgba(240,85,106,.08);border-color:rgba(240,85,106,.3);}
-  .verdict-label{font-family:var(--font-head);font-size:26px;font-weight:700;white-space:nowrap;}
-  .verdict.go .verdict-label{color:var(--go);}
-  .verdict.nogo .verdict-label{color:var(--nogo);}
-  .verdict-text{font-size:14px;color:var(--muted);line-height:1.5;}
+  .brand-mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, #0f766e, #b45309);
+    color: white;
+  }
 
-  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.25rem;}
-  @media(max-width:600px){.metrics{grid-template-columns:repeat(2,1fr);}}
-  .metric{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;}
-  .metric-label{font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;}
-  .metric-value{font-family:var(--font-head);font-size:22px;font-weight:700;color:var(--text);line-height:1;}
-  .metric-unit{font-size:11px;color:var(--muted);margin-top:4px;}
+  .topbar-badge,
+  .eyebrow,
+  .pill,
+  .confidence,
+  .warning-pill {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+    font-weight: 700;
+  }
 
-  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
-  @media(max-width:600px){.grid-2{grid-template-columns:1fr;}}
-  .card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:12px;}
-  .card:last-child{margin-bottom:0;}
-  .card-title{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;}
+  .topbar-badge {
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 118, 110, 0.22);
+    color: var(--accent-strong);
+    background: rgba(15, 118, 110, 0.08);
+  }
 
-  .bar-row-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:var(--muted);}
-  .bar-row-label span:last-child{color:var(--text);font-weight:500;}
-  .bar-bg{height:7px;background:var(--bg3);border-radius:4px;overflow:hidden;margin-bottom:14px;}
-  .bar-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--accent2),var(--accent));transition:width .8s cubic-bezier(.4,0,.2,1);}
-  .info-row{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;}
-  .info-row .ikey{color:var(--muted);}
-  .info-row .ival{color:var(--text);font-weight:500;}
-  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
-  .tag{font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bg3);border:1px solid var(--border);color:var(--muted);}
+  .hero {
+    display: grid;
+    gap: 24px;
+    margin-top: 24px;
+    padding: 38px;
+    border-radius: 30px;
+    border: 1px solid var(--line);
+    background: linear-gradient(145deg, rgba(255, 250, 242, 0.9), rgba(255, 247, 235, 0.72));
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    position: relative;
+  }
 
-  .ctable{width:100%;border-collapse:collapse;}
-  .ctable td{padding:7px 0;font-size:13px;}
-  .ctable td:first-child{color:var(--muted);}
-  .ctable td:last-child{text-align:right;color:var(--text);font-weight:500;}
-  .ctable tr.sep td{border-top:1px solid var(--border);padding-top:10px;}
-  .ctable tr.sep td:first-child{color:var(--text);font-weight:600;font-size:14px;}
-  .ctable tr.sep td:last-child{color:var(--accent);font-size:14px;}
+  .hero::after {
+    content: "";
+    position: absolute;
+    inset: auto -120px -140px auto;
+    width: 320px;
+    height: 320px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(15, 118, 110, 0.2), rgba(15, 118, 110, 0));
+  }
 
-  .sup-item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);}
-  .sup-item:last-child{border-bottom:none;padding-bottom:0;}
-  .sup-platform{font-size:10px;font-weight:600;padding:3px 9px;border-radius:6px;white-space:nowrap;}
-  .sup-platform.alibaba{background:rgba(255,106,0,.15);color:#FF8A3D;border:1px solid rgba(255,106,0,.3);}
-  .sup-platform.c1688{background:rgba(240,85,106,.12);color:#F0556A;border:1px solid rgba(240,85,106,.25);}
-  .sup-platform.other{background:rgba(123,110,246,.12);color:var(--accent);border:1px solid rgba(123,110,246,.25);}
-  .sup-info{flex:1;min-width:0;}
-  .sup-name{font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .sup-detail{font-size:11px;color:var(--muted);margin-top:1px;}
-  .sup-price{font-size:13px;font-weight:600;color:var(--gold);white-space:nowrap;}
+  .eyebrow { color: var(--accent-strong); }
 
-  .email-box{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:13px;color:var(--muted);line-height:1.75;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow-y:auto;margin-bottom:10px;}
-  .btn-copy{padding:7px 14px;background:transparent;border:1px solid var(--border);border-radius:7px;color:var(--muted);font-size:12px;cursor:pointer;transition:all .2s;font-family:var(--font-body);}
-  .btn-copy:hover{border-color:var(--accent);color:var(--accent);}
-  .error-box{background:rgba(240,85,106,.08);border:1px solid rgba(240,85,106,.3);border-radius:10px;padding:16px 20px;color:var(--nogo);font-size:14px;}
+  h1 {
+    margin: 0 0 10px;
+    font-family: "Space Grotesk", sans-serif;
+    font-size: clamp(34px, 6vw, 64px);
+    line-height: 0.94;
+    letter-spacing: -0.06em;
+    max-width: 700px;
+  }
 
-  footer{text-align:center;padding:2rem;color:var(--muted);font-size:12px;border-top:1px solid var(--border);}
-  footer span{color:var(--accent);}
+  .hero p {
+    margin: 0;
+    max-width: 700px;
+    color: var(--muted);
+    font-size: 17px;
+  }
+
+  .search {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(210px, 0.7fr) auto;
+    gap: 12px;
+    align-items: end;
+    position: relative;
+    z-index: 1;
+  }
+
+  .field {
+    display: grid;
+    gap: 8px;
+  }
+
+  .field label {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .search input,
+  .search select {
+    width: 100%;
+    padding: 18px 20px;
+    border-radius: 18px;
+    border: 1px solid rgba(54, 40, 18, 0.12);
+    background: rgba(255, 255, 255, 0.86);
+    font: inherit;
+    font-size: 16px;
+    color: var(--text);
+    outline: none;
+  }
+
+  .search select {
+    appearance: none;
+    cursor: pointer;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position:
+      calc(100% - 20px) 50%,
+      calc(100% - 15px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+
+  .search input:focus,
+  .search select:focus {
+    border-color: rgba(15, 118, 110, 0.38);
+    box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.08);
+  }
+
+  .search button {
+    padding: 18px 24px;
+    border: 0;
+    border-radius: 18px;
+    background: linear-gradient(135deg, var(--accent-strong), #0f766e);
+    color: white;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .search button:disabled {
+    opacity: 0.65;
+    cursor: wait;
+  }
+
+  .layout {
+    margin-top: 24px;
+    display: grid;
+    gap: 18px;
+  }
+
+  .panel {
+    border-radius: 24px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(20px);
+  }
+
+  .placeholder,
+  .loading,
+  .message {
+    padding: 36px;
+  }
+
+  .placeholder {
+    display: grid;
+    gap: 10px;
+    text-align: center;
+    color: var(--muted);
+  }
+
+  .placeholder strong { color: var(--text); }
+
+  .loading {
+    display: grid;
+    justify-items: center;
+    gap: 18px;
+    text-align: center;
+    overflow: hidden;
+  }
+
+  .loading p {
+    max-width: 800px;
+    margin: 0;
+    color: var(--muted);
+  }
+
+  .loader-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 92px;
+    width: min(100%, 520px);
+    font-family: "Space Grotesk", sans-serif;
+    font-size: clamp(25px, 5vw, 42px);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    user-select: none;
+    color: var(--text);
+  }
+
+  .loader {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background-color: transparent;
+    -webkit-mask: repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 6px,
+      black 7px,
+      black 8px
+    );
+    mask: repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 6px,
+      black 7px,
+      black 8px
+    );
+  }
+
+  .loader::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 50% 50%, #fbbf24 0%, transparent 48%),
+      radial-gradient(circle at 45% 45%, #ea580c 0%, transparent 44%),
+      radial-gradient(circle at 55% 55%, #14b8a6 0%, transparent 44%),
+      radial-gradient(circle at 45% 55%, #22c55e 0%, transparent 44%),
+      radial-gradient(circle at 55% 45%, #2563eb 0%, transparent 44%);
+    -webkit-mask: radial-gradient(
+      circle at 50% 50%,
+      transparent 0%,
+      transparent 10%,
+      black 25%
+    );
+    mask: radial-gradient(
+      circle at 50% 50%,
+      transparent 0%,
+      transparent 10%,
+      black 25%
+    );
+    animation:
+      loader-transform 2s infinite alternate,
+      loader-opacity 4s infinite;
+    animation-timing-function: cubic-bezier(0.6, 0.8, 0.5, 1);
+  }
+
+  .loader-letter {
+    display: inline-block;
+    min-width: 0.2em;
+    opacity: 0;
+    animation: loader-letter 4s infinite linear;
+    animation-delay: calc(var(--letter-index) * 0.09s);
+    z-index: 2;
+  }
+
+  @keyframes loader-transform {
+    from { transform: translateX(-55%); }
+    to { transform: translateX(55%); }
+  }
+
+  @keyframes loader-opacity {
+    0%, 100% { opacity: 0; }
+    15% { opacity: 0.9; }
+    65% { opacity: 0; }
+  }
+
+  @keyframes loader-letter {
+    0% { opacity: 0; }
+    5% {
+      opacity: 1;
+      text-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
+      transform: scale(1.08) translateY(-2px);
+    }
+    20% { opacity: 0.22; }
+    100% { opacity: 0; }
+  }
+
+  .message.invalid {
+    border-left: 4px solid var(--warning);
+  }
+
+  .message.error {
+    border-left: 4px solid var(--danger);
+  }
+
+  .message h2,
+  .panel h2,
+  .section-title {
+    margin: 0 0 10px;
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 24px;
+    letter-spacing: -0.04em;
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 18px;
+  }
+
+  .section {
+    padding: 24px;
+  }
+
+  .section p {
+    margin: 0;
+    color: var(--muted);
+  }
+
+  .list-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .supplier-list {
+    display: grid;
+    gap: 14px;
+  }
+
+  .supplier-card {
+    padding: 18px;
+    border-radius: 18px;
+    background: var(--panel-strong);
+    border: 1px solid rgba(54, 40, 18, 0.08);
+    display: grid;
+    gap: 10px;
+  }
+
+  .supplier-head,
+  .source-row,
+  .warning-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .supplier-card h3 {
+    margin: 0;
+    font-size: 17px;
+  }
+
+  .pill {
+    display: inline-flex;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(31, 26, 18, 0.06);
+    color: var(--muted);
+  }
+
+  .confidence {
+    padding: 6px 10px;
+    border-radius: 999px;
+    color: white;
+  }
+
+  .confidence.high { background: var(--high); }
+  .confidence.medium { background: var(--medium); }
+  .confidence.low { background: var(--low); }
+
+  .supplier-meta {
+    display: grid;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .supplier-meta strong { color: var(--text); }
+
+  .supplier-card a,
+  .source-list a {
+    color: var(--accent-strong);
+    text-decoration: none;
+    font-weight: 700;
+  }
+
+  .source-list,
+  .warnings {
+    display: grid;
+    gap: 10px;
+  }
+
+  .source-item,
+  .warning-item {
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.62);
+    border: 1px solid rgba(54, 40, 18, 0.08);
+  }
+
+  .warning-pill {
+    color: var(--warning);
+  }
+
+  .empty-state {
+    padding: 18px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.58);
+    color: var(--muted);
+    border: 1px dashed rgba(54, 40, 18, 0.12);
+  }
+
+  @media (max-width: 900px) {
+    .summary-grid,
+    .list-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .search {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .search button {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (max-width: 700px) {
+    .shell { width: min(100% - 20px, 1100px); }
+    .topbar,
+    .hero,
+    .placeholder,
+    .loading,
+    .message,
+    .section { padding: 20px; }
+    .search { grid-template-columns: 1fr; }
+    .search button { grid-column: auto; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loader::after,
+    .loader-letter {
+      animation-duration: 8s;
+    }
+  }
 </style>
 </head>
 <body>
+  <div class="shell">
+    <div class="topbar panel">
+      <div class="brand">
+        <div class="brand-mark">V</div>
+        <div>
+          <div>VORA AI</div>
+          <div style="font-size:12px;color:var(--muted);font-family:Manrope,sans-serif;">Research-agent MVP</div>
+        </div>
+      </div>
+      <div class="topbar-badge">Tunisia + China evidence scan</div>
+    </div>
 
-<header>
-  <div class="logo">
-    <div class="logo-icon">V</div>
-    <span><span class="logo-v">VORA</span></span>
-  </div>
-  <span class="badge">AI E-COMMERCE OS · MVP</span>
-</header>
+    <section class="hero panel">
+      <div class="eyebrow">Public-web evidence only</div>
+      <div>
+        <h1>Validate a product idea before you source it.</h1>
+        <p>VORA checks whether the request is a valid product, researches Tunisia demand and supplier signals, and returns China supplier or source options backed by Tavily evidence and normalized by Gemini.</p>
+      </div>
+      <div class="search">
+        <div class="field">
+          <label for="productInput">Product</label>
+          <input id="productInput" type="text" placeholder="Try: wireless earbuds or portable blender">
+        </div>
+        <div class="field">
+          <label for="categorySelect">Category</label>
+          <select id="categorySelect">
+            <option value="">All Categories</option>
+            <option value="Agriculture &amp; Food">Agriculture &amp; Food</option>
+            <option value="Apparel &amp; Accessories">Apparel &amp; Accessories</option>
+            <option value="Arts &amp; Crafts">Arts &amp; Crafts</option>
+            <option value="Auto, Motorcycle Parts &amp; Accessories">Auto, Motorcycle Parts &amp; Accessories</option>
+            <option value="Bags, Cases &amp; Boxes">Bags, Cases &amp; Boxes</option>
+            <option value="Chemicals">Chemicals</option>
+            <option value="Computer Products">Computer Products</option>
+            <option value="Construction &amp; Decoration">Construction &amp; Decoration</option>
+            <option value="Consumer Electronics">Consumer Electronics</option>
+            <option value="Electrical &amp; Electronics">Electrical &amp; Electronics</option>
+            <option value="Furniture">Furniture</option>
+            <option value="Health &amp; Medicine">Health &amp; Medicine</option>
+            <option value="Industrial Equipment &amp; Components">Industrial Equipment &amp; Components</option>
+            <option value="Instruments &amp; Meters">Instruments &amp; Meters</option>
+            <option value="Light Industry &amp; Daily Use">Light Industry &amp; Daily Use</option>
+            <option value="Lights &amp; Lighting">Lights &amp; Lighting</option>
+            <option value="Manufacturing &amp; Processing Machinery">Manufacturing &amp; Processing Machinery</option>
+            <option value="Metallurgy, Mineral &amp; Energy">Metallurgy, Mineral &amp; Energy</option>
+            <option value="Office Supplies">Office Supplies</option>
+            <option value="Packaging &amp; Printing">Packaging &amp; Printing</option>
+            <option value="Security &amp; Protection">Security &amp; Protection</option>
+            <option value="Service">Service</option>
+            <option value="Sporting Goods &amp; Recreation">Sporting Goods &amp; Recreation</option>
+            <option value="Textile">Textile</option>
+            <option value="Tools &amp; Hardware">Tools &amp; Hardware</option>
+            <option value="Toys">Toys</option>
+            <option value="Transportation">Transportation</option>
+          </select>
+        </div>
+        <button id="analyzeButton" type="button">Analyze product</button>
+      </div>
+    </section>
 
-<section class="hero">
-  <div class="hero-eyebrow">Implementé par ALaya-dev</div>
-  <h1>Analyse ton produit.<br><em>Décide en confiance.</em></h1>
-  <p>Entre un nom de produit — VORA analyse la demande, les coûts, les fournisseurs et te donne un verdict GO / NO GO pour le marché tunisien.</p>
-  <div class="search-wrap">
-    <input type="text" id="pInput" placeholder="Ex: écouteurs Bluetooth, lampe LED, montre GPS..." />
-    <button id="aBtn" onclick="runAnalysis()">Analyser →</button>
-  </div>
-</section>
-
-<main>
-  <div id="out">
-    <div class="placeholder">
-      <span class="placeholder-icon">📦</span>
-      Entre un nom de produit pour lancer l'analyse.
+    <div class="layout">
+      <section id="output" class="panel placeholder">
+        <strong>No analysis yet.</strong>
+        <span>Enter a product to run the MVP research pipeline.</span>
+      </section>
     </div>
   </div>
-</main>
-
-<footer>
-  <strong><span>VORA</span> AI E-Commerce OS</strong> · Marché tunisien · Implementé par ALaya-dev
-</footer>
 
 <script>
-const { jsPDF } = window.jspdf;
-let lastData = null, lastProduct = '';
+const input = document.getElementById("productInput");
+const categorySelect = document.getElementById("categorySelect");
+const button = document.getElementById("analyzeButton");
+const output = document.getElementById("output");
+
+button.addEventListener("click", runAnalysis);
+input.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    runAnalysis();
+  }
+});
 
 async function runAnalysis() {
-  const product = document.getElementById('pInput').value.trim();
-  if (!product) { document.getElementById('pInput').focus(); return; }
-
-  const btn = document.getElementById('aBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Analyse...';
-
-  document.getElementById('out').innerHTML = `
-    <div class="loading">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">VORA analyse <strong>${escHtml(product)}</strong></div>
-      <div class="loading-steps">
-        <div class="loading-step active">Analyse de la demande marché tunisien</div>
-        <div class="loading-step">Calcul des coûts FOB / DDP</div>
-        <div class="loading-step">Recherche des fournisseurs</div>
-        <div class="loading-step">Génération du verdict IA</div>
-      </div>
-    </div>`;
-
-  const steps = document.querySelectorAll('.loading-step');
-  let si = 0;
-  const stepTimer = setInterval(() => {
-    steps.forEach(s => s.classList.remove('active'));
-    si = (si + 1) % steps.length;
-    if (steps[si]) steps[si].classList.add('active');
-  }, 700);
-
-  try {
-    const resp = await fetch('/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product })
-    });
-
-    clearInterval(stepTimer);
-
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: 'Erreur serveur.' }));
-      throw new Error(err.detail || `Erreur ${resp.status}`);
-    }
-
-    const d = await resp.json();
-    lastData = d; lastProduct = product;
-    renderResults(d, product);
-
-  } catch(err) {
-    clearInterval(stepTimer);
-    document.getElementById('out').innerHTML = `
-      <div class="error-box">
-        ⚠️ ${escHtml(err.message)}<br>
-        <small style="opacity:.7;margin-top:4px;display:block;">Vérifiez la configuration du serveur et réessayez.</small>
-      </div>`;
+  const product = input.value.trim();
+  const category = categorySelect.value || null;
+  if (!product) {
+    input.focus();
+    return;
   }
 
-  btn.disabled = false;
-  btn.innerHTML = 'Analyser →';
+  button.disabled = true;
+  categorySelect.disabled = true;
+  button.textContent = "Researching...";
+  output.className = "panel loading";
+  output.innerHTML = `
+    <div class="loader-wrapper" aria-label="Mapping evidence">
+      ${renderLoaderLetters("Loading the best deals ...")}
+      <div class="loader"></div>
+    </div>
+    <p>Checking public Tunisia and China sources for <strong>${escapeHtml(product)}</strong>${category ? ` in <strong>${escapeHtml(category)}</strong>` : ""}. This can take a few moments.</p>
+  `;
+
+  try {
+    const response = await fetch("/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product, category })
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || "The API returned an unexpected error.");
+    }
+
+    renderAnalysis(data);
+  } catch (error) {
+    const quotaExhausted = error.message.toLowerCase().includes("daily free-tier quota");
+    output.className = "panel message error";
+    output.innerHTML = `
+      <h2>${quotaExhausted ? "Daily Gemini quota exhausted" : "Analysis failed"}</h2>
+      <p>${escapeHtml(error.message)}</p>
+      <p style="margin-top:10px;color:var(--muted);">${quotaExhausted
+        ? "Check your Gemini quota or billing, then retry after the quota resets."
+        : "The research service could not complete this request. Please retry shortly."}</p>
+    `;
+  } finally {
+    button.disabled = false;
+    categorySelect.disabled = false;
+    button.textContent = "Analyze product";
+  }
 }
 
-function renderResults(d, product) {
-  const isGo = d.verdict === 'GO';
-  const barPct = Math.min(100, Math.max(0, +d.demand_score));
-  const platClass = p => {
-    const pl = (p||'').toLowerCase();
-    if (pl.includes('alibaba')) return 'alibaba';
-    if (pl.includes('1688')) return 'c1688';
-    return 'other';
-  };
+function renderAnalysis(data) {
+  if (!data.is_valid_product) {
+    output.className = "panel message invalid";
+    output.innerHTML = `
+      <h2>Request rejected</h2>
+      <p>${escapeHtml(data.intent_reason)}</p>
+      <p style="margin-top:10px;color:var(--muted);">Invalid requests stop before any Tavily research runs.</p>
+    `;
+    return;
+  }
 
-  document.getElementById('out').innerHTML = `
-    <div id="reportRoot">
-      <div class="results-header">
-        <div class="results-title">Rapport : <span>${escHtml(product)}</span></div>
-        <button class="btn-pdf" onclick="exportPDF()">⬇ Exporter PDF</button>
-      </div>
-      <div class="verdict ${isGo?'go':'nogo'}">
-        <div class="verdict-label">${isGo?'✅ GO':'🚫 NO GO'}</div>
-        <div class="verdict-text">${escHtml(d.verdict_reason)}</div>
-      </div>
-      <div class="metrics">
-        <div class="metric"><div class="metric-label">Prix de vente TN</div><div class="metric-value">${d.sell_price_low}–${d.sell_price_high}</div><div class="metric-unit">DT / unité</div></div>
-        <div class="metric"><div class="metric-label">Coût total DDP</div><div class="metric-value">$${(+d.total_cost_usd).toFixed(1)}</div><div class="metric-unit">USD / unité</div></div>
-        <div class="metric"><div class="metric-label">Marge nette</div><div class="metric-value">${Math.round(d.net_margin_pct)}%</div><div class="metric-unit">estimée</div></div>
-        <div class="metric"><div class="metric-label">Indice demande</div><div class="metric-value">${Math.round(d.demand_score)}%</div><div class="metric-unit">${escHtml(d.competition)}</div></div>
-      </div>
-      <div class="grid-2">
-        <div class="card">
-          <div class="card-title">Analyse de la demande</div>
-          <div class="bar-row-label"><span>Indice de demande</span><span>${Math.round(d.demand_score)}%</span></div>
-          <div class="bar-bg"><div class="bar-fill" id="demandBar" style="width:0%"></div></div>
-          <div class="info-row"><span class="ikey">Tendance</span><span class="ival">${escHtml(d.trend)}</span></div>
-          <div class="info-row"><span class="ikey">Concurrence</span><span class="ival">${escHtml(d.competition)}</span></div>
-          <div style="margin-top:10px;">
-            <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;">Canaux recommandés</div>
-            <div class="tags">${(d.channels||[]).map(c=>`<span class="tag">${escHtml(c)}</span>`).join('')}</div>
+  output.className = "panel";
+  output.innerHTML = `
+    <div class="summary-grid">
+      <section class="section">
+        <div class="eyebrow">Product</div>
+        <h2>${escapeHtml(data.product)}</h2>
+        <p>${escapeHtml(data.market_summary || "No market summary was returned.")}</p>
+      </section>
+      <section class="section">
+        <div class="eyebrow">Classification</div>
+        <h2>Valid product</h2>
+        <p>${escapeHtml(data.intent_reason)}</p>
+      </section>
+    </div>
+    <div class="list-grid">
+      <section class="section">
+        <div class="section-title">Tunisia sources</div>
+        ${renderSuppliers(data.tunisia_suppliers, "tnd")}
+      </section>
+      <section class="section">
+        <div class="section-title">China sources</div>
+        ${renderSuppliers(data.china_suppliers, "usd")}
+      </section>
+    </div>
+    <div class="list-grid">
+      <section class="section">
+        <div class="section-title">Research sources</div>
+        ${renderSources(data.research_sources)}
+      </section>
+      <section class="section">
+        <div class="section-title">Warnings</div>
+        ${renderWarnings(data.warnings)}
+      </section>
+    </div>
+  `;
+}
+
+function renderSuppliers(suppliers, currencyMode) {
+  const sourcedSuppliers = (suppliers || []).filter((supplier) => supplier.source_url);
+  if (sourcedSuppliers.length === 0) {
+    return `<div class="empty-state">No reliable source-backed suppliers were found for this region. VORA will not fill the gap with inferred or fictive options.</div>`;
+  }
+
+  return `<div class="supplier-list">${sourcedSuppliers.map((supplier) => {
+    const priceLabel = currencyMode === "tnd"
+      ? supplier.price_range_tnd
+      : supplier.price_range_usd;
+    const currencyLabel = currencyMode === "tnd" ? "TND" : "USD";
+    const productRow = supplier.product_title
+      ? `<div><strong>Product:</strong> ${escapeHtml(supplier.product_title)}</div>`
+      : "";
+    const moqRow = currencyMode === "usd"
+      ? `<div><strong>MOQ:</strong> ${escapeHtml(supplier.moq || "Not found in source")}</div>`
+      : "";
+
+    return `
+      <article class="supplier-card">
+        <div class="supplier-head">
+          <div>
+            <div class="pill">${escapeHtml(supplier.type)}</div>
+            <h3>${escapeHtml(supplier.name)}</h3>
           </div>
+          <div class="confidence ${escapeHtml(supplier.confidence)}">${escapeHtml(supplier.confidence)}</div>
         </div>
-        <div class="card">
-          <div class="card-title">Détail des coûts</div>
-          <table class="ctable">
-            <tr><td>Prix FOB (achat)</td><td>$${(+d.buy_fob_usd).toFixed(2)}</td></tr>
-            <tr><td>Frais d'expédition</td><td>$${(+d.shipping_usd).toFixed(2)}</td></tr>
-            <tr><td>Douane (${d.customs_rate}%)</td><td>$${(+d.customs_usd).toFixed(2)}</td></tr>
-            <tr class="sep"><td>Coût total DDP</td><td>$${(+d.total_cost_usd).toFixed(2)}</td></tr>
-          </table>
-          <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border);">
-            <div class="info-row"><span class="ikey">Prix de vente cible</span><span class="ival">${d.sell_price_low}–${d.sell_price_high} DT</span></div>
-            <div class="info-row"><span class="ikey">Marge nette estimée</span><span class="ival" style="color:${isGo?'var(--go)':'var(--nogo)'};">${Math.round(d.net_margin_pct)}%</span></div>
-          </div>
+        <div class="supplier-meta">
+          ${productRow}
+          <div><strong>Price (${currencyLabel}):</strong> ${escapeHtml(priceLabel || "Not found in source")}</div>
+          ${moqRow}
+          <div><strong>Notes:</strong> ${escapeHtml(supplier.notes)}</div>
         </div>
+        <div class="source-row">
+          <a href="${escapeAttribute(supplier.source_url)}" target="_blank" rel="noopener noreferrer">Open evidence source</a>
+        </div>
+      </article>
+    `;
+  }).join("")}</div>`;
+}
+
+function renderLoaderLetters(label) {
+  return [...label].map((letter, index) => {
+    const content = letter === " " ? "&nbsp;" : escapeHtml(letter);
+    return `<span class="loader-letter" style="--letter-index:${index}">${content}</span>`;
+  }).join("");
+}
+
+function renderSources(sources) {
+  if (!sources || sources.length === 0) {
+    return `<div class="empty-state">No source URLs were returned.</div>`;
+  }
+
+  return `<div class="source-list">${sources.map((source) => `
+    <div class="source-item">
+      <div class="pill">${escapeHtml(source.source_type)}</div>
+      <div style="margin-top:8px;font-weight:700;">${escapeHtml(source.title)}</div>
+      <div style="margin-top:6px;"><a href="${escapeAttribute(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.url)}</a></div>
+    </div>
+  `).join("")}</div>`;
+}
+
+function renderWarnings(warnings) {
+  if (!warnings || warnings.length === 0) {
+    return `<div class="empty-state">No warnings were returned.</div>`;
+  }
+
+  return `<div class="warnings">${warnings.map((warning) => `
+    <div class="warning-item">
+      <div class="warning-row">
+        <span class="warning-pill">Warning</span>
       </div>
-      <div class="card">
-        <div class="card-title">Fournisseurs suggérés</div>
-        ${(d.suppliers||[]).map(s=>`
-          <div class="sup-item">
-            <span class="sup-platform ${platClass(s.platform)}">${escHtml(s.platform)}</span>
-            <div class="sup-info">
-              <div class="sup-name">${escHtml(s.name)}</div>
-              <div class="sup-detail">MOQ : ${escHtml(s.moq)} · ${escHtml(s.rating||'')}</div>
-            </div>
-            <div class="sup-price">${escHtml(s.price_range)}</div>
-          </div>`).join('')}
-      </div>
-      <div class="card">
-        <div class="card-title">Email fournisseur — prêt à envoyer</div>
-        <div class="email-box" id="emailBox">${escHtml(d.email||'')}</div>
-        <button class="btn-copy" onclick="copyEmail()">📋 Copier l'email</button>
-      </div>
-    </div>`;
-
-  setTimeout(() => {
-    const bar = document.getElementById('demandBar');
-    if (bar) bar.style.width = barPct + '%';
-  }, 80);
+      <div style="margin-top:8px;color:var(--muted);">${escapeHtml(warning)}</div>
+    </div>
+  `).join("")}</div>`;
 }
 
-function copyEmail() {
-  const text = document.getElementById('emailBox')?.innerText || '';
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = document.querySelector('.btn-copy');
-    btn.textContent = '✅ Copié !';
-    setTimeout(() => { btn.textContent = '📋 Copier l\'email'; }, 2000);
-  });
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
-function exportPDF() {
-  const d = lastData;
-  if (!d) return;
-  const doc = new jsPDF({ unit:'mm', format:'a4' });
-  const W=210, M=18; let y=20;
-  const addLine = (text,size=10,bold=false,color=[240,240,245]) => {
-    doc.setFontSize(size); doc.setFont('helvetica',bold?'bold':'normal'); doc.setTextColor(...color);
-    doc.text(text,M,y); y+=size*0.45+2;
-  };
-  const addSep = () => { doc.setDrawColor(42,43,54); doc.line(M,y,W-M,y); y+=5; };
-  const addKV = (k,v,vColor=[240,240,245]) => {
-    doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(139,140,158); doc.text(k,M,y);
-    doc.setFont('helvetica','bold'); doc.setTextColor(...vColor); doc.text(String(v),W-M,y,{align:'right'}); y+=6;
-  };
-  doc.setFillColor(11,12,16); doc.rect(0,0,W,297,'F');
-  doc.setFillColor(123,110,246); doc.rect(0,0,W,1.5,'F');
-  doc.setFillColor(123,110,246); doc.roundedRect(M,y-2,22,8,2,2,'F');
-  doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255); doc.text('VORA',M+3.5,y+4.5);
-  doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(139,140,158);
-  doc.text('AI E-Commerce Intelligence · Marché Tunisien',M+27,y+4.5); y+=16;
-  addLine("Rapport d'analyse produit",16,true);
-  addLine(lastProduct,13,false,[123,110,246]); y+=4;
-  const isGo = d.verdict==='GO';
-  doc.setFillColor(...(isGo?[45,212,160]:[240,85,106])); doc.roundedRect(M,y,W-M*2,14,3,3,'F');
-  doc.setFontSize(13); doc.setFont('helvetica','bold'); doc.setTextColor(11,12,16);
-  doc.text(isGo?'✓  VERDICT : GO':'✗  VERDICT : NO GO',M+6,y+9); y+=20;
-  doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(139,140,158);
-  const vlines = doc.splitTextToSize(d.verdict_reason,W-M*2); doc.text(vlines,M,y); y+=vlines.length*5+8;
-  addSep(); addLine('MÉTRIQUES CLÉS',9,true,[123,110,246]); y+=2;
-  addKV('Prix de vente (TN)',`${d.sell_price_low}–${d.sell_price_high} DT`);
-  addKV('Indice de demande',`${Math.round(d.demand_score)}% — ${d.competition}`);
-  addKV('Marge nette estimée',`${Math.round(d.net_margin_pct)}%`,isGo?[45,212,160]:[240,85,106]);
-  addKV('Tendance marché',d.trend); y+=2;
-  addSep(); addLine('DÉTAIL DES COÛTS',9,true,[123,110,246]); y+=2;
-  addKV('Prix FOB',`$${(+d.buy_fob_usd).toFixed(2)}`);
-  addKV("Frais d'expédition",`$${(+d.shipping_usd).toFixed(2)}`);
-  addKV(`Douane (${d.customs_rate}%)`,`$${(+d.customs_usd).toFixed(2)}`);
-  addKV('Coût total DDP',`$${(+d.total_cost_usd).toFixed(2)}`,[245,200,66]); y+=2;
-  addSep(); addLine('FOURNISSEURS SUGGÉRÉS',9,true,[123,110,246]); y+=2;
-  (d.suppliers||[]).forEach((s,i) => {
-    addLine(`${i+1}. ${s.name}`,9,true); y-=2;
-    addKV('Plateforme / Prix',`${s.platform} · ${s.price_range}`);
-    addKV('MOQ · Note',`${s.moq} · ${s.rating||''}`); y+=2;
-  });
-  addSep(); addLine('EMAIL FOURNISSEUR',9,true,[123,110,246]); y+=2;
-  const elines = doc.splitTextToSize(d.email||'',W-M*2);
-  doc.setFontSize(8.5); doc.setFont('helvetica','normal'); doc.setTextColor(139,140,158);
-  doc.text(elines,M,y);
-  doc.setFontSize(7.5); doc.setTextColor(60,52,137);
-  doc.text(`VORA AI · Généré le ${new Date().toLocaleDateString('fr-TN')}`,W/2,291,{align:'center'});
-  doc.save(`VORA_${lastProduct.replace(/\s+/g,'_')}.pdf`);
+function escapeAttribute(value) {
+  return escapeHtml(value);
 }
-
-function escHtml(str) {
-  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-document.getElementById('pInput').addEventListener('keydown', e => { if(e.key==='Enter') runAnalysis(); });
-
-
 </script>
 </body>
 </html>

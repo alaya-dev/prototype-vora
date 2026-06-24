@@ -1,0 +1,1 @@
+"""VORA MVP application package."""
