@@ -120,7 +120,8 @@ def _resolve_regional_results(
         GeminiSearchClientError,
     ):
         raise PipelineError(
-            "Gemini Search-grounded research failed for both regions."
+            "Gemini Search-grounded research failed for both regions. "
+            f"Tunisia: {market_value} China: {china_value}"
         )
     market_result = (
         _failed_market_result(market_value)

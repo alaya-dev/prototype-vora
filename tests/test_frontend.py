@@ -30,3 +30,7 @@ class FrontendTests(unittest.TestCase):
     def test_research_layer_is_labeled_as_gemini_search_grounding(self) -> None:
         self.assertIn("Gemini 3.1 Flash-Lite Search Grounding", self.html)
         self.assertNotIn("tavily", self.html.lower())
+
+    def test_inline_favicon_prevents_missing_favicon_request(self) -> None:
+        self.assertIn('rel="icon"', self.html)
+        self.assertIn('href="data:image/svg+xml,', self.html)

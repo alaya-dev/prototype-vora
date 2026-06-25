@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 import asyncio
+import json
 
 from pydantic import BaseModel, ValidationError
 
@@ -52,12 +53,21 @@ class GeminiSearchClient:
     ) -> GroundedResponse[T]:
         parsing_error: Exception | None = None
         for attempt in range(2):
-            interaction = await self._create_interaction(
-                _prompt_for_attempt(prompt, attempt),
+            attempt_prompt = _prompt_for_attempt(
+                prompt,
                 response_model,
                 attempt,
             )
-            _require_search_call(interaction)
+            interaction = await self._create_interaction(
+                attempt_prompt,
+                attempt,
+            )
+            if not _has_search_call(interaction):
+                if attempt == 0:
+                    continue
+                raise GeminiSearchClientError(
+                    "Gemini research did not execute Google Search grounding."
+                )
             output_text = _model_output_text(interaction)
             try:
                 payload = response_model.model_validate_json(output_text)
@@ -76,7 +86,6 @@ class GeminiSearchClient:
     async def _create_interaction(
         self,
         prompt: str,
-        response_model: type[T],
         attempt: int,
     ):
         try:
@@ -84,40 +93,44 @@ class GeminiSearchClient:
                 model=self.model,
                 input=prompt,
                 tools=[{"type": "google_search"}],
-                response_format={
-                    "type": "text",
-                    "mime_type": "application/json",
-                    "schema": response_model.model_json_schema(),
-                },
                 store=False,
             )
         except Exception as error:  # pragma: no cover - remote SDK boundary
             if _is_retryable_gemini_error(error) and attempt == 0:
                 await asyncio.sleep(1)
-                return await self._create_interaction(prompt, response_model, 1)
+                return await self._create_interaction(prompt, 1)
             raise GeminiSearchClientError(
                 _build_gemini_error_message(error)
             ) from error
 
 
-def _prompt_for_attempt(prompt: str, attempt: int) -> str:
+def _prompt_for_attempt(
+    prompt: str,
+    response_model: type[T],
+    attempt: int,
+) -> str:
+    json_instruction = (
+        "Return only valid JSON matching this JSON Schema exactly. "
+        "Do not include markdown fences or commentary.\n"
+        f"JSON Schema: {json.dumps(response_model.model_json_schema())}"
+    )
     if attempt == 0:
-        return prompt
+        return f"{prompt}\n\n{json_instruction}"
     return (
+        "Before writing any answer, you MUST execute Google Search. "
+        "Do not answer from memory or internal knowledge.\n\n"
         f"{prompt}\n\n"
         "Return only one valid JSON object matching the requested schema. "
-        "Do not include markdown fences or commentary."
+        "Do not include markdown fences or commentary.\n"
+        f"{json_instruction}"
     )
 
 
-def _require_search_call(interaction) -> None:
-    if not any(
+def _has_search_call(interaction) -> bool:
+    return any(
         getattr(step, "type", None) == "google_search_call"
         for step in getattr(interaction, "steps", [])
-    ):
-        raise GeminiSearchClientError(
-            "Gemini research did not execute Google Search grounding."
-        )
+    )
 
 
 def _model_output_text(interaction) -> str:

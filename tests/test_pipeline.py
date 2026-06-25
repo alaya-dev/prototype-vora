@@ -311,8 +311,13 @@ class ProductAnalysisPipelineTests(unittest.IsolatedAsyncioTestCase):
             china_supplier_research_agent=FailingResearchAgent("China unavailable."),
         )
 
-        with self.assertRaisesRegex(PipelineError, "both regions"):
+        with self.assertRaises(PipelineError) as context:
             await pipeline.analyze("wireless earbuds")
+
+        message = str(context.exception)
+        self.assertIn("both regions", message)
+        self.assertIn("Tunisia unavailable", message)
+        self.assertIn("China unavailable", message)
 
 
 def _valid_intent_classifier() -> StubIntentClassifier:

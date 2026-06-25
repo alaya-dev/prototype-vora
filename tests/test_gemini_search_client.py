@@ -79,15 +79,10 @@ class GeminiSearchClientTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(grounded.payload.answer, "grounded")
         self.assertEqual(endpoint.calls[0]["tools"], [{"type": "google_search"}])
+        self.assertNotIn("generation_config", endpoint.calls[0])
         self.assertFalse(endpoint.calls[0]["store"])
-        self.assertEqual(
-            endpoint.calls[0]["response_format"]["mime_type"],
-            "application/json",
-        )
-        self.assertEqual(
-            endpoint.calls[0]["response_format"]["schema"],
-            SamplePayload.model_json_schema(),
-        )
+        self.assertNotIn("response_format", endpoint.calls[0])
+        self.assertIn("Return only valid JSON", endpoint.calls[0]["input"])
 
     async def test_citations_are_deduplicated_in_first_seen_order(self) -> None:
         client, _endpoint = self._client(
@@ -147,7 +142,10 @@ class GeminiSearchClientTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_response_without_search_call_is_rejected(self) -> None:
         client, _endpoint = self._client(
-            [_interaction('{"answer":"internal knowledge"}', include_search=False)]
+            [
+                _interaction('{"answer":"internal knowledge"}', include_search=False),
+                _interaction('{"answer":"still internal"}', include_search=False),
+            ]
         )
 
         with self.assertRaisesRegex(
@@ -158,3 +156,25 @@ class GeminiSearchClientTests(unittest.IsolatedAsyncioTestCase):
                 "Research this product.",
                 SamplePayload,
             )
+
+    async def test_ungrounded_response_is_retried_with_mandatory_search_prompt(
+        self,
+    ) -> None:
+        client, endpoint = self._client(
+            [
+                _interaction('{"answer":"internal knowledge"}', include_search=False),
+                _interaction('{"answer":"grounded"}'),
+            ]
+        )
+
+        grounded = await client.generate_grounded_json(
+            "Research this product.",
+            SamplePayload,
+        )
+
+        self.assertEqual(grounded.payload.answer, "grounded")
+        self.assertEqual(len(endpoint.calls), 2)
+        self.assertIn(
+            "MUST execute Google Search",
+            endpoint.calls[1]["input"],
+        )
