@@ -8,7 +8,9 @@ from app.schemas import (
     MarketResearchResult,
     ProductAnalysisResponse,
     ResearchSource,
+    SupplierOption,
 )
+from app.services.gemini_search_client import GeminiSearchClientError
 
 
 class PipelineError(RuntimeError):
@@ -53,7 +55,7 @@ class ProductAnalysisPipeline:
 
         try:
             normalized_category = category.strip() if category else None
-            market_result, china_result = await asyncio.wait_for(
+            regional_results = await asyncio.wait_for(
                 asyncio.gather(
                     self.market_research_agent.research(
                         intent_result.normalized_product,
@@ -63,6 +65,7 @@ class ProductAnalysisPipeline:
                         intent_result.normalized_product,
                         normalized_category,
                     ),
+                    return_exceptions=True,
                 ),
                 timeout=self.timeout_seconds,
             )
@@ -71,11 +74,12 @@ class ProductAnalysisPipeline:
                 "Analysis timed out before research completed."
             ) from error
 
+        market_result, china_result = _resolve_regional_results(regional_results)
         warnings = _merge_warnings(
             market_result,
             china_result,
-            len(market_result.tunisia_suppliers),
-            len(china_result.china_suppliers),
+            _sourced_supplier_count(market_result.tunisia_suppliers),
+            _sourced_supplier_count(china_result.china_suppliers),
         )
 
         return ProductAnalysisResponse(
@@ -105,6 +109,55 @@ def _build_invalid_response(product: str, reason: str) -> ProductAnalysisRespons
     )
 
 
+def _resolve_regional_results(
+    regional_results: list,
+) -> tuple[MarketResearchResult, ChinaSupplierResearchResult]:
+    market_value, china_value = regional_results
+    _raise_unexpected_error(market_value)
+    _raise_unexpected_error(china_value)
+    if isinstance(market_value, GeminiSearchClientError) and isinstance(
+        china_value,
+        GeminiSearchClientError,
+    ):
+        raise PipelineError(
+            "Gemini Search-grounded research failed for both regions."
+        )
+    market_result = (
+        _failed_market_result(market_value)
+        if isinstance(market_value, GeminiSearchClientError)
+        else market_value
+    )
+    china_result = (
+        _failed_china_result(china_value)
+        if isinstance(china_value, GeminiSearchClientError)
+        else china_value
+    )
+    return market_result, china_result
+
+
+def _raise_unexpected_error(regional_value) -> None:
+    if isinstance(regional_value, BaseException) and not isinstance(
+        regional_value,
+        GeminiSearchClientError,
+    ):
+        raise regional_value
+
+
+def _failed_market_result(error: GeminiSearchClientError) -> MarketResearchResult:
+    return MarketResearchResult(
+        market_summary="Tunisia Search-grounded research was unavailable.",
+        warnings=[f"Tunisia research failed: {error}"],
+    )
+
+
+def _failed_china_result(
+    error: GeminiSearchClientError,
+) -> ChinaSupplierResearchResult:
+    return ChinaSupplierResearchResult(
+        warnings=[f"China research failed: {error}"],
+    )
+
+
 def _merge_warnings(
     market_result: MarketResearchResult,
     china_result: ChinaSupplierResearchResult,
@@ -124,6 +177,10 @@ def _merge_warnings(
         "Prices, MOQ, stock, and availability must be confirmed directly with suppliers before purchase."
     )
     return list(dict.fromkeys(warnings))
+
+
+def _sourced_supplier_count(suppliers: list[SupplierOption]) -> int:
+    return sum(1 for supplier in suppliers if supplier.source_url)
 
 
 def _dedupe_sources(sources: list[ResearchSource]) -> list[ResearchSource]:

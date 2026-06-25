@@ -26,3 +26,7 @@ class FrontendTests(unittest.TestCase):
     def test_rate_limit_error_does_not_suggest_missing_keys(self) -> None:
         self.assertIn("Daily Gemini quota exhausted", self.html)
         self.assertIn("Check your Gemini quota or billing", self.html)
+
+    def test_research_layer_is_labeled_as_gemini_search_grounding(self) -> None:
+        self.assertIn("Gemini 3.1 Flash-Lite Search Grounding", self.html)
+        self.assertNotIn("tavily", self.html.lower())

@@ -3,52 +3,39 @@ import unittest
 from app.agents.china_supplier_research import (
     ChinaSupplierExtraction,
     ChinaSupplierExtractionOption,
-    ChinaSupplierResearchAgent,
+    GeminiChinaSupplierResearchAgent,
 )
 from app.agents.market_research import (
-    MarketResearchAgent,
-    MarketResearchExtraction,
+    GeminiTunisiaResearchAgent,
+    TunisiaResearchExtraction,
     TunisiaSupplierExtractionOption,
 )
-from app.services.tavily_client import TavilySearchResponse, TavilySearchResult
+from app.services.gemini_search_client import (
+    GroundedResponse,
+    GroundingCitation,
+)
 
 
-class RecordingTavilyClient:
-    def __init__(self, result: TavilySearchResult) -> None:
-        self.result = result
-        self.queries: list[str] = []
-
-    async def search(
-        self,
-        query: str,
-        max_results: int,
-    ) -> TavilySearchResponse:
-        self.queries.append(query)
-        return TavilySearchResponse(results=[self.result], warnings=[])
-
-
-class RecordingGeminiClient:
-    def __init__(self, response) -> None:
-        self.response = response
+class RecordingGeminiSearchClient:
+    def __init__(self, payload, citations: list[GroundingCitation]) -> None:
+        self.grounded_response = GroundedResponse(
+            payload=payload,
+            citations=citations,
+        )
         self.prompt = ""
+        self.response_model = None
 
-    async def generate_json(self, prompt: str, response_model):
+    async def generate_grounded_json(self, prompt: str, response_model):
         self.prompt = prompt
-        return self.response
+        self.response_model = response_model
+        return self.grounded_response
 
 
 class ResearchAgentTests(unittest.IsolatedAsyncioTestCase):
-    async def test_tunisia_category_and_price_are_preserved(self) -> None:
+    async def test_tunisia_research_preserves_cited_price_and_category(self) -> None:
         source_url = "https://tunisia.example/earbuds"
-        tavily = RecordingTavilyClient(
-            TavilySearchResult(
-                title="Earbuds Tunisia",
-                url=source_url,
-                content="Wireless earbuds listed at 89 TND.",
-            )
-        )
-        gemini = RecordingGeminiClient(
-            MarketResearchExtraction(
+        search_client = RecordingGeminiSearchClient(
+            TunisiaResearchExtraction(
                 market_summary="A sourced Tunisia listing was found.",
                 tunisia_suppliers=[
                     TunisiaSupplierExtractionOption(
@@ -58,35 +45,64 @@ class ResearchAgentTests(unittest.IsolatedAsyncioTestCase):
                         price_range_tnd="89 TND",
                         source_url=source_url,
                         confidence="high",
-                        notes="Price appears in the search evidence.",
+                        notes="Price appears in the grounded source.",
                     )
                 ],
-            )
+            ),
+            [GroundingCitation(title="Earbuds Tunisia", url=source_url)],
         )
-        agent = MarketResearchAgent(gemini, tavily, 2, 8)
+        agent = GeminiTunisiaResearchAgent(search_client)
 
         research = await agent.research(
             "wireless earbuds",
             "Consumer Electronics",
         )
 
-        self.assertTrue(
-            all("Consumer Electronics" in query for query in tavily.queries)
-        )
-        self.assertIn("Category: Consumer Electronics", gemini.prompt)
+        self.assertIn("Category: Consumer Electronics", search_client.prompt)
+        self.assertIn("untrusted", search_client.prompt.lower())
+        self.assertIn("Google Search", search_client.prompt)
         self.assertEqual(research.tunisia_suppliers[0].price_range_tnd, "89 TND")
         self.assertIsNone(research.tunisia_suppliers[0].price_range_usd)
-
-    async def test_china_category_price_and_moq_are_preserved(self) -> None:
-        source_url = "https://china.example/earbuds"
-        tavily = RecordingTavilyClient(
-            TavilySearchResult(
-                title="Earbuds Manufacturer",
-                url=source_url,
-                content="Price US$4-6 with MOQ 100 pieces.",
-            )
+        self.assertIsNone(research.tunisia_suppliers[0].moq)
+        self.assertEqual(research.tunisia_suppliers[0].confidence, "high")
+        self.assertEqual(research.research_sources[0].url, source_url)
+        self.assertEqual(
+            research.research_sources[0].source_type,
+            "tunisia_market",
         )
-        gemini = RecordingGeminiClient(
+
+    async def test_tunisia_uncited_option_is_low_confidence_with_warning(self) -> None:
+        search_client = RecordingGeminiSearchClient(
+            TunisiaResearchExtraction(
+                market_summary="A possible local seller was mentioned.",
+                tunisia_suppliers=[
+                    TunisiaSupplierExtractionOption(
+                        name="Possible Seller",
+                        type="seller",
+                        product_title="Portable blender",
+                        price_range_tnd=None,
+                        source_url="https://uncited.example/blender",
+                        confidence="high",
+                        notes="The URL was not present in grounding annotations.",
+                    )
+                ],
+            ),
+            [],
+        )
+
+        research = await GeminiTunisiaResearchAgent(search_client).research(
+            "portable blender"
+        )
+
+        self.assertIsNone(research.tunisia_suppliers[0].source_url)
+        self.assertEqual(research.tunisia_suppliers[0].confidence, "low")
+        self.assertTrue(
+            any("citation" in warning.lower() for warning in research.warnings)
+        )
+
+    async def test_china_research_preserves_cited_price_moq_and_category(self) -> None:
+        source_url = "https://china.example/earbuds"
+        search_client = RecordingGeminiSearchClient(
             ChinaSupplierExtraction(
                 china_suppliers=[
                     ChinaSupplierExtractionOption(
@@ -97,22 +113,58 @@ class ResearchAgentTests(unittest.IsolatedAsyncioTestCase):
                         moq="100 pieces",
                         source_url=source_url,
                         confidence="high",
-                        notes="Price and MOQ appear in the search evidence.",
+                        notes="Price and MOQ appear in the grounded source.",
                     )
                 ]
-            )
+            ),
+            [GroundingCitation(title="Earbuds Manufacturer", url=source_url)],
         )
-        agent = ChinaSupplierResearchAgent(gemini, tavily, 2, 8)
+        agent = GeminiChinaSupplierResearchAgent(search_client)
 
         research = await agent.research(
             "wireless earbuds",
             "Consumer Electronics",
         )
 
-        self.assertTrue(
-            all("Consumer Electronics" in query for query in tavily.queries)
-        )
-        self.assertIn("Category: Consumer Electronics", gemini.prompt)
+        self.assertIn("Category: Consumer Electronics", search_client.prompt)
+        self.assertIn("untrusted", search_client.prompt.lower())
+        self.assertIn("Google Search", search_client.prompt)
         self.assertEqual(research.china_suppliers[0].price_range_usd, "US$4-6")
         self.assertEqual(research.china_suppliers[0].moq, "100 pieces")
         self.assertIsNone(research.china_suppliers[0].price_range_tnd)
+        self.assertEqual(research.china_suppliers[0].confidence, "high")
+        self.assertEqual(
+            research.research_sources[0].source_type,
+            "china_supplier",
+        )
+
+    async def test_agents_cap_options_at_three(self) -> None:
+        citations = [
+            GroundingCitation(
+                title=f"Source {index}",
+                url=f"https://china.example/{index}",
+            )
+            for index in range(4)
+        ]
+        search_client = RecordingGeminiSearchClient(
+            ChinaSupplierExtraction(
+                china_suppliers=[
+                    ChinaSupplierExtractionOption(
+                        name=f"Supplier {index}",
+                        type="manufacturer",
+                        product_title="LED strip lights",
+                        source_url=f"https://china.example/{index}",
+                        confidence="medium",
+                        notes="Grounded option.",
+                    )
+                    for index in range(4)
+                ]
+            ),
+            citations,
+        )
+
+        research = await GeminiChinaSupplierResearchAgent(search_client).research(
+            "LED strip lights"
+        )
+
+        self.assertEqual(len(research.china_suppliers), 3)

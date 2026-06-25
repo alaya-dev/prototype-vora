@@ -4,14 +4,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.agents.china_supplier_research import ChinaSupplierResearchAgent
+from app.agents.china_supplier_research import GeminiChinaSupplierResearchAgent
 from app.agents.intent_classifier import IntentClassifierAgent
-from app.agents.market_research import MarketResearchAgent
+from app.agents.market_research import GeminiTunisiaResearchAgent
 from app.config import Settings
 from app.pipeline import PipelineError, PipelineTimeoutError, ProductAnalysisPipeline
 from app.schemas import AnalyzeRequest, ProductAnalysisResponse
 from app.services.gemini_client import GeminiClient, GeminiClientError
-from app.services.tavily_client import TavilyClient
+from app.services.gemini_search_client import GeminiSearchClient, GeminiSearchClientError
 
 
 def create_app(
@@ -39,7 +39,7 @@ def create_app(
             return await resolved_pipeline.analyze(request.product, request.category)
         except PipelineTimeoutError as error:
             raise HTTPException(status_code=504, detail=str(error)) from error
-        except (PipelineError, GeminiClientError) as error:
+        except (PipelineError, GeminiClientError, GeminiSearchClientError) as error:
             raise HTTPException(status_code=502, detail=str(error)) from error
 
     app.mount("/", StaticFiles(directory="static", html=True), name="static")
@@ -51,23 +51,17 @@ def _build_pipeline(settings: Settings) -> ProductAnalysisPipeline:
         api_key=settings.gemini_api_key,
         model=settings.gemini_model,
     )
-    tavily_client = TavilyClient(
-        api_key=settings.tavily_api_key,
-        max_results=settings.tavily_max_results,
+    gemini_search_client = GeminiSearchClient(
+        api_key=settings.gemini_api_key,
+        model=settings.gemini_model,
     )
     return ProductAnalysisPipeline(
         intent_classifier=IntentClassifierAgent(gemini_client=gemini_client),
-        market_research_agent=MarketResearchAgent(
-            gemini_client=gemini_client,
-            tavily_client=tavily_client,
-            max_queries_per_region=settings.tavily_max_queries_per_region,
-            max_results=settings.tavily_max_results,
+        market_research_agent=GeminiTunisiaResearchAgent(
+            gemini_search_client=gemini_search_client,
         ),
-        china_supplier_research_agent=ChinaSupplierResearchAgent(
-            gemini_client=gemini_client,
-            tavily_client=tavily_client,
-            max_queries_per_region=settings.tavily_max_queries_per_region,
-            max_results=settings.tavily_max_results,
+        china_supplier_research_agent=GeminiChinaSupplierResearchAgent(
+            gemini_search_client=gemini_search_client,
         ),
         timeout_seconds=settings.analysis_timeout_seconds,
     )

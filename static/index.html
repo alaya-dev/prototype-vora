@@ -515,14 +515,14 @@
           <div style="font-size:12px;color:var(--muted);font-family:Manrope,sans-serif;">Research-agent MVP</div>
         </div>
       </div>
-      <div class="topbar-badge">Tunisia + China evidence scan</div>
+      <div class="topbar-badge">Gemini 3.1 Flash-Lite Search Grounding</div>
     </div>
 
     <section class="hero panel">
       <div class="eyebrow">Public-web evidence only</div>
       <div>
         <h1>Validate a product idea before you source it.</h1>
-        <p>VORA checks whether the request is a valid product, researches Tunisia demand and supplier signals, and returns China supplier or source options backed by Tavily evidence and normalized by Gemini.</p>
+        <p>VORA checks whether the request is a valid product, then uses Gemini 3.1 Flash-Lite Search Grounding to research Tunisia demand and China supplier options with public-web citations.</p>
       </div>
       <div class="search">
         <div class="field">
@@ -604,7 +604,7 @@ async function runAnalysis() {
       ${renderLoaderLetters("Loading the best deals ...")}
       <div class="loader"></div>
     </div>
-    <p>Checking public Tunisia and China sources for <strong>${escapeHtml(product)}</strong>${category ? ` in <strong>${escapeHtml(category)}</strong>` : ""}. This can take a few moments.</p>
+    <p>Running Gemini Search-grounded research across public Tunisia and China sources for <strong>${escapeHtml(product)}</strong>${category ? ` in <strong>${escapeHtml(category)}</strong>` : ""}. This can take a few moments.</p>
   `;
 
   try {
@@ -643,7 +643,7 @@ function renderAnalysis(data) {
     output.innerHTML = `
       <h2>Request rejected</h2>
       <p>${escapeHtml(data.intent_reason)}</p>
-      <p style="margin-top:10px;color:var(--muted);">Invalid requests stop before any Tavily research runs.</p>
+      <p style="margin-top:10px;color:var(--muted);">Invalid requests stop before any Google Search-grounded research runs.</p>
     `;
     return;
   }
@@ -686,12 +686,12 @@ function renderAnalysis(data) {
 }
 
 function renderSuppliers(suppliers, currencyMode) {
-  const sourcedSuppliers = (suppliers || []).filter((supplier) => supplier.source_url);
-  if (sourcedSuppliers.length === 0) {
+  const supplierOptions = suppliers || [];
+  if (supplierOptions.length === 0) {
     return `<div class="empty-state">No reliable source-backed suppliers were found for this region. VORA will not fill the gap with inferred or fictive options.</div>`;
   }
 
-  return `<div class="supplier-list">${sourcedSuppliers.map((supplier) => {
+  return `<div class="supplier-list">${supplierOptions.map((supplier) => {
     const priceLabel = currencyMode === "tnd"
       ? supplier.price_range_tnd
       : supplier.price_range_usd;
@@ -718,9 +718,9 @@ function renderSuppliers(suppliers, currencyMode) {
           ${moqRow}
           <div><strong>Notes:</strong> ${escapeHtml(supplier.notes)}</div>
         </div>
-        <div class="source-row">
-          <a href="${escapeAttribute(supplier.source_url)}" target="_blank" rel="noopener noreferrer">Open evidence source</a>
-        </div>
+        ${supplier.source_url
+          ? `<div class="source-row"><a href="${escapeAttribute(supplier.source_url)}" target="_blank" rel="noopener noreferrer">Open evidence source</a></div>`
+          : `<div class="source-row"><span class="warning-pill">No grounding citation available</span></div>`}
       </article>
     `;
   }).join("")}</div>`;

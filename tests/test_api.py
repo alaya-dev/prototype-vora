@@ -28,7 +28,6 @@ class ApiTests(unittest.TestCase):
         os.environ,
         {
             "GEMINI_API_KEY": "test-gemini",
-            "TAVILY_API_KEY": "test-tavily",
         },
         clear=True,
     )
@@ -59,7 +58,6 @@ class ApiTests(unittest.TestCase):
         os.environ,
         {
             "GEMINI_API_KEY": "test-gemini",
-            "TAVILY_API_KEY": "test-tavily",
         },
         clear=True,
     )
@@ -98,7 +96,6 @@ class ApiTests(unittest.TestCase):
         os.environ,
         {
             "GEMINI_API_KEY": "test-gemini",
-            "TAVILY_API_KEY": "test-tavily",
         },
         clear=True,
     )
@@ -130,7 +127,6 @@ class ApiTests(unittest.TestCase):
         os.environ,
         {
             "GEMINI_API_KEY": "test-gemini",
-            "TAVILY_API_KEY": "test-tavily",
         },
         clear=True,
     )
@@ -165,9 +161,6 @@ class ApiTests(unittest.TestCase):
 def _settings() -> Settings:
     return Settings(
         gemini_api_key="test-gemini",
-        tavily_api_key="test-tavily",
-        gemini_model="gemini-2.5-flash-lite",
-        tavily_max_results=8,
-        tavily_max_queries_per_region=4,
+        gemini_model="gemini-3.1-flash-lite",
         analysis_timeout_seconds=45,
     )
