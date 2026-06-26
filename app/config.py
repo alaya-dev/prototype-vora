@@ -10,28 +10,28 @@ class SettingsError(RuntimeError):
 
 @dataclass(frozen=True)
 class Settings:
-    gemini_intent_api_key: str
-    gemini_intent_model: str
-    gemini_analysis_api_key: str
-    gemini_analysis_model: str
     gemini_api_key: str
     gemini_model: str
     analysis_timeout_seconds: int
-    serper_api_key: str
-    brave_search_api_key: str
-    exa_api_key: str
-    firecrawl_api_key: str
-    perplexity_api_key: str
-    searxng_base_url: str
-    scavio_api_key: str
-    scavio_base_url: str
-    dataforseo_login: str
-    dataforseo_password: str
-    benchmark_provider_timeout_seconds: int
-    benchmark_max_providers_parallel: int
-    search_results_per_query: int
-    search_queries_per_region: int
-    max_raw_sources_per_provider: int
+    gemini_intent_api_key: str = ""
+    gemini_intent_model: str = "gemini-3.1-flash-lite"
+    gemini_analysis_api_key: str = ""
+    gemini_analysis_model: str = "gemini-3.1-flash-lite"
+    serper_api_key: str = ""
+    brave_search_api_key: str = ""
+    exa_api_key: str = ""
+    firecrawl_api_key: str = ""
+    perplexity_api_key: str = ""
+    searxng_base_url: str = ""
+    scavio_api_key: str = ""
+    scavio_base_url: str = ""
+    dataforseo_login: str = ""
+    dataforseo_password: str = ""
+    benchmark_provider_timeout_seconds: int = 45
+    benchmark_max_providers_parallel: int = 8
+    search_results_per_query: int = 10
+    search_queries_per_region: int = 4
+    max_raw_sources_per_provider: int = 20
 
     @classmethod
     def from_env(cls) -> "Settings":

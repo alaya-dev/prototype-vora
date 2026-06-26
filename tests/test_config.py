@@ -6,6 +6,17 @@ from app.config import Settings, SettingsError
 
 
 class SettingsTests(unittest.TestCase):
+    def test_direct_settings_construction_remains_backward_compatible(self) -> None:
+        settings = Settings(
+            gemini_api_key="test-gemini",
+            gemini_model="gemini-3.1-flash-lite",
+            analysis_timeout_seconds=45,
+        )
+
+        self.assertEqual(settings.gemini_intent_api_key, "")
+        self.assertEqual(settings.benchmark_provider_timeout_seconds, 45)
+        self.assertEqual(settings.max_raw_sources_per_provider, 20)
+
     @patch.dict(os.environ, {}, clear=True)
     @patch("app.config.load_dotenv")
     def test_missing_provider_keys_do_not_prevent_settings_load(self, _load_dotenv_mock) -> None:
