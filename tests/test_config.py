@@ -47,17 +47,27 @@ class SettingsTests(unittest.TestCase):
     def test_benchmark_environment_values_are_loaded(self) -> None:
         settings = Settings.from_env()
 
+        self.assertEqual(settings.gemini_intent_api_key, "intent-key")
         self.assertEqual(settings.gemini_intent_model, "gemini-intent")
+        self.assertEqual(settings.gemini_analysis_api_key, "analysis-key")
         self.assertEqual(settings.gemini_analysis_model, "gemini-analysis")
         self.assertEqual(settings.serper_api_key, "serper-key")
+        self.assertEqual(settings.brave_search_api_key, "brave-key")
+        self.assertEqual(settings.exa_api_key, "exa-key")
+        self.assertEqual(settings.firecrawl_api_key, "firecrawl-key")
+        self.assertEqual(settings.perplexity_api_key, "perplexity-key")
         self.assertEqual(settings.searxng_base_url, "https://search.example")
+        self.assertEqual(settings.scavio_api_key, "scavio-key")
+        self.assertEqual(settings.scavio_base_url, "https://scavio.example")
+        self.assertEqual(settings.dataforseo_login, "login")
+        self.assertEqual(settings.dataforseo_password, "password")
         self.assertEqual(settings.benchmark_provider_timeout_seconds, 30)
         self.assertEqual(settings.benchmark_max_providers_parallel, 3)
         self.assertEqual(settings.search_results_per_query, 7)
         self.assertEqual(settings.search_queries_per_region, 2)
         self.assertEqual(settings.max_raw_sources_per_provider, 11)
 
-    @patch.dict(os.environ, {"BENCHMARK_MAX_PROVIDERS_PARALLEL": "0"}, clear=True)
+    @patch.dict(os.environ, {"BENCHMARK_MAX_PROVIDERS_PARALLEL": "not-an-integer"}, clear=True)
     @patch("app.config.load_dotenv")
     def test_invalid_integer_settings_raise_clear_error(self, _load_dotenv_mock) -> None:
         with self.assertRaises(SettingsError) as context:
