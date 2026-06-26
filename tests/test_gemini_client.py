@@ -1,7 +1,14 @@
 import unittest
 
 from app.agents.intent_classifier import IntentClassificationPayload
+from app.benchmark.schemas import (
+    ProviderAnalysisResult,
+    ProviderEvidence,
+    ProviderRawSource,
+)
 from app.services.gemini_client import (
+    GeminiAnalysisClient,
+    GeminiIntentClient,
     _build_gemini_error_message,
     _build_gemini_response_schema,
     _is_retryable_gemini_error,
@@ -54,3 +61,54 @@ class GeminiSchemaTests(unittest.TestCase):
         message = _build_gemini_error_message(error)
         self.assertIn("daily free-tier quota", message.lower())
         self.assertIn("billing", message.lower())
+
+
+class RecordingStructuredClient:
+    def __init__(self, result) -> None:
+        self.result = result
+        self.calls = []
+
+    async def generate_json(self, prompt: str, response_model):
+        self.calls.append((prompt, response_model))
+        return self.result
+
+
+class GeminiRoleWrapperTests(unittest.IsolatedAsyncioTestCase):
+    async def test_intent_client_delegates_to_structured_client(self) -> None:
+        payload = IntentClassificationPayload(
+            is_valid_product=True,
+            normalized_product="wireless earbuds",
+            reason="Valid product.",
+        )
+        base = RecordingStructuredClient(payload)
+        client = GeminiIntentClient(base)
+
+        result = await client.classify("wireless earbuds")
+
+        self.assertTrue(result.is_valid_product)
+        self.assertEqual(result.normalized_product, "wireless earbuds")
+        self.assertEqual(len(base.calls), 1)
+
+    async def test_analysis_client_extracts_from_provider_evidence(self) -> None:
+        expected = ProviderAnalysisResult(market_summary="Evidence found.")
+        base = RecordingStructuredClient(expected)
+        client = GeminiAnalysisClient(base)
+        evidence = ProviderEvidence(
+            provider_id="brave",
+            sources=[
+                ProviderRawSource(
+                    title="Listing",
+                    url="https://example.com/item",
+                    snippet="89 TND",
+                )
+            ],
+        )
+
+        result = await client.extract("portable blender", evidence)
+
+        self.assertEqual(result.market_summary, "Evidence found.")
+        prompt, response_model = base.calls[0]
+        self.assertIn("portable blender", prompt)
+        self.assertIn("brave", prompt)
+        self.assertIn("Do not invent", prompt)
+        self.assertIs(response_model, ProviderAnalysisResult)
