@@ -3,27 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VORA AI MVP</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%230f766e'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='38' font-family='Arial' font-weight='700' fill='white'%3EV%3C/text%3E%3C/svg%3E">
+<title>VORA Search Provider Benchmark Lab</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23131d28'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-size='34' font-family='Arial' font-weight='700' fill='%23f6f3eb'%3EV%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f4efe6;
-    --panel: rgba(255, 255, 255, 0.78);
-    --panel-strong: #fffaf2;
-    --line: rgba(54, 40, 18, 0.12);
-    --text: #1f1a12;
-    --muted: #685844;
-    --accent: #0f766e;
-    --accent-strong: #115e59;
-    --warning: #a16207;
-    --danger: #b91c1c;
-    --low: #92400e;
-    --medium: #1d4ed8;
-    --high: #047857;
-    --shadow: 0 24px 60px rgba(53, 37, 17, 0.08);
+    --bg: #f2efe7;
+    --panel: rgba(255, 250, 242, 0.88);
+    --panel-strong: #fffdf8;
+    --line: rgba(31, 41, 55, 0.12);
+    --line-strong: rgba(31, 41, 55, 0.22);
+    --text: #1d2430;
+    --muted: #5e6875;
+    --accent: #0d5c63;
+    --accent-soft: #d5ece9;
+    --accent-strong: #083d42;
+    --warm: #b86a1b;
+    --danger: #b23a30;
+    --success: #24704c;
+    --warning: #8f5a13;
+    --shadow: 0 18px 48px rgba(34, 40, 49, 0.1);
+    --radius: 8px;
   }
 
   * { box-sizing: border-box; }
@@ -34,14 +36,33 @@
     font-family: "Manrope", sans-serif;
     color: var(--text);
     background:
-      radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 34%),
-      radial-gradient(circle at top right, rgba(180, 83, 9, 0.16), transparent 28%),
-      linear-gradient(180deg, #f6f0e6 0%, #f1eadf 52%, #efe6d8 100%);
+      radial-gradient(circle at top left, rgba(13, 92, 99, 0.18), transparent 28%),
+      radial-gradient(circle at top right, rgba(184, 106, 27, 0.14), transparent 24%),
+      linear-gradient(180deg, #f6f2e9 0%, #f1ede3 45%, #ece7dc 100%);
   }
 
   .shell {
-    width: min(1100px, calc(100% - 32px));
-    margin: 24px auto 56px;
+    width: min(1380px, calc(100% - 28px));
+    margin: 16px auto 48px;
+    display: grid;
+    gap: 16px;
+  }
+
+  .topbar,
+  .control-band,
+  .comparison-panel,
+  .provider-card,
+  .result-panel {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(18px);
+  }
+
+  .topbar,
+  .control-band,
+  .comparison-panel {
+    padding: 16px 18px;
   }
 
   .topbar {
@@ -49,718 +70,679 @@
     justify-content: space-between;
     align-items: center;
     gap: 12px;
-    padding: 18px 22px;
-    border: 1px solid var(--line);
-    background: rgba(255, 250, 242, 0.74);
-    backdrop-filter: blur(18px);
-    border-radius: 24px;
-    box-shadow: var(--shadow);
   }
 
   .brand {
     display: flex;
-    align-items: center;
     gap: 12px;
-    font-family: "Space Grotesk", sans-serif;
-    font-weight: 700;
-    letter-spacing: -0.03em;
+    align-items: center;
   }
 
   .brand-mark {
     width: 40px;
     height: 40px;
-    border-radius: 14px;
     display: grid;
     place-items: center;
-    background: linear-gradient(135deg, #0f766e, #b45309);
-    color: white;
-  }
-
-  .topbar-badge,
-  .eyebrow,
-  .pill,
-  .confidence,
-  .warning-pill {
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 11px;
+    background: linear-gradient(135deg, var(--accent-strong), var(--warm));
+    color: #fff;
+    border-radius: 10px;
+    font-family: "Space Grotesk", sans-serif;
     font-weight: 700;
   }
 
-  .topbar-badge {
+  .brand h1,
+  .brand p,
+  .comparison-panel h2,
+  .result-panel h2,
+  .section-title {
+    margin: 0;
+  }
+
+  h1, h2, h3, .eyebrow {
+    font-family: "Space Grotesk", sans-serif;
+    letter-spacing: 0;
+  }
+
+  .brand h1 {
+    font-size: 20px;
+  }
+
+  .brand p {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .topbar-note {
     padding: 8px 12px;
     border-radius: 999px;
-    border: 1px solid rgba(15, 118, 110, 0.22);
+    background: var(--accent-soft);
     color: var(--accent-strong);
-    background: rgba(15, 118, 110, 0.08);
+    font-size: 12px;
+    font-weight: 700;
   }
 
-  .hero {
+  .control-band {
     display: grid;
-    gap: 24px;
-    margin-top: 24px;
-    padding: 38px;
-    border-radius: 30px;
-    border: 1px solid var(--line);
-    background: linear-gradient(145deg, rgba(255, 250, 242, 0.9), rgba(255, 247, 235, 0.72));
-    box-shadow: var(--shadow);
-    overflow: hidden;
-    position: relative;
-  }
-
-  .hero::after {
-    content: "";
-    position: absolute;
-    inset: auto -120px -140px auto;
-    width: 320px;
-    height: 320px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(15, 118, 110, 0.2), rgba(15, 118, 110, 0));
-  }
-
-  .eyebrow { color: var(--accent-strong); }
-
-  h1 {
-    margin: 0 0 10px;
-    font-family: "Space Grotesk", sans-serif;
-    font-size: clamp(34px, 6vw, 64px);
-    line-height: 0.94;
-    letter-spacing: -0.06em;
-    max-width: 700px;
-  }
-
-  .hero p {
-    margin: 0;
-    max-width: 700px;
-    color: var(--muted);
-    font-size: 17px;
-  }
-
-  .search {
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(210px, 0.7fr) auto;
-    gap: 12px;
+    grid-template-columns: minmax(0, 1.5fr) auto auto;
+    gap: 10px;
     align-items: end;
-    position: relative;
-    z-index: 1;
   }
 
   .field {
     display: grid;
-    gap: 8px;
+    gap: 6px;
   }
 
-  .field label {
-    color: var(--muted);
-    font-size: 12px;
+  .field label,
+  .eyebrow {
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.06em;
     text-transform: uppercase;
+    color: var(--muted);
   }
 
-  .search input,
-  .search select {
+  input,
+  button {
+    font: inherit;
+  }
+
+  input {
     width: 100%;
-    padding: 18px 20px;
-    border-radius: 18px;
-    border: 1px solid rgba(54, 40, 18, 0.12);
-    background: rgba(255, 255, 255, 0.86);
-    font: inherit;
-    font-size: 16px;
+    padding: 14px 16px;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.82);
     color: var(--text);
+  }
+
+  input:focus {
     outline: none;
+    border-color: rgba(13, 92, 99, 0.48);
+    box-shadow: 0 0 0 3px rgba(13, 92, 99, 0.1);
   }
 
-  .search select {
-    appearance: none;
-    cursor: pointer;
-    background-image:
-      linear-gradient(45deg, transparent 50%, var(--muted) 50%),
-      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
-    background-position:
-      calc(100% - 20px) 50%,
-      calc(100% - 15px) 50%;
-    background-size: 5px 5px, 5px 5px;
-    background-repeat: no-repeat;
-  }
-
-  .search input:focus,
-  .search select:focus {
-    border-color: rgba(15, 118, 110, 0.38);
-    box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.08);
-  }
-
-  .search button {
-    padding: 18px 24px;
+  button {
     border: 0;
-    border-radius: 18px;
-    background: linear-gradient(135deg, var(--accent-strong), #0f766e);
-    color: white;
-    font: inherit;
+    border-radius: 8px;
+    padding: 14px 16px;
     font-weight: 700;
     cursor: pointer;
   }
 
-  .search button:disabled {
-    opacity: 0.65;
-    cursor: wait;
+  .button-primary {
+    background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+    color: #fff;
   }
 
-  .layout {
-    margin-top: 24px;
-    display: grid;
-    gap: 18px;
-  }
-
-  .panel {
-    border-radius: 24px;
-    border: 1px solid var(--line);
-    background: var(--panel);
-    box-shadow: var(--shadow);
-    backdrop-filter: blur(20px);
-  }
-
-  .placeholder,
-  .loading,
-  .message {
-    padding: 36px;
-  }
-
-  .placeholder {
-    display: grid;
-    gap: 10px;
-    text-align: center;
-    color: var(--muted);
-  }
-
-  .placeholder strong { color: var(--text); }
-
-  .loading {
-    display: grid;
-    justify-items: center;
-    gap: 18px;
-    text-align: center;
-    overflow: hidden;
-  }
-
-  .loading p {
-    max-width: 800px;
-    margin: 0;
-    color: var(--muted);
-  }
-
-  .loader-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 92px;
-    width: min(100%, 520px);
-    font-family: "Space Grotesk", sans-serif;
-    font-size: clamp(25px, 5vw, 42px);
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    user-select: none;
+  .button-secondary {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid var(--line-strong);
     color: var(--text);
   }
 
-  .loader {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    background-color: transparent;
-    -webkit-mask: repeating-linear-gradient(
-      90deg,
-      transparent 0,
-      transparent 6px,
-      black 7px,
-      black 8px
-    );
-    mask: repeating-linear-gradient(
-      90deg,
-      transparent 0,
-      transparent 6px,
-      black 7px,
-      black 8px
-    );
+  button:disabled {
+    cursor: wait;
+    opacity: 0.65;
   }
 
-  .loader::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image:
-      radial-gradient(circle at 50% 50%, #fbbf24 0%, transparent 48%),
-      radial-gradient(circle at 45% 45%, #ea580c 0%, transparent 44%),
-      radial-gradient(circle at 55% 55%, #14b8a6 0%, transparent 44%),
-      radial-gradient(circle at 45% 55%, #22c55e 0%, transparent 44%),
-      radial-gradient(circle at 55% 45%, #2563eb 0%, transparent 44%);
-    -webkit-mask: radial-gradient(
-      circle at 50% 50%,
-      transparent 0%,
-      transparent 10%,
-      black 25%
-    );
-    mask: radial-gradient(
-      circle at 50% 50%,
-      transparent 0%,
-      transparent 10%,
-      black 25%
-    );
-    animation:
-      loader-transform 2s infinite alternate,
-      loader-opacity 4s infinite;
-    animation-timing-function: cubic-bezier(0.6, 0.8, 0.5, 1);
-  }
-
-  .loader-letter {
-    display: inline-block;
-    min-width: 0.2em;
-    opacity: 0;
-    animation: loader-letter 4s infinite linear;
-    animation-delay: calc(var(--letter-index) * 0.09s);
-    z-index: 2;
-  }
-
-  @keyframes loader-transform {
-    from { transform: translateX(-55%); }
-    to { transform: translateX(55%); }
-  }
-
-  @keyframes loader-opacity {
-    0%, 100% { opacity: 0; }
-    15% { opacity: 0.9; }
-    65% { opacity: 0; }
-  }
-
-  @keyframes loader-letter {
-    0% { opacity: 0; }
-    5% {
-      opacity: 1;
-      text-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
-      transform: scale(1.08) translateY(-2px);
-    }
-    20% { opacity: 0.22; }
-    100% { opacity: 0; }
-  }
-
-  .message.invalid {
-    border-left: 4px solid var(--warning);
-  }
-
-  .message.error {
-    border-left: 4px solid var(--danger);
-  }
-
-  .message h2,
-  .panel h2,
-  .section-title {
-    margin: 0 0 10px;
-    font-family: "Space Grotesk", sans-serif;
-    font-size: 24px;
-    letter-spacing: -0.04em;
-  }
-
-  .summary-grid {
+  .provider-grid,
+  .results-grid {
     display: grid;
-    grid-template-columns: 1.2fr 0.8fr;
-    gap: 18px;
+    gap: 12px;
   }
 
-  .section {
-    padding: 24px;
+  .provider-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   }
 
-  .section p {
-    margin: 0;
-    color: var(--muted);
+  .provider-card,
+  .result-panel {
+    padding: 16px;
+    border-radius: 8px;
   }
 
-  .list-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px;
-  }
-
-  .supplier-list {
+  .provider-card {
     display: grid;
     gap: 14px;
   }
 
-  .supplier-card {
-    padding: 18px;
-    border-radius: 18px;
-    background: var(--panel-strong);
-    border: 1px solid rgba(54, 40, 18, 0.08);
-    display: grid;
-    gap: 10px;
+  .provider-head,
+  .result-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 12px;
   }
 
-  .supplier-head,
-  .source-row,
-  .warning-row {
-    display: flex;
+  .provider-title {
+    display: grid;
+    gap: 3px;
+  }
+
+  .provider-title h2,
+  .result-head h2 {
+    font-size: 18px;
+  }
+
+  .provider-meta,
+  .run-metrics,
+  .comparison-grid,
+  .supplier-grid {
+    display: grid;
+    gap: 8px;
+  }
+
+  .provider-meta,
+  .run-metrics,
+  .comparison-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric {
+    border: 1px solid rgba(31, 41, 55, 0.08);
+    background: rgba(255, 255, 255, 0.72);
+    border-radius: 8px;
+    padding: 10px 12px;
+    min-height: 68px;
+  }
+
+  .metric strong {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .metric span {
+    display: block;
+    font-size: 14px;
+    line-height: 1.35;
+  }
+
+  .status-pill,
+  .risk-pill {
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .status-running { background: rgba(13, 92, 99, 0.12); color: var(--accent-strong); }
+  .status-configured,
+  .status-success { background: rgba(36, 112, 76, 0.12); color: var(--success); }
+  .status-partial,
+  .status-timeout,
+  .status-missing { background: rgba(184, 106, 27, 0.12); color: var(--warning); }
+  .status-failed,
+  .status-disabled,
+  .status-not_configured { background: rgba(178, 58, 48, 0.12); color: var(--danger); }
+  .risk-low { background: rgba(36, 112, 76, 0.12); color: var(--success); }
+  .risk-medium { background: rgba(184, 106, 27, 0.12); color: var(--warning); }
+  .risk-high { background: rgba(178, 58, 48, 0.12); color: var(--danger); }
+
+  .provider-actions {
+    display: flex;
+    gap: 8px;
     flex-wrap: wrap;
+  }
+
+  .comparison-panel {
+    border-radius: 8px;
+    display: grid;
+    gap: 12px;
+  }
+
+  .comparison-panel h2 {
+    font-size: 18px;
+  }
+
+  .comparison-empty,
+  .results-empty,
+  .source-empty {
+    border: 1px dashed var(--line-strong);
+    background: rgba(255, 255, 255, 0.6);
+    color: var(--muted);
+    border-radius: 8px;
+    padding: 14px;
+  }
+
+  .results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .result-panel {
+    display: grid;
+    gap: 14px;
+  }
+
+  .section-title {
+    font-size: 16px;
+  }
+
+  .supplier-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .supplier-card,
+  .source-card,
+  .warning-card,
+  .error-card {
+    border: 1px solid rgba(31, 41, 55, 0.08);
+    background: var(--panel-strong);
+    border-radius: 8px;
+    padding: 12px;
+    display: grid;
+    gap: 8px;
   }
 
   .supplier-card h3 {
     margin: 0;
-    font-size: 17px;
+    font-size: 15px;
   }
-
-  .pill {
-    display: inline-flex;
-    padding: 6px 10px;
-    border-radius: 999px;
-    background: rgba(31, 26, 18, 0.06);
-    color: var(--muted);
-  }
-
-  .confidence {
-    padding: 6px 10px;
-    border-radius: 999px;
-    color: white;
-  }
-
-  .confidence.high { background: var(--high); }
-  .confidence.medium { background: var(--medium); }
-  .confidence.low { background: var(--low); }
 
   .supplier-meta {
     display: grid;
     gap: 6px;
-    color: var(--muted);
     font-size: 14px;
+    color: var(--muted);
   }
 
-  .supplier-meta strong { color: var(--text); }
+  .supplier-meta strong,
+  .source-card strong,
+  .warning-card strong,
+  .error-card strong {
+    color: var(--text);
+  }
 
-  .supplier-card a,
-  .source-list a {
+  a {
     color: var(--accent-strong);
     text-decoration: none;
-    font-weight: 700;
+    word-break: break-word;
   }
 
-  .source-list,
-  .warnings {
+  details {
+    border: 1px solid rgba(31, 41, 55, 0.08);
+    background: rgba(255, 255, 255, 0.72);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+
+  summary {
+    cursor: pointer;
+    font-weight: 700;
+    color: var(--accent-strong);
+  }
+
+  .raw-source-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .raw-source-item {
+    border-top: 1px solid rgba(31, 41, 55, 0.08);
+    padding-top: 8px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+
+  .stack {
     display: grid;
     gap: 10px;
   }
 
-  .source-item,
-  .warning-item {
-    padding: 14px 16px;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.62);
-    border: 1px solid rgba(54, 40, 18, 0.08);
-  }
-
-  .warning-pill {
-    color: var(--warning);
-  }
-
-  .empty-state {
-    padding: 18px;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.58);
-    color: var(--muted);
-    border: 1px dashed rgba(54, 40, 18, 0.12);
-  }
-
-  @media (max-width: 900px) {
-    .summary-grid,
-    .list-grid {
+  @media (max-width: 960px) {
+    .control-band,
+    .provider-meta,
+    .run-metrics,
+    .comparison-grid,
+    .supplier-grid {
       grid-template-columns: 1fr;
-    }
-
-    .search {
-      grid-template-columns: 1fr 1fr;
-    }
-
-    .search button {
-      grid-column: 1 / -1;
-    }
-  }
-
-  @media (max-width: 700px) {
-    .shell { width: min(100% - 20px, 1100px); }
-    .topbar,
-    .hero,
-    .placeholder,
-    .loading,
-    .message,
-    .section { padding: 20px; }
-    .search { grid-template-columns: 1fr; }
-    .search button { grid-column: auto; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .loader::after,
-    .loader-letter {
-      animation-duration: 8s;
     }
   }
 </style>
 </head>
 <body>
-  <div class="shell">
-    <div class="topbar panel">
+  <main class="shell">
+    <section class="topbar">
       <div class="brand">
         <div class="brand-mark">V</div>
         <div>
-          <div>VORA AI</div>
-          <div style="font-size:12px;color:var(--muted);font-family:Manrope,sans-serif;">Research-agent MVP</div>
+          <h1>Search Provider Benchmark Lab</h1>
+          <p>VORA AI prototype for side-by-side sourcing provider evaluation</p>
         </div>
       </div>
-      <div class="topbar-badge">Gemini 3.1 Flash-Lite Search Grounding</div>
-    </div>
-
-    <section class="hero panel">
-      <div class="eyebrow">Public-web evidence only</div>
-      <div>
-        <h1>Validate a product idea before you source it.</h1>
-        <p>VORA checks whether the request is a valid product, then uses Gemini 3.1 Flash-Lite Search Grounding to research Tunisia demand and China supplier options with public-web citations.</p>
-      </div>
-      <div class="search">
-        <div class="field">
-          <label for="productInput">Product</label>
-          <input id="productInput" type="text" placeholder="Try: wireless earbuds or portable blender">
-        </div>
-        <div class="field">
-          <label for="categorySelect">Category</label>
-          <select id="categorySelect">
-            <option value="">All Categories</option>
-            <option value="Agriculture &amp; Food">Agriculture &amp; Food</option>
-            <option value="Apparel &amp; Accessories">Apparel &amp; Accessories</option>
-            <option value="Arts &amp; Crafts">Arts &amp; Crafts</option>
-            <option value="Auto, Motorcycle Parts &amp; Accessories">Auto, Motorcycle Parts &amp; Accessories</option>
-            <option value="Bags, Cases &amp; Boxes">Bags, Cases &amp; Boxes</option>
-            <option value="Chemicals">Chemicals</option>
-            <option value="Computer Products">Computer Products</option>
-            <option value="Construction &amp; Decoration">Construction &amp; Decoration</option>
-            <option value="Consumer Electronics">Consumer Electronics</option>
-            <option value="Electrical &amp; Electronics">Electrical &amp; Electronics</option>
-            <option value="Furniture">Furniture</option>
-            <option value="Health &amp; Medicine">Health &amp; Medicine</option>
-            <option value="Industrial Equipment &amp; Components">Industrial Equipment &amp; Components</option>
-            <option value="Instruments &amp; Meters">Instruments &amp; Meters</option>
-            <option value="Light Industry &amp; Daily Use">Light Industry &amp; Daily Use</option>
-            <option value="Lights &amp; Lighting">Lights &amp; Lighting</option>
-            <option value="Manufacturing &amp; Processing Machinery">Manufacturing &amp; Processing Machinery</option>
-            <option value="Metallurgy, Mineral &amp; Energy">Metallurgy, Mineral &amp; Energy</option>
-            <option value="Office Supplies">Office Supplies</option>
-            <option value="Packaging &amp; Printing">Packaging &amp; Printing</option>
-            <option value="Security &amp; Protection">Security &amp; Protection</option>
-            <option value="Service">Service</option>
-            <option value="Sporting Goods &amp; Recreation">Sporting Goods &amp; Recreation</option>
-            <option value="Textile">Textile</option>
-            <option value="Tools &amp; Hardware">Tools &amp; Hardware</option>
-            <option value="Toys">Toys</option>
-            <option value="Transportation">Transportation</option>
-          </select>
-        </div>
-        <button id="analyzeButton" type="button">Analyze product</button>
-      </div>
+      <div class="topbar-note">/benchmark/analyze primary route</div>
     </section>
 
-    <div class="layout">
-      <section id="output" class="panel placeholder">
-        <strong>No analysis yet.</strong>
-        <span>Enter a product to run the MVP research pipeline.</span>
-      </section>
-    </div>
-  </div>
+    <section class="control-band">
+      <div class="field">
+        <label for="productInput">Product</label>
+        <input id="productInput" type="text" placeholder="Try: Vintage T9, wireless earbuds, portable blender">
+      </div>
+      <button id="runAllButton" class="button-primary" type="button">Run all configured providers</button>
+      <button id="refreshProvidersButton" class="button-secondary" type="button">Refresh providers</button>
+    </section>
+
+    <section id="comparisonPanel" class="comparison-panel">
+      <h2>Comparison Summary</h2>
+      <div class="comparison-empty">Load providers, enter a product, and run one or more providers to compare latency, completeness, and cost risk.</div>
+    </section>
+
+    <section id="providerGrid" class="provider-grid"></section>
+    <section id="resultsPanel" class="results-grid">
+      <div class="results-empty">No provider runs yet.</div>
+    </section>
+  </main>
 
 <script>
-const input = document.getElementById("productInput");
-const categorySelect = document.getElementById("categorySelect");
-const button = document.getElementById("analyzeButton");
-const output = document.getElementById("output");
+const productInput = document.getElementById("productInput");
+const providerGrid = document.getElementById("providerGrid");
+const comparisonPanel = document.getElementById("comparisonPanel");
+const resultsPanel = document.getElementById("resultsPanel");
+const runAllButton = document.getElementById("runAllButton");
+const refreshProvidersButton = document.getElementById("refreshProvidersButton");
 
-button.addEventListener("click", runAnalysis);
-input.addEventListener("keydown", (event) => {
+let providerInfos = [];
+const runState = new Map();
+
+runAllButton.addEventListener("click", runAllConfigured);
+refreshProvidersButton.addEventListener("click", loadProviders);
+productInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
-    runAnalysis();
+    runAllConfigured();
   }
 });
 
-async function runAnalysis() {
-  const product = input.value.trim();
-  const category = categorySelect.value || null;
-  if (!product) {
-    input.focus();
-    return;
-  }
+loadProviders();
 
-  button.disabled = true;
-  categorySelect.disabled = true;
-  button.textContent = "Researching...";
-  output.className = "panel loading";
-  output.innerHTML = `
-    <div class="loader-wrapper" aria-label="Mapping evidence">
-      ${renderLoaderLetters("Loading the best deals ...")}
-      <div class="loader"></div>
-    </div>
-    <p>Running Gemini Search-grounded research across public Tunisia and China sources for <strong>${escapeHtml(product)}</strong>${category ? ` in <strong>${escapeHtml(category)}</strong>` : ""}. This can take a few moments.</p>
-  `;
-
-  try {
-    const response = await fetch("/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ product, category })
-    });
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.detail || "The API returned an unexpected error.");
-    }
-
-    renderAnalysis(data);
-  } catch (error) {
-    const quotaExhausted = error.message.toLowerCase().includes("daily free-tier quota");
-    output.className = "panel message error";
-    output.innerHTML = `
-      <h2>${quotaExhausted ? "Daily Gemini quota exhausted" : "Analysis failed"}</h2>
-      <p>${escapeHtml(error.message)}</p>
-      <p style="margin-top:10px;color:var(--muted);">${quotaExhausted
-        ? "Check your Gemini quota or billing, then retry after the quota resets."
-        : "The research service could not complete this request. Please retry shortly."}</p>
-    `;
-  } finally {
-    button.disabled = false;
-    categorySelect.disabled = false;
-    button.textContent = "Analyze product";
-  }
+async function loadProviders() {
+  const response = await fetch("/providers");
+  const data = await response.json();
+  providerInfos = data.providers || [];
+  renderProviderCards();
 }
 
-function renderAnalysis(data) {
-  if (!data.is_valid_product) {
-    output.className = "panel message invalid";
-    output.innerHTML = `
-      <h2>Request rejected</h2>
-      <p>${escapeHtml(data.intent_reason)}</p>
-      <p style="margin-top:10px;color:var(--muted);">Invalid requests stop before any Google Search-grounded research runs.</p>
+async function runProvider(providerId) {
+  const product = productInput.value.trim();
+  if (!product) {
+    productInput.focus();
+    return;
+  }
+  markRunning([providerId]);
+  const response = await fetch("/benchmark/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product, providers: [providerId] })
+  });
+  const data = await response.json();
+  renderBenchmarkResponse(data);
+}
+
+async function runAllConfigured() {
+  const product = productInput.value.trim();
+  if (!product) {
+    productInput.focus();
+    return;
+  }
+  const configuredIds = providerInfos
+    .filter((provider) => provider.configured && provider.enabled)
+    .map((provider) => provider.provider_id);
+  if (configuredIds.length === 0) {
+    return;
+  }
+  markRunning(configuredIds);
+  const response = await fetch("/benchmark/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product, providers: configuredIds })
+  });
+  const data = await response.json();
+  renderBenchmarkResponse(data);
+}
+
+function markRunning(providerIds) {
+  providerIds.forEach((providerId) => {
+    runState.set(providerId, { status: "running" });
+  });
+  renderProviderCards();
+}
+
+function renderProviderCards() {
+  if (providerInfos.length === 0) {
+    providerGrid.innerHTML = '<div class="results-empty">No provider metadata available.</div>';
+    return;
+  }
+
+  providerGrid.innerHTML = providerInfos.map((provider) => {
+    const run = runState.get(provider.provider_id);
+    const uiStatus = run?.status || providerStatusLabel(provider);
+    const statusClass = `status-${uiStatus.replace(/[^a-z_]/g, "")}`;
+    const missingConfig = provider.missing_config?.length
+      ? escapeHtml(provider.missing_config.join(", "))
+      : "None";
+
+    return `
+      <article class="provider-card">
+        <div class="provider-head">
+          <div class="provider-title">
+            <div class="eyebrow">Provider</div>
+            <h2>${escapeHtml(provider.provider_name)}</h2>
+          </div>
+          <span class="status-pill ${statusClass}">${escapeHtml(uiStatus)}</span>
+        </div>
+        <div class="provider-meta">
+          ${metric("Requires Gemini analysis", provider.requires_gemini_analysis ? "Yes" : "No")}
+          ${metric("Missing config", missingConfig)}
+          ${metric("Production risk", `<span class="risk-pill risk-${escapeHtml(provider.production_risk)}">${escapeHtml(provider.production_risk)}</span>`)}
+          ${metric("Cost notes", escapeHtml(provider.cost_notes || "Not provided"))}
+        </div>
+        <div class="provider-actions">
+          <button class="button-primary" type="button" onclick="runProvider('${escapeAttribute(provider.provider_id)}')" ${run?.status === "running" ? "disabled" : ""}>Run provider</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderBenchmarkResponse(data) {
+  const runs = data.runs || [];
+  runs.forEach((run) => runState.set(run.provider_id, run));
+  renderProviderCards();
+  renderComparison(data.comparison_summary, data.intent);
+  renderResults(runs, data.intent);
+}
+
+function renderComparison(summary, intent) {
+  if (!intent?.is_valid_product) {
+    comparisonPanel.innerHTML = `
+      <h2>Comparison Summary</h2>
+      <div class="comparison-empty">${escapeHtml(intent?.reason || "Product rejected before provider execution.")}</div>
     `;
     return;
   }
 
-  output.className = "panel";
-  output.innerHTML = `
-    <div class="summary-grid">
-      <section class="section">
-        <div class="eyebrow">Product</div>
-        <h2>${escapeHtml(data.product)}</h2>
-        <p>${escapeHtml(data.market_summary || "No market summary was returned.")}</p>
-      </section>
-      <section class="section">
-        <div class="eyebrow">Classification</div>
-        <h2>Valid product</h2>
-        <p>${escapeHtml(data.intent_reason)}</p>
-      </section>
-    </div>
-    <div class="list-grid">
-      <section class="section">
-        <div class="section-title">Tunisia sources</div>
-        ${renderSuppliers(data.tunisia_suppliers, "tnd")}
-      </section>
-      <section class="section">
-        <div class="section-title">China sources</div>
-        ${renderSuppliers(data.china_suppliers, "usd")}
-      </section>
-    </div>
-    <div class="list-grid">
-      <section class="section">
-        <div class="section-title">Research sources</div>
-        ${renderSources(data.research_sources)}
-      </section>
-      <section class="section">
-        <div class="section-title">Warnings</div>
-        ${renderWarnings(data.warnings)}
-      </section>
+  if (!summary) {
+    comparisonPanel.innerHTML = `
+      <h2>Comparison Summary</h2>
+      <div class="comparison-empty">No comparison summary available.</div>
+    `;
+    return;
+  }
+
+  comparisonPanel.innerHTML = `
+    <h2>Comparison Summary</h2>
+    <div class="comparison-grid">
+      ${metric("Fastest provider", escapeHtml(summary.fastest_provider || "None"))}
+      ${metric("Most Tunisian results", escapeHtml(summary.most_tunisian_results || "None"))}
+      ${metric("Most Chinese results", escapeHtml(summary.most_chinese_results || "None"))}
+      ${metric("Most source-backed prices", escapeHtml(summary.most_source_backed_prices || "None"))}
+      ${metric("Most complete provider", escapeHtml(summary.most_complete_provider || "None"))}
+      ${metric("Lowest cost risk", escapeHtml(summary.lowest_cost_risk || "None"))}
+      ${metric("Notes", escapeHtml(summary.notes || "No notes"))}
     </div>
   `;
+}
+
+function renderResults(runs, intent) {
+  if (!intent?.is_valid_product) {
+    resultsPanel.innerHTML = `<div class="results-empty">${escapeHtml(intent?.reason || "Product rejected.")}</div>`;
+    return;
+  }
+  if (!runs || runs.length === 0) {
+    resultsPanel.innerHTML = '<div class="results-empty">No provider runs were returned.</div>';
+    return;
+  }
+
+  resultsPanel.innerHTML = runs.map((run) => `
+    <article class="result-panel">
+      <div class="result-head">
+        <div>
+          <div class="eyebrow">Provider run</div>
+          <h2>${escapeHtml(run.provider_name)}</h2>
+        </div>
+        <span class="status-pill status-${escapeHtml(run.status)}">${escapeHtml(run.status)}</span>
+      </div>
+
+      <div class="run-metrics">
+        ${metric("latency_ms", String(run.latency_ms ?? 0))}
+        ${metric("raw_sources_count", String(run.raw_sources_count ?? 0))}
+        ${metric("provider_api_calls", String(run.provider_api_calls ?? 0))}
+        ${metric("gemini_intent_calls", String(run.gemini_intent_calls ?? 0))}
+        ${metric("gemini_analysis_calls", String(run.gemini_analysis_calls ?? 0))}
+        ${metric("raw_queries_count", String(run.raw_queries_count ?? 0))}
+        ${metric("production_risk", `<span class="risk-pill risk-${escapeHtml(run.production_risk)}">${escapeHtml(run.production_risk)}</span>`)}
+        ${metric("cost_notes", escapeHtml(run.cost_notes || "Not provided"))}
+      </div>
+
+      <div class="stack">
+        <div>
+          <div class="section-title">Market summary</div>
+          <div class="source-empty">${escapeHtml(run.market_summary || "No market summary returned.")}</div>
+        </div>
+
+        <div class="supplier-grid">
+          <div class="stack">
+            <div class="section-title">Tunisia</div>
+            ${renderSuppliers(run.tunisia_cheapest_suppliers, "tnd")}
+          </div>
+          <div class="stack">
+            <div class="section-title">China</div>
+            ${renderSuppliers(run.china_cheapest_suppliers, "usd")}
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="section-title">Source URLs</div>
+          ${renderSources(run.research_sources)}
+        </div>
+
+        <div class="stack">
+          <div class="section-title">Warnings</div>
+          ${renderMessages(run.warnings, "warning-card")}
+        </div>
+
+        <div class="stack">
+          <div class="section-title">Errors</div>
+          ${renderMessages(run.errors, "error-card")}
+        </div>
+
+        <details class="raw-evidence">
+          <summary>Raw evidence</summary>
+          ${renderRawEvidence(run.raw_sources)}
+        </details>
+      </div>
+    </article>
+  `).join("");
 }
 
 function renderSuppliers(suppliers, currencyMode) {
-  const supplierOptions = suppliers || [];
-  if (supplierOptions.length === 0) {
-    return `<div class="empty-state">No reliable source-backed suppliers were found for this region. VORA will not fill the gap with inferred or fictive options.</div>`;
+  if (!suppliers || suppliers.length === 0) {
+    return '<div class="source-empty">No validated results.</div>';
   }
-
-  return `<div class="supplier-list">${supplierOptions.map((supplier) => {
-    const priceLabel = currencyMode === "tnd"
-      ? supplier.price_range_tnd
-      : supplier.price_range_usd;
-    const currencyLabel = currencyMode === "tnd" ? "TND" : "USD";
-    const productRow = supplier.product_title
-      ? `<div><strong>Product:</strong> ${escapeHtml(supplier.product_title)}</div>`
-      : "";
-    const moqRow = currencyMode === "usd"
-      ? `<div><strong>MOQ:</strong> ${escapeHtml(supplier.moq || "Not found in source")}</div>`
-      : "";
-
-    return `
-      <article class="supplier-card">
-        <div class="supplier-head">
-          <div>
-            <div class="pill">${escapeHtml(supplier.type)}</div>
-            <h3>${escapeHtml(supplier.name)}</h3>
-          </div>
-          <div class="confidence ${escapeHtml(supplier.confidence)}">${escapeHtml(supplier.confidence)}</div>
-        </div>
-        <div class="supplier-meta">
-          ${productRow}
-          <div><strong>Price (${currencyLabel}):</strong> ${escapeHtml(priceLabel || "Not found in source")}</div>
-          ${moqRow}
-          <div><strong>Notes:</strong> ${escapeHtml(supplier.notes)}</div>
-        </div>
-        ${supplier.source_url
-          ? `<div class="source-row"><a href="${escapeAttribute(supplier.source_url)}" target="_blank" rel="noopener noreferrer">Open evidence source</a></div>`
-          : `<div class="source-row"><span class="warning-pill">No grounding citation available</span></div>`}
-      </article>
-    `;
-  }).join("")}</div>`;
-}
-
-function renderLoaderLetters(label) {
-  return [...label].map((letter, index) => {
-    const content = letter === " " ? "&nbsp;" : escapeHtml(letter);
-    return `<span class="loader-letter" style="--letter-index:${index}">${content}</span>`;
-  }).join("");
+  return suppliers.map((supplier) => `
+    <div class="supplier-card">
+      <h3>${escapeHtml(supplier.name || "Unknown supplier")}</h3>
+      <div class="supplier-meta">
+        <div><strong>Rank:</strong> ${escapeHtml(String(supplier.rank ?? ""))}</div>
+        <div><strong>Type:</strong> ${escapeHtml(supplier.type || "unknown")}</div>
+        <div><strong>Product:</strong> ${escapeHtml(supplier.product_title || "Not provided")}</div>
+        <div><strong>Price:</strong> ${escapeHtml(currencyMode === "tnd" ? (supplier.price_range_tnd || "Not found") : (supplier.price_range_usd || "Not found"))}</div>
+        ${currencyMode === "usd" ? `<div><strong>MOQ:</strong> ${escapeHtml(supplier.moq || "Not found")}</div>` : ""}
+        <div><strong>Evidence level:</strong> ${escapeHtml(supplier.evidence_level || "weak")}</div>
+        <div><strong>Confidence:</strong> ${escapeHtml(supplier.confidence || "low")}</div>
+        <div><strong>Price evidence:</strong> ${escapeHtml(supplier.price_evidence || "not_found")}</div>
+        ${currencyMode === "usd" ? `<div><strong>MOQ evidence:</strong> ${escapeHtml(supplier.moq_evidence || "not_found")}</div>` : ""}
+        <div><strong>Notes:</strong> ${escapeHtml(supplier.notes || "None")}</div>
+        <div><strong>Source:</strong> ${supplier.source_url ? `<a href="${escapeAttribute(supplier.source_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(supplier.source_url)}</a>` : "No source URL"}</div>
+      </div>
+    </div>
+  `).join("");
 }
 
 function renderSources(sources) {
   if (!sources || sources.length === 0) {
-    return `<div class="empty-state">No source URLs were returned.</div>`;
+    return '<div class="source-empty">No research sources returned.</div>';
   }
-
-  return `<div class="source-list">${sources.map((source) => `
-    <div class="source-item">
-      <div class="pill">${escapeHtml(source.source_type)}</div>
-      <div style="margin-top:8px;font-weight:700;">${escapeHtml(source.title)}</div>
-      <div style="margin-top:6px;"><a href="${escapeAttribute(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.url)}</a></div>
+  return sources.map((source) => `
+    <div class="source-card">
+      <strong>${escapeHtml(source.title || source.url)}</strong>
+      <div>${escapeHtml(source.source_type || "unknown")}</div>
+      <a href="${escapeAttribute(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.url)}</a>
     </div>
-  `).join("")}</div>`;
+  `).join("");
 }
 
-function renderWarnings(warnings) {
-  if (!warnings || warnings.length === 0) {
-    return `<div class="empty-state">No warnings were returned.</div>`;
+function renderMessages(messages, className) {
+  if (!messages || messages.length === 0) {
+    return '<div class="source-empty">None.</div>';
   }
-
-  return `<div class="warnings">${warnings.map((warning) => `
-    <div class="warning-item">
-      <div class="warning-row">
-        <span class="warning-pill">Warning</span>
-      </div>
-      <div style="margin-top:8px;color:var(--muted);">${escapeHtml(warning)}</div>
+  return messages.map((message) => `
+    <div class="${className}">
+      <strong>${className === "warning-card" ? "Warning" : "Error"}</strong>
+      <div>${escapeHtml(message)}</div>
     </div>
-  `).join("")}</div>`;
+  `).join("");
+}
+
+function renderRawEvidence(rawSources) {
+  if (!rawSources || rawSources.length === 0) {
+    return '<div class="source-empty">No raw provider evidence returned.</div>';
+  }
+  return `
+    <div class="raw-source-list">
+      ${rawSources.map((source, index) => `
+        <div class="raw-source-item">
+          <strong>Source ${index + 1}</strong><br>
+          Title: ${escapeHtml(source.title || "")}<br>
+          URL: ${escapeHtml(source.url || "")}<br>
+          Region: ${escapeHtml(source.region_hint || "unknown")}<br>
+          Type: ${escapeHtml(source.source_type || "unknown")}<br>
+          Snippet: ${escapeHtml(source.snippet || "")}<br>
+          Content: ${escapeHtml(source.content || "")}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function providerStatusLabel(provider) {
+  if (!provider.enabled) return "disabled";
+  if (provider.configured) return "configured";
+  return "missing";
+}
+
+function metric(label, value) {
+  return `
+    <div class="metric">
+      <strong>${label}</strong>
+      <span>${value}</span>
+    </div>
+  `;
 }
 
 function escapeHtml(value) {
