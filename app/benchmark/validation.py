@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import TypeVar
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 from app.benchmark.schemas import (
     BenchmarkResearchSource,
@@ -13,6 +13,9 @@ from app.benchmark.schemas import (
 
 
 SupplierT = TypeVar("SupplierT", TunisiaBenchmarkSupplier, ChinaBenchmarkSupplier)
+TRACKING_QUERY_PARAMS = {"gclid", "fbclid"}
+EVIDENCE_STRENGTH = {"weak": 0, "indirect": 1, "direct": 2}
+CONFIDENCE_STRENGTH = {"low": 0, "medium": 1, "high": 2}
 
 
 def validate_provider_result(
@@ -39,9 +42,9 @@ def validate_provider_result(
             if _supplier_has_valid_or_empty_url(supplier.source_url)
         ]
     )
-    if len(tunisia) < 3:
+    if sum(1 for supplier in tunisia if supplier.price_min_tnd_numeric is not None) < 3:
         warnings.append("Fewer than 3 validated Tunisia price-backed supplier/source results were found.")
-    if len(china) < 3:
+    if sum(1 for supplier in china if supplier.price_min_usd_numeric is not None) < 3:
         warnings.append("Fewer than 3 validated China price-backed supplier/source results were found.")
 
     return analysis.model_copy(
@@ -144,16 +147,17 @@ def _rank_china(suppliers: list[ChinaBenchmarkSupplier]) -> list[ChinaBenchmarkS
 
 
 def _dedupe_suppliers_by_url(suppliers: list[SupplierT]) -> list[SupplierT]:
-    seen_urls: set[str] = set()
-    unique: list[SupplierT] = []
+    deduped_by_url: dict[str, SupplierT] = {}
+    unique_without_url: list[SupplierT] = []
     for supplier in suppliers:
         normalized = _normalize_url(supplier.source_url)
-        if normalized and normalized in seen_urls:
-            continue
         if normalized:
-            seen_urls.add(normalized)
-        unique.append(supplier)
-    return unique
+            current = deduped_by_url.get(normalized)
+            if current is None or _is_better_supplier(supplier, current):
+                deduped_by_url[normalized] = supplier.model_copy(update={"source_url": normalized})
+            continue
+        unique_without_url.append(supplier)
+    return list(deduped_by_url.values()) + unique_without_url
 
 
 def _dedupe_sources(sources: list[BenchmarkResearchSource]) -> list[BenchmarkResearchSource]:
@@ -190,5 +194,54 @@ def _normalize_url(url: str | None) -> str | None:
     parsed = urlparse(url.strip())
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return None
+    filtered_query = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if not _is_tracking_query_param(key)
+    ]
     normalized_path = parsed.path.rstrip("/")
-    return parsed._replace(path=normalized_path, fragment="").geturl()
+    hostname = parsed.hostname.lower() if parsed.hostname else ""
+    userinfo = ""
+    if parsed.username:
+        userinfo = parsed.username
+        if parsed.password:
+            userinfo = f"{userinfo}:{parsed.password}"
+        userinfo = f"{userinfo}@"
+    port = f":{parsed.port}" if parsed.port is not None else ""
+    normalized_netloc = f"{userinfo}{hostname}{port}"
+    return parsed._replace(
+        scheme=parsed.scheme.lower(),
+        netloc=normalized_netloc,
+        path=normalized_path,
+        query=urlencode(filtered_query, doseq=True),
+        fragment="",
+    ).geturl()
+
+
+def _is_better_supplier(candidate: SupplierT, current: SupplierT) -> bool:
+    candidate_key = _supplier_quality_key(candidate)
+    current_key = _supplier_quality_key(current)
+    return candidate_key > current_key
+
+
+def _supplier_quality_key(supplier: SupplierT) -> tuple[int, float, int, int]:
+    numeric_price = _supplier_numeric_price(supplier)
+    has_numeric_price = numeric_price is not None
+    price_sort_value = -numeric_price if numeric_price is not None else float("-inf")
+    return (
+        1 if has_numeric_price else 0,
+        price_sort_value,
+        EVIDENCE_STRENGTH.get(supplier.evidence_level, -1),
+        CONFIDENCE_STRENGTH.get(supplier.confidence, -1),
+    )
+
+
+def _supplier_numeric_price(supplier: SupplierT) -> float | None:
+    if isinstance(supplier, TunisiaBenchmarkSupplier):
+        return supplier.price_min_tnd_numeric
+    return supplier.price_min_usd_numeric
+
+
+def _is_tracking_query_param(key: str) -> bool:
+    lowered = key.lower()
+    return lowered.startswith("utm_") or lowered in TRACKING_QUERY_PARAMS
