@@ -103,6 +103,34 @@ class BenchmarkSchemaTests(unittest.TestCase):
         self.assertEqual(response.runs[0].raw_sources[0].region_hint, "tunisia")
         self.assertEqual(response.runs[0].tunisia_cheapest_suppliers[0].name, "Supplier One")
 
+    def test_nested_benchmark_response_rejects_invalid_raw_source_region_hint(self) -> None:
+        with self.assertRaises(ValidationError):
+            BenchmarkAnalyzeResponse(
+                product="Vintage T9",
+                intent=IntentResult(
+                    is_valid_product=True,
+                    normalized_product="Vintage T9",
+                    reason="Clear product request.",
+                ),
+                runs=[
+                    {
+                        "provider_id": "brave",
+                        "provider_name": "Brave Search + Gemini",
+                        "status": "success",
+                        "production_risk": "medium",
+                        "raw_sources": [
+                            {
+                                "title": "Listing",
+                                "url": "https://example.com/item",
+                                "snippet": "Price 12 TND",
+                                "region_hint": "europe",
+                                "source_type": "search_result",
+                            }
+                        ],
+                    }
+                ],
+            )
+
     def test_request_defaults_to_all_providers_when_not_supplied(self) -> None:
         request = BenchmarkAnalyzeRequest(product="Vintage T9")
 
