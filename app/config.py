@@ -5,39 +5,90 @@ from dotenv import load_dotenv
 
 
 class SettingsError(RuntimeError):
-    """Raised when required environment configuration is missing or invalid."""
+    """Raised when environment configuration is invalid."""
 
 
 @dataclass(frozen=True)
 class Settings:
+    gemini_intent_api_key: str
+    gemini_intent_model: str
+    gemini_analysis_api_key: str
+    gemini_analysis_model: str
     gemini_api_key: str
     gemini_model: str
     analysis_timeout_seconds: int
+    serper_api_key: str
+    brave_search_api_key: str
+    exa_api_key: str
+    firecrawl_api_key: str
+    perplexity_api_key: str
+    searxng_base_url: str
+    scavio_api_key: str
+    scavio_base_url: str
+    dataforseo_login: str
+    dataforseo_password: str
+    benchmark_provider_timeout_seconds: int
+    benchmark_max_providers_parallel: int
+    search_results_per_query: int
+    search_queries_per_region: int
+    max_raw_sources_per_provider: int
 
     @classmethod
     def from_env(cls) -> "Settings":
         load_dotenv()
 
-        gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
-        gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
-        analysis_timeout_seconds = _read_int(
-            "ANALYSIS_TIMEOUT_SECONDS",
-            default=45,
-            minimum=5,
-        )
-
-        missing_keys = []
-        if not gemini_api_key:
-            missing_keys.append("GEMINI_API_KEY")
-        if missing_keys:
-            joined_keys = ", ".join(missing_keys)
-            raise SettingsError(f"Missing required environment variables: {joined_keys}")
-
         return cls(
-            gemini_api_key=gemini_api_key,
-            gemini_model=gemini_model,
-            analysis_timeout_seconds=analysis_timeout_seconds,
+            gemini_intent_api_key=_read_str("GEMINI_INTENT_API_KEY"),
+            gemini_intent_model=_read_str("GEMINI_INTENT_MODEL", "gemini-3.1-flash-lite"),
+            gemini_analysis_api_key=_read_str("GEMINI_ANALYSIS_API_KEY"),
+            gemini_analysis_model=_read_str("GEMINI_ANALYSIS_MODEL", "gemini-3.1-flash-lite"),
+            gemini_api_key=_read_str("GEMINI_API_KEY"),
+            gemini_model=_read_str("GEMINI_MODEL", "gemini-3.1-flash-lite"),
+            analysis_timeout_seconds=_read_int(
+                "ANALYSIS_TIMEOUT_SECONDS",
+                default=45,
+                minimum=5,
+            ),
+            serper_api_key=_read_str("SERPER_API_KEY"),
+            brave_search_api_key=_read_str("BRAVE_SEARCH_API_KEY"),
+            exa_api_key=_read_str("EXA_API_KEY"),
+            firecrawl_api_key=_read_str("FIRECRAWL_API_KEY"),
+            perplexity_api_key=_read_str("PERPLEXITY_API_KEY"),
+            searxng_base_url=_read_str("SEARXNG_BASE_URL"),
+            scavio_api_key=_read_str("SCAVIO_API_KEY"),
+            scavio_base_url=_read_str("SCAVIO_BASE_URL"),
+            dataforseo_login=_read_str("DATAFORSEO_LOGIN"),
+            dataforseo_password=_read_str("DATAFORSEO_PASSWORD"),
+            benchmark_provider_timeout_seconds=_read_int(
+                "BENCHMARK_PROVIDER_TIMEOUT_SECONDS",
+                default=45,
+                minimum=1,
+            ),
+            benchmark_max_providers_parallel=_read_int(
+                "BENCHMARK_MAX_PROVIDERS_PARALLEL",
+                default=8,
+                minimum=1,
+            ),
+            search_results_per_query=_read_int(
+                "SEARCH_RESULTS_PER_QUERY",
+                default=10,
+                minimum=1,
+            ),
+            search_queries_per_region=_read_int(
+                "SEARCH_QUERIES_PER_REGION",
+                default=4,
+                minimum=1,
+            ),
+            max_raw_sources_per_provider=_read_int(
+                "MAX_RAW_SOURCES_PER_PROVIDER",
+                default=20,
+                minimum=1,
+            ),
         )
+
+
+def _read_str(name: str, default: str = "") -> str:
+    return os.getenv(name, default).strip()
 
 
 def _read_int(name: str, default: int, minimum: int) -> int:
