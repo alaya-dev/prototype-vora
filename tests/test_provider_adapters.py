@@ -3,10 +3,14 @@ import unittest
 import httpx
 
 from app.benchmark.providers.brave import BraveSearchAdapter
+from app.benchmark.providers.dataforseo import DataForSEOAdapter
 from app.benchmark.providers.exa import ExaAdapter
+from app.benchmark.providers.firecrawl import FirecrawlAdapter
 from app.benchmark.providers.perplexity import PerplexitySonarAdapter
+from app.benchmark.providers.scavio import ScavioAdapter
 from app.benchmark.providers.searxng import SearXNGAdapter
 from app.benchmark.providers.serper import SerperAdapter
+from app.benchmark.providers.base import ProviderAdapterError, ProviderNotConfiguredError
 from app.benchmark.schemas import ProviderAnalysisResult
 from app.config import Settings
 
@@ -84,7 +88,115 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(evidence.provider_api_calls, 2)
         self.assertEqual(evidence.raw_queries_count, 2)
         self.assertEqual(len(evidence.sources), 2)
-        self.assertEqual(evidence.sources[0].region_hint, "tunisia")
+        self.assertEqual(evidence.sources[0].region_hint, "china")
+
+    async def test_serper_cap_preserves_china_sources_when_limits_are_tight(self) -> None:
+        adapter = SerperAdapter(
+            _settings(serper_api_key="serper", gemini_analysis_api_key="analysis")
+        )
+        adapter._client_factory = lambda: FakeHttpClient(
+            [
+                FakeResponse(
+                    {
+                        "organic": [
+                            {
+                                "title": "CN 1",
+                                "link": "https://cn.example/1",
+                                "snippet": "US$4 MOQ 100",
+                            }
+                        ]
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "organic": [
+                            {
+                                "title": "CN 2",
+                                "link": "https://cn.example/2",
+                                "snippet": "US$5 MOQ 50",
+                            }
+                        ]
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "organic": [
+                            {
+                                "title": "TN 1",
+                                "link": "https://tn.example/1",
+                                "snippet": "120 TND",
+                            }
+                        ]
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "organic": [
+                            {
+                                "title": "TN 2",
+                                "link": "https://tn.example/2",
+                                "snippet": "110 TND",
+                            }
+                        ]
+                    }
+                ),
+            ]
+        )
+        adapter.settings = adapter.settings.__class__(
+            **{
+                **adapter.settings.__dict__,
+                "search_queries_per_region": 2,
+                "max_raw_sources_per_provider": 2,
+            }
+        )
+
+        evidence = await adapter.search("wireless earbuds")
+
+        self.assertEqual(len(evidence.sources), 2)
+        self.assertEqual([source.region_hint for source in evidence.sources], ["china", "tunisia"])
+
+    async def test_serper_cap_prefers_china_when_only_one_source_fits(self) -> None:
+        adapter = SerperAdapter(
+            _settings(serper_api_key="serper", gemini_analysis_api_key="analysis")
+        )
+        adapter._client_factory = lambda: FakeHttpClient(
+            [
+                FakeResponse(
+                    {
+                        "organic": [
+                            {
+                                "title": "TN 1",
+                                "link": "https://tn.example/1",
+                                "snippet": "120 TND",
+                            }
+                        ]
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "organic": [
+                            {
+                                "title": "CN 1",
+                                "link": "https://cn.example/1",
+                                "snippet": "US$4 MOQ 100",
+                            }
+                        ]
+                    }
+                ),
+            ]
+        )
+        adapter.settings = adapter.settings.__class__(
+            **{
+                **adapter.settings.__dict__,
+                "search_queries_per_region": 1,
+                "max_raw_sources_per_provider": 1,
+            }
+        )
+
+        evidence = await adapter.search("wireless earbuds")
+
+        self.assertEqual(len(evidence.sources), 1)
+        self.assertEqual(evidence.sources[0].region_hint, "china")
 
     async def test_brave_normalizes_web_results(self) -> None:
         adapter = BraveSearchAdapter(
@@ -130,7 +242,7 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
         evidence = await adapter.search("wireless earbuds")
 
         self.assertEqual(evidence.provider_api_calls, 2)
-        self.assertEqual(evidence.sources[1].region_hint, "china")
+        self.assertEqual(evidence.sources[0].region_hint, "china")
 
     async def test_exa_normalizes_content_results(self) -> None:
         adapter = ExaAdapter(
@@ -191,6 +303,260 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(evidence.sources[0].snippet, "120 TND")
 
+    async def test_firecrawl_search_normalizes_results_and_counts_usage(self) -> None:
+        adapter = FirecrawlAdapter(
+            _settings(
+                firecrawl_api_key="firecrawl-key",
+                gemini_analysis_api_key="analysis",
+            )
+        )
+        adapter._client_factory = lambda: FakeHttpClient(
+            [
+                FakeResponse(
+                    {
+                        "success": True,
+                        "data": {
+                            "web": [
+                                {
+                                    "title": "CN listing",
+                                    "url": "https://cn.example/item",
+                                    "description": "US$4 MOQ 100",
+                                }
+                            ]
+                        },
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "success": True,
+                        "data": {
+                            "web": [
+                                {
+                                    "title": "TN listing",
+                                    "url": "https://tn.example/item",
+                                    "description": "89 TND",
+                                    "markdown": "# TN listing\n89 TND",
+                                }
+                            ]
+                        },
+                    }
+                ),
+            ]
+        )
+        adapter.settings = adapter.settings.__class__(
+            **{
+                **adapter.settings.__dict__,
+                "search_queries_per_region": 1,
+                "search_results_per_query": 3,
+            }
+        )
+
+        evidence = await adapter.search("wireless earbuds")
+
+        self.assertEqual(evidence.provider_api_calls, 2)
+        self.assertEqual(evidence.raw_queries_count, 2)
+        self.assertEqual(len(evidence.sources), 2)
+        self.assertEqual(evidence.sources[0].snippet, "US$4 MOQ 100")
+        self.assertEqual(evidence.sources[0].region_hint, "china")
+        self.assertEqual(evidence.sources[1].content, "# TN listing\n89 TND")
+
+    async def test_firecrawl_accepts_documented_list_data_shape(self) -> None:
+        adapter = FirecrawlAdapter(
+            _settings(
+                firecrawl_api_key="firecrawl-key",
+                gemini_analysis_api_key="analysis",
+            )
+        )
+        adapter._client_factory = lambda: FakeHttpClient(
+            [
+                FakeResponse(
+                    {
+                        "success": True,
+                        "data": [
+                            {
+                                "title": "CN listing",
+                                "url": "https://cn.example/item",
+                                "description": "US$4 MOQ 100",
+                            }
+                        ],
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "success": True,
+                        "data": [
+                            {
+                                "title": "TN listing",
+                                "url": "https://tn.example/item",
+                                "description": "89 TND",
+                            }
+                        ],
+                    }
+                ),
+            ]
+        )
+        adapter.settings = adapter.settings.__class__(
+            **{**adapter.settings.__dict__, "search_queries_per_region": 1}
+        )
+
+        evidence = await adapter.search("wireless earbuds")
+
+        self.assertEqual(evidence.provider_api_calls, 2)
+        self.assertEqual(evidence.raw_queries_count, 2)
+        self.assertEqual(evidence.sources[0].region_hint, "china")
+
+    async def test_firecrawl_search_prioritizes_china_and_stops_after_cap(self) -> None:
+        adapter = FirecrawlAdapter(
+            _settings(
+                firecrawl_api_key="firecrawl-key",
+                gemini_analysis_api_key="analysis",
+            )
+        )
+        fake_client = FakeHttpClient(
+            [
+                FakeResponse(
+                    {
+                        "success": True,
+                        "data": {
+                            "web": [
+                                {
+                                    "title": "CN listing",
+                                    "url": "https://cn.example/item",
+                                    "description": "US$4 MOQ 100",
+                                }
+                            ]
+                        },
+                    }
+                )
+            ]
+        )
+        adapter._client_factory = lambda: fake_client
+        adapter.settings = adapter.settings.__class__(
+            **{
+                **adapter.settings.__dict__,
+                "search_queries_per_region": 1,
+                "max_raw_sources_per_provider": 1,
+            }
+        )
+
+        evidence = await adapter.search("wireless earbuds")
+
+        self.assertEqual(evidence.provider_api_calls, 1)
+        self.assertEqual(evidence.raw_queries_count, 1)
+        self.assertEqual(evidence.sources[0].region_hint, "china")
+        self.assertEqual(fake_client.calls[0][2]["json"]["location"], "China")
+
+    async def test_firecrawl_errors_are_sanitized(self) -> None:
+        adapter = FirecrawlAdapter(
+            _settings(
+                firecrawl_api_key="firecrawl-key",
+                gemini_analysis_api_key="analysis",
+            )
+        )
+        adapter._client_factory = lambda: FakeHttpClient(
+            [FakeResponse({"success": False, "error": "leak me"}, status_code=500)]
+        )
+        adapter.settings = adapter.settings.__class__(
+            **{**adapter.settings.__dict__, "search_queries_per_region": 1}
+        )
+
+        with self.assertRaises(ProviderAdapterError) as context:
+            await adapter.search("wireless earbuds")
+
+        self.assertEqual(str(context.exception), "Firecrawl + Gemini request failed.")
+        self.assertNotIn("leak me", str(context.exception))
+
+    async def test_dataforseo_normalizes_organic_items(self) -> None:
+        adapter = DataForSEOAdapter(
+            _settings(
+                dataforseo_login="dfs-login",
+                dataforseo_password="dfs-password",
+                gemini_analysis_api_key="analysis",
+            )
+        )
+        adapter._client_factory = lambda: FakeHttpClient(
+            [
+                FakeResponse(
+                    {
+                        "tasks": [
+                            {
+                                "result": [
+                                    {
+                                        "items": [
+                                            {
+                                                "type": "organic",
+                                                "title": "CN listing",
+                                                "url": "https://cn.example/item",
+                                                "description": "US$4 MOQ 100",
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "tasks": [
+                            {
+                                "result": [
+                                    {
+                                        "items": [
+                                            {
+                                                "type": "organic",
+                                                "title": "TN listing",
+                                                "url": "https://tn.example/item",
+                                                "description": "95 TND",
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ),
+            ]
+        )
+        adapter.settings = adapter.settings.__class__(
+            **{
+                **adapter.settings.__dict__,
+                "search_queries_per_region": 1,
+                "search_results_per_query": 3,
+            }
+        )
+
+        evidence = await adapter.search("wireless earbuds")
+
+        self.assertEqual(evidence.provider_api_calls, 2)
+        self.assertEqual(evidence.raw_queries_count, 2)
+        self.assertEqual(len(evidence.sources), 2)
+        self.assertEqual(evidence.sources[0].snippet, "US$4 MOQ 100")
+        self.assertEqual(evidence.sources[0].region_hint, "china")
+        self.assertEqual(evidence.sources[1].snippet, "95 TND")
+
+    async def test_dataforseo_errors_are_sanitized(self) -> None:
+        adapter = DataForSEOAdapter(
+            _settings(
+                dataforseo_login="dfs-login",
+                dataforseo_password="dfs-password",
+                gemini_analysis_api_key="analysis",
+            )
+        )
+        adapter._client_factory = lambda: FakeHttpClient(
+            [FakeResponse({"status_message": "bad auth"}, status_code=401)]
+        )
+        adapter.settings = adapter.settings.__class__(
+            **{**adapter.settings.__dict__, "search_queries_per_region": 1}
+        )
+
+        with self.assertRaises(ProviderAdapterError) as context:
+            await adapter.search("wireless earbuds")
+
+        self.assertEqual(str(context.exception), "DataForSEO + Gemini request failed.")
+        self.assertNotIn("bad auth", str(context.exception))
+        self.assertNotIn("dfs-password", str(context.exception))
+
     async def test_perplexity_returns_analysis_without_gemini(self) -> None:
         adapter = PerplexitySonarAdapter(_settings(perplexity_api_key="pplx"))
         adapter._client_factory = lambda: FakeHttpClient(
@@ -213,6 +579,132 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsInstance(result, ProviderAnalysisResult)
         self.assertEqual(result.market_summary, "Found")
+
+    async def test_scavio_missing_gemini_analysis_is_not_configured(self) -> None:
+        adapter = ScavioAdapter(
+            _settings(
+                scavio_api_key="scavio-key",
+                gemini_analysis_api_key="",
+            )
+        )
+
+        with self.assertRaises(ProviderNotConfiguredError) as context:
+            await adapter.search("lamp")
+
+        self.assertIn("gemini_analysis_api_key", str(context.exception).lower())
+
+    async def test_scavio_normalizes_google_results(self) -> None:
+        adapter = ScavioAdapter(
+            _settings(
+                scavio_api_key="scavio-key",
+                gemini_analysis_api_key="analysis",
+            )
+        )
+        adapter._client_factory = lambda: FakeHttpClient(
+            [
+                FakeResponse(
+                    {
+                        "results": [
+                            {
+                                "title": "CN listing",
+                                "url": "https://cn.example/item",
+                                "content": "US$4 MOQ 100",
+                                "position": 1,
+                            }
+                        ],
+                        "credits_used": 1,
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "results": [
+                            {
+                                "title": "TN listing",
+                                "url": "https://tn.example/item",
+                                "content": "95 TND",
+                                "position": 1,
+                            }
+                        ],
+                        "credits_used": 1,
+                    }
+                ),
+            ]
+        )
+        adapter.settings = adapter.settings.__class__(
+            **{
+                **adapter.settings.__dict__,
+                "search_queries_per_region": 1,
+                "search_results_per_query": 3,
+            }
+        )
+
+        evidence = await adapter.search("wireless earbuds")
+
+        self.assertEqual(evidence.provider_api_calls, 2)
+        self.assertEqual(evidence.raw_queries_count, 2)
+        self.assertEqual(len(evidence.sources), 2)
+        self.assertEqual(evidence.sources[0].snippet, "US$4 MOQ 100")
+        self.assertEqual(evidence.sources[0].region_hint, "china")
+        self.assertEqual(evidence.sources[1].snippet, "95 TND")
+
+    async def test_scavio_search_prioritizes_china_and_stops_after_cap(self) -> None:
+        adapter = ScavioAdapter(
+            _settings(
+                scavio_api_key="scavio-key",
+                gemini_analysis_api_key="analysis",
+            )
+        )
+        fake_client = FakeHttpClient(
+            [
+                FakeResponse(
+                    {
+                        "results": [
+                            {
+                                "title": "CN listing",
+                                "url": "https://cn.example/item",
+                                "content": "US$4 MOQ 100",
+                                "position": 1,
+                            }
+                        ],
+                        "credits_used": 1,
+                    }
+                )
+            ]
+        )
+        adapter._client_factory = lambda: fake_client
+        adapter.settings = adapter.settings.__class__(
+            **{
+                **adapter.settings.__dict__,
+                "search_queries_per_region": 1,
+                "max_raw_sources_per_provider": 1,
+            }
+        )
+
+        evidence = await adapter.search("wireless earbuds")
+
+        self.assertEqual(evidence.provider_api_calls, 1)
+        self.assertEqual(evidence.sources[0].region_hint, "china")
+        self.assertEqual(fake_client.calls[0][2]["json"]["country_code"], "cn")
+
+    async def test_scavio_errors_are_sanitized(self) -> None:
+        adapter = ScavioAdapter(
+            _settings(
+                scavio_api_key="scavio-key",
+                gemini_analysis_api_key="analysis",
+            )
+        )
+        adapter._client_factory = lambda: FakeHttpClient(
+            [FakeResponse({"error": "bad token"}, status_code=401)]
+        )
+        adapter.settings = adapter.settings.__class__(
+            **{**adapter.settings.__dict__, "search_queries_per_region": 1}
+        )
+
+        with self.assertRaises(ProviderAdapterError) as context:
+            await adapter.search("wireless earbuds")
+
+        self.assertEqual(str(context.exception), "Scavio + Gemini request failed.")
+        self.assertNotIn("bad token", str(context.exception))
 
 
 def _settings(**overrides) -> Settings:

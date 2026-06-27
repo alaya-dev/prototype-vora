@@ -3,13 +3,15 @@ from __future__ import annotations
 import httpx
 
 from app.benchmark.providers.base import (
+    cap_sources_balanced,
+    can_stop_after_source_cap,
+    prioritized_query_groups,
     ProviderAdapterError,
     ProviderConfigRequirement,
     SearchProviderAdapter,
     analysis_requirement,
     new_http_client,
 )
-from app.benchmark.query_strategy import build_regional_queries
 from app.benchmark.schemas import ProviderEvidence, ProviderRawSource
 
 
@@ -35,15 +37,12 @@ class SerperAdapter(SearchProviderAdapter):
 
     async def search(self, product: str) -> ProviderEvidence:
         self._raise_if_not_configured()
-        queries = build_regional_queries(product, self.settings.search_queries_per_region)
+        query_groups = prioritized_query_groups(product, self.settings)
         sources: list[ProviderRawSource] = []
         api_calls = 0
         try:
             async with self._client_factory() as client:
-                for region, query_list in (
-                    ("tunisia", queries.tunisia),
-                    ("china", queries.china),
-                ):
+                for region, query_list in query_groups:
                     for query in query_list:
                         response = await client.post(
                             "https://google.serper.dev/search",
@@ -68,6 +67,10 @@ class SerperAdapter(SearchProviderAdapter):
                                     source_type="search_result",
                                 )
                             )
+                        if can_stop_after_source_cap(sources, self.settings):
+                            break
+                    if can_stop_after_source_cap(sources, self.settings):
+                        break
         except httpx.HTTPError as error:
             raise ProviderAdapterError(f"{self.provider_name} request failed.") from error
         except (KeyError, ValueError, TypeError) as error:
@@ -77,7 +80,10 @@ class SerperAdapter(SearchProviderAdapter):
 
         return ProviderEvidence(
             provider_id=self.provider_id,
-            sources=sources[: self.settings.max_raw_sources_per_provider],
-            raw_queries_count=queries.total_count,
+            sources=cap_sources_balanced(
+                sources,
+                self.settings.max_raw_sources_per_provider,
+            ),
+            raw_queries_count=api_calls,
             provider_api_calls=api_calls,
         )

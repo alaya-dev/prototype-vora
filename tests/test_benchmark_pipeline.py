@@ -14,6 +14,7 @@ from app.benchmark.schemas import (
 )
 from app.config import Settings
 from app.schemas import IntentResult
+from app.services.gemini_client import GeminiClientError
 
 
 class RecordingIntentClient:
@@ -38,6 +39,20 @@ class RecordingAnalysisClient:
     ) -> ProviderAnalysisResult:
         self.calls += 1
         return self.result
+
+
+class FailingAnalysisClient:
+    def __init__(self, message: str) -> None:
+        self.message = message
+        self.calls = 0
+
+    async def extract(
+        self,
+        product: str,
+        evidence: ProviderEvidence,
+    ) -> ProviderAnalysisResult:
+        self.calls += 1
+        raise GeminiClientError(self.message)
 
 
 class FakeAdapter(SearchProviderAdapter):
@@ -200,6 +215,28 @@ class BenchmarkPipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(statuses["missing"], "not_configured")
         self.assertEqual(statuses["failing"], "failed")
         self.assertEqual(statuses["slow"], "timeout")
+
+    async def test_gemini_analysis_failure_returns_failed_run_instead_of_500(self) -> None:
+        intent = RecordingIntentClient(
+            IntentResult(
+                is_valid_product=True,
+                normalized_product="lamp",
+                reason="Valid.",
+            )
+        )
+        analysis = FailingAnalysisClient("Gemini rate limit reached (429). Please retry in a moment.")
+        pipeline = BenchmarkPipeline(
+            intent,
+            analysis,
+            {"fake": FakeAdapter(_settings())},
+            _settings(),
+        )
+
+        response = await pipeline.analyze("lamp", ["fake"])
+
+        self.assertEqual(analysis.calls, 1)
+        self.assertEqual(response.runs[0].status, "failed")
+        self.assertIn("Gemini rate limit reached", response.runs[0].errors[0])
 
 
 def _settings(**overrides) -> Settings:

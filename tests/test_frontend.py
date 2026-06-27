@@ -28,3 +28,10 @@ class FrontendTests(unittest.TestCase):
     def test_run_all_configured_providers_exists(self) -> None:
         self.assertIn("Run all configured providers", self.html)
         self.assertIn("runAllConfigured", self.html)
+
+    def test_market_result_labels_are_product_price_focused(self) -> None:
+        self.assertIn("Tunisia local market prices", self.html)
+        self.assertIn("China wholesale product prices", self.html)
+        self.assertIn("Product offer", self.html)
+        self.assertIn("product_match", self.html)
+        self.assertIn("match_notes", self.html)

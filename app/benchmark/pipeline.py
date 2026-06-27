@@ -18,6 +18,7 @@ from app.benchmark.schemas import (
 from app.benchmark.validation import validate_provider_result
 from app.config import Settings
 from app.schemas import IntentResult
+from app.services.gemini_client import GeminiClientError
 
 
 class BenchmarkPipeline:
@@ -101,8 +102,8 @@ class BenchmarkPipeline:
 
         started = time.perf_counter()
         try:
-            analysis, evidence, gemini_analysis_calls = await asyncio.wait_for(
-                self._collect_provider_analysis(provider, product),
+            evidence, analysis, gemini_analysis_calls = await asyncio.wait_for(
+                self._collect_provider_result(provider, product),
                 timeout=self.settings.benchmark_provider_timeout_seconds,
             )
             validated = validate_provider_result(analysis, evidence.sources)
@@ -132,23 +133,30 @@ class BenchmarkPipeline:
             return self._error_run(provider, "not_configured", started, str(error))
         except ProviderAdapterError as error:
             return self._error_run(provider, "failed", started, str(error))
+        except GeminiClientError as error:
+            return self._error_run(
+                provider,
+                "failed",
+                started,
+                str(error),
+            )
 
-    async def _collect_provider_analysis(
+    async def _collect_provider_result(
         self,
         provider,
         product: str,
-    ) -> tuple[ProviderAnalysisResult, ProviderEvidence, int]:
+    ) -> tuple[ProviderEvidence, ProviderAnalysisResult, int]:
         if not getattr(provider, "requires_gemini_analysis", True):
             analysis = await provider.analyze_direct(product)
             evidence = ProviderEvidence(
                 provider_id=provider.provider_id,
                 provider_api_calls=1,
             )
-            return analysis, evidence, 0
+            return evidence, analysis, 0
 
         evidence = await provider.search(product)
         analysis = await self.analysis_client.extract(product, evidence)
-        return analysis, evidence, 1
+        return evidence, analysis, 1
 
     def _build_run(
         self,

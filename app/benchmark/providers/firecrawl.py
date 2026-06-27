@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import httpx
+
 from app.benchmark.providers.base import (
+    cap_sources_balanced,
+    can_stop_after_source_cap,
+    prioritized_query_groups,
+    ProviderAdapterError,
     ProviderConfigRequirement,
-    ProviderNotConfiguredError,
     SearchProviderAdapter,
     analysis_requirement,
+    new_http_client,
 )
-from app.benchmark.schemas import ProviderEvidence
+from app.benchmark.schemas import ProviderEvidence, ProviderRawSource
 
 
 class FirecrawlAdapter(SearchProviderAdapter):
@@ -15,13 +21,14 @@ class FirecrawlAdapter(SearchProviderAdapter):
     requires_gemini_analysis = True
     production_risk = "high"
     cost_notes = (
-        "Standalone Firecrawl search is not enabled in this prototype. Firecrawl is "
-        "better used as a content extraction layer after URL discovery."
+        "Uses one Firecrawl Search request per raw search query plus one Gemini "
+        "analysis call when evidence is found. Search can also return markdown "
+        "content, which increases payload size and may affect cost."
     )
-    enabled = False
-    limitation_warnings = [
-        "Standalone Firecrawl search is limited in this prototype; Firecrawl is better used as a content extraction layer after Serper, Brave, or Exa discovers URLs."
-    ]
+
+    def __init__(self, settings):
+        super().__init__(settings)
+        self._client_factory = new_http_client
 
     def requirements(self):
         return [
@@ -33,6 +40,78 @@ class FirecrawlAdapter(SearchProviderAdapter):
         ]
 
     async def search(self, product: str) -> ProviderEvidence:
-        raise ProviderNotConfiguredError(
-            "Standalone Firecrawl search is disabled in this prototype."
+        self._raise_if_not_configured()
+        query_groups = prioritized_query_groups(product, self.settings)
+        sources: list[ProviderRawSource] = []
+        api_calls = 0
+
+        try:
+            async with self._client_factory() as client:
+                for region, query_list in query_groups:
+                    location = "China" if region == "china" else "Tunisia"
+                    for query in query_list:
+                        response = await client.post(
+                            "https://api.firecrawl.dev/v2/search",
+                            headers={
+                                "Authorization": f"Bearer {self.settings.firecrawl_api_key}",
+                                "Content-Type": "application/json",
+                            },
+                            json={
+                                "query": query,
+                                "limit": self.settings.search_results_per_query,
+                                "sources": ["web"],
+                                "location": location,
+                            },
+                        )
+                        api_calls += 1
+                        response.raise_for_status()
+                        payload = response.json()
+                        if not payload.get("success", True):
+                            raise ProviderAdapterError(
+                                f"{self.provider_name} request failed."
+                            )
+                        for item in _extract_firecrawl_items(payload):
+                            sources.append(
+                                ProviderRawSource(
+                                    title=item.get("title", ""),
+                                    url=item.get("url", ""),
+                                    snippet=item.get("description", "")
+                                    or item.get("snippet", ""),
+                                    content=item.get("markdown")
+                                    or item.get("summary")
+                                    or None,
+                                    region_hint=region,
+                                    source_type="search_result",
+                                )
+                            )
+                        if can_stop_after_source_cap(sources, self.settings):
+                            break
+                    if can_stop_after_source_cap(sources, self.settings):
+                        break
+        except httpx.HTTPError as error:
+            raise ProviderAdapterError(f"{self.provider_name} request failed.") from error
+        except ProviderAdapterError:
+            raise
+        except (AttributeError, KeyError, TypeError, ValueError) as error:
+            raise ProviderAdapterError(
+                f"{self.provider_name} returned an unexpected response shape."
+            ) from error
+
+        return ProviderEvidence(
+            provider_id=self.provider_id,
+            sources=cap_sources_balanced(
+                sources,
+                self.settings.max_raw_sources_per_provider,
+            ),
+            raw_queries_count=api_calls,
+            provider_api_calls=api_calls,
         )
+
+
+def _extract_firecrawl_items(payload: dict) -> list[dict]:
+    data = payload.get("data", {})
+    if isinstance(data, dict):
+        return data.get("web", [])
+    if isinstance(data, list):
+        return data
+    raise TypeError("Unexpected Firecrawl data shape.")

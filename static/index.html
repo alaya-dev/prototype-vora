@@ -627,11 +627,11 @@ function renderResults(runs, intent) {
 
         <div class="supplier-grid">
           <div class="stack">
-            <div class="section-title">Tunisia</div>
+            <div class="section-title">Tunisia local market prices</div>
             ${renderSuppliers(run.tunisia_cheapest_suppliers, "tnd")}
           </div>
           <div class="stack">
-            <div class="section-title">China</div>
+            <div class="section-title">China wholesale product prices</div>
             ${renderSuppliers(run.china_cheapest_suppliers, "usd")}
           </div>
         </div>
@@ -666,15 +666,18 @@ function renderSuppliers(suppliers, currencyMode) {
   }
   return suppliers.map((supplier) => `
     <div class="supplier-card">
-      <h3>${escapeHtml(supplier.name || "Unknown supplier")}</h3>
+      <h3>${escapeHtml(supplier.name || (currencyMode === "usd" ? "Product offer" : "Unknown supplier"))}</h3>
       <div class="supplier-meta">
         <div><strong>Rank:</strong> ${escapeHtml(String(supplier.rank ?? ""))}</div>
         <div><strong>Type:</strong> ${escapeHtml(supplier.type || "unknown")}</div>
+        ${currencyMode === "usd" ? `<div><strong>Product offer:</strong> ${escapeHtml(supplier.product_title || supplier.name || "Not provided")}</div>` : ""}
         <div><strong>Product:</strong> ${escapeHtml(supplier.product_title || "Not provided")}</div>
         <div><strong>Price:</strong> ${escapeHtml(currencyMode === "tnd" ? (supplier.price_range_tnd || "Not found") : (supplier.price_range_usd || "Not found"))}</div>
         ${currencyMode === "usd" ? `<div><strong>MOQ:</strong> ${escapeHtml(supplier.moq || "Not found")}</div>` : ""}
         <div><strong>Evidence level:</strong> ${escapeHtml(supplier.evidence_level || "weak")}</div>
         <div><strong>Confidence:</strong> ${escapeHtml(supplier.confidence || "low")}</div>
+        <div><strong>product_match:</strong> ${escapeHtml(supplier.product_match || "broad")}</div>
+        <div><strong>match_notes:</strong> ${escapeHtml(supplier.match_notes || "None")}</div>
         <div><strong>Price evidence:</strong> ${escapeHtml(supplier.price_evidence || "not_found")}</div>
         ${currencyMode === "usd" ? `<div><strong>MOQ evidence:</strong> ${escapeHtml(supplier.moq_evidence || "not_found")}</div>` : ""}
         <div><strong>Notes:</strong> ${escapeHtml(supplier.notes || "None")}</div>

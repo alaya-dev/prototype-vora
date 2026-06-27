@@ -12,6 +12,7 @@ ProductionRisk = Literal["low", "medium", "high"]
 EvidenceLevel = Literal["direct", "indirect", "weak"]
 EvidenceField = Literal["direct", "snippet", "not_found"]
 Confidence = Literal["high", "medium", "low"]
+ProductMatch = Literal["exact", "close", "broad", "weak"]
 RegionHint = Literal["tunisia", "china", "unknown"]
 RawSourceType = Literal["search_result", "product_page", "supplier_profile", "marketplace", "unknown"]
 
@@ -57,6 +58,8 @@ class TunisiaBenchmarkSupplier(StrictModel):
     evidence_level: EvidenceLevel = "weak"
     price_evidence: EvidenceField = "not_found"
     confidence: Confidence = "low"
+    product_match: ProductMatch = "broad"
+    match_notes: str = ""
     notes: str = ""
 
 
@@ -75,6 +78,8 @@ class ChinaBenchmarkSupplier(StrictModel):
     price_evidence: EvidenceField = "not_found"
     moq_evidence: EvidenceField = "not_found"
     confidence: Confidence = "low"
+    product_match: ProductMatch = "broad"
+    match_notes: str = ""
     notes: str = ""
 
 

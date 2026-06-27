@@ -42,7 +42,18 @@ class ProviderRegistryTests(unittest.TestCase):
         self.assertFalse(info.requires_gemini_analysis)
         self.assertNotIn("GEMINI_ANALYSIS_API_KEY", info.missing_config)
 
-    def test_firecrawl_reports_limited_behavior_without_standalone_search_support(
+    def test_firecrawl_missing_key_returns_not_configured(self) -> None:
+        registry = build_provider_registry(
+            _settings(
+                gemini_analysis_api_key="analysis-key",
+            )
+        )
+        info = registry["firecrawl"].info()
+
+        self.assertFalse(info.configured)
+        self.assertIn("FIRECRAWL_API_KEY", info.missing_config)
+
+    def test_firecrawl_is_configured_when_api_key_and_gemini_analysis_exist(
         self,
     ) -> None:
         registry = build_provider_registry(
@@ -53,9 +64,60 @@ class ProviderRegistryTests(unittest.TestCase):
         )
         info = registry["firecrawl"].info()
 
-        self.assertFalse(info.enabled)
+        self.assertTrue(info.enabled)
+        self.assertTrue(info.configured)
+        self.assertEqual(info.missing_config, [])
+
+    def test_dataforseo_is_configured_when_required_credentials_exist(self) -> None:
+        registry = build_provider_registry(
+            _settings(
+                dataforseo_login="dfs-login",
+                dataforseo_password="dfs-password",
+                gemini_analysis_api_key="analysis-key",
+            )
+        )
+        info = registry["dataforseo"].info()
+
+        self.assertTrue(info.enabled)
+        self.assertTrue(info.configured)
+        self.assertEqual(info.missing_config, [])
+
+    def test_dataforseo_missing_password_returns_not_configured(self) -> None:
+        registry = build_provider_registry(
+            _settings(
+                dataforseo_login="dfs-login",
+                gemini_analysis_api_key="analysis-key",
+            )
+        )
+        info = registry["dataforseo"].info()
+
         self.assertFalse(info.configured)
-        self.assertIn("content extraction layer", " ".join(info.warnings).lower())
+        self.assertIn("DATAFORSEO_PASSWORD", info.missing_config)
+
+    def test_scavio_missing_gemini_analysis_returns_not_configured(self) -> None:
+        registry = build_provider_registry(
+            _settings(
+                scavio_api_key="scavio-key",
+                gemini_analysis_api_key="",
+            )
+        )
+        info = registry["scavio"].info()
+
+        self.assertFalse(info.configured)
+        self.assertIn("GEMINI_ANALYSIS_API_KEY", info.missing_config)
+
+    def test_scavio_is_configured_when_api_key_and_gemini_analysis_exist(self) -> None:
+        registry = build_provider_registry(
+            _settings(
+                scavio_api_key="scavio-key",
+                gemini_analysis_api_key="analysis-key",
+            )
+        )
+        info = registry["scavio"].info()
+
+        self.assertTrue(info.enabled)
+        self.assertTrue(info.configured)
+        self.assertEqual(info.missing_config, [])
 
 
 def _settings(**overrides) -> Settings:

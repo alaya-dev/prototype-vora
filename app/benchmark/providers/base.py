@@ -4,7 +4,13 @@ from dataclasses import dataclass
 
 import httpx
 
-from app.benchmark.schemas import ProviderEvidence, ProviderInfo, ProductionRisk
+from app.benchmark.query_strategy import build_regional_queries
+from app.benchmark.schemas import (
+    ProviderEvidence,
+    ProviderInfo,
+    ProductionRisk,
+    ProviderRawSource,
+)
 from app.config import Settings
 
 
@@ -78,3 +84,53 @@ def analysis_requirement(settings: Settings) -> ProviderConfigRequirement:
 
 def new_http_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=30)
+
+
+def prioritized_query_groups(
+    product: str,
+    settings: Settings,
+) -> list[tuple[str, list[str]]]:
+    queries = build_regional_queries(product, settings.search_queries_per_region)
+    return [
+        ("china", queries.china),
+        ("tunisia", queries.tunisia),
+    ]
+
+
+def can_stop_after_source_cap(
+    sources: list[ProviderRawSource],
+    settings: Settings,
+) -> bool:
+    if len(sources) < settings.max_raw_sources_per_provider:
+        return False
+    if settings.max_raw_sources_per_provider <= 1:
+        return True
+
+    has_china = any(source.region_hint == "china" for source in sources)
+    has_tunisia = any(source.region_hint == "tunisia" for source in sources)
+    return has_china and has_tunisia
+
+
+def cap_sources_balanced(
+    sources: list[ProviderRawSource],
+    maximum: int,
+) -> list[ProviderRawSource]:
+    if maximum <= 0 or len(sources) <= maximum:
+        return sources[: max(0, maximum)]
+
+    buckets = {"tunisia": [], "china": [], "unknown": []}
+    for source in sources:
+        buckets.setdefault(source.region_hint, []).append(source)
+
+    selected: list[ProviderRawSource] = []
+    while len(selected) < maximum:
+        progressed = False
+        for region in ("china", "tunisia", "unknown"):
+            bucket = buckets.get(region, [])
+            if not bucket or len(selected) >= maximum:
+                continue
+            selected.append(bucket.pop(0))
+            progressed = True
+        if not progressed:
+            break
+    return selected

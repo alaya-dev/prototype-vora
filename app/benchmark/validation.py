@@ -16,6 +16,8 @@ SupplierT = TypeVar("SupplierT", TunisiaBenchmarkSupplier, ChinaBenchmarkSupplie
 TRACKING_QUERY_PARAMS = {"gclid", "fbclid"}
 EVIDENCE_STRENGTH = {"weak": 0, "indirect": 1, "direct": 2}
 CONFIDENCE_STRENGTH = {"low": 0, "medium": 1, "high": 2}
+PRODUCT_MATCH_GROUP = {"exact": 0, "close": 0, "broad": 1, "weak": 1}
+PRODUCT_MATCH_ORDER = {"exact": 0, "close": 1, "broad": 2, "weak": 3}
 
 
 def validate_provider_result(
@@ -80,6 +82,7 @@ def _validate_tunisia_supplier(
             raw_source_types.get(normalized_url),
         )
     )
+    update.update(_product_match_downgrades(supplier.product_match, update.get("confidence", supplier.confidence)))
     return supplier.model_copy(update=update)
 
 
@@ -95,12 +98,22 @@ def _validate_china_supplier(
     if supplier.moq is None or supplier.moq_numeric is None:
         update["moq_evidence"] = "not_found"
         update["moq_numeric"] = None
+    if _is_generic_china_supplier_without_price(supplier, raw_source_types.get(normalized_url)):
+        update["evidence_level"] = "weak"
+        update["confidence"] = "low"
+        update["product_match"] = "weak"
     update.update(
         _evidence_downgrades(
             supplier.source_url,
-            supplier.evidence_level,
-            supplier.confidence,
+            update.get("evidence_level", supplier.evidence_level),
+            update.get("confidence", supplier.confidence),
             raw_source_types.get(normalized_url),
+        )
+    )
+    update.update(
+        _product_match_downgrades(
+            update.get("product_match", supplier.product_match),
+            update.get("confidence", supplier.confidence),
         )
     )
     return supplier.model_copy(update=update)
@@ -126,6 +139,26 @@ def _evidence_downgrades(
     return update
 
 
+def _product_match_downgrades(product_match: str, confidence: str) -> dict[str, str]:
+    if product_match == "weak":
+        return {"confidence": "low"}
+    if product_match == "broad" and confidence == "high":
+        return {"confidence": "medium"}
+    return {}
+
+
+def _is_generic_china_supplier_without_price(
+    supplier: ChinaBenchmarkSupplier,
+    raw_source_type: str | None,
+) -> bool:
+    generic_source = raw_source_type == "supplier_profile" or supplier.type in {
+        "manufacturer",
+        "trading_company",
+        "supplier_profile",
+    }
+    return generic_source and supplier.price_min_usd_numeric is None
+
+
 def _rank_tunisia(suppliers: list[TunisiaBenchmarkSupplier]) -> list[TunisiaBenchmarkSupplier]:
     return sorted(
         suppliers,
@@ -141,7 +174,9 @@ def _rank_china(suppliers: list[ChinaBenchmarkSupplier]) -> list[ChinaBenchmarkS
         suppliers,
         key=lambda supplier: (
             supplier.price_min_usd_numeric is None,
+            PRODUCT_MATCH_GROUP.get(supplier.product_match, 1),
             supplier.price_min_usd_numeric if supplier.price_min_usd_numeric is not None else float("inf"),
+            PRODUCT_MATCH_ORDER.get(supplier.product_match, 3),
         ),
     )
 

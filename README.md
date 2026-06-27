@@ -37,7 +37,6 @@ FIRECRAWL_API_KEY=
 PERPLEXITY_API_KEY=
 SEARXNG_BASE_URL=
 SCAVIO_API_KEY=
-SCAVIO_BASE_URL=
 DATAFORSEO_LOGIN=
 DATAFORSEO_PASSWORD=
 
@@ -72,11 +71,11 @@ Open `http://localhost:8000`.
 - `Serper + Gemini`: set `SERPER_API_KEY` and Gemini intent/analysis keys.
 - `Brave Search + Gemini`: set `BRAVE_SEARCH_API_KEY` and Gemini intent/analysis keys.
 - `Exa + Gemini`: set `EXA_API_KEY` and Gemini intent/analysis keys.
+- `Firecrawl + Gemini`: set `FIRECRAWL_API_KEY` and Gemini intent/analysis keys. This uses Firecrawl's official `POST /v2/search` endpoint and can include markdown content in raw evidence.
+- `DataForSEO + Gemini`: set `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD`, and Gemini intent/analysis keys. This uses Google Organic Live Regular SERP with one task per query and conservative generic regional queries first.
 - `SearXNG + Gemini`: set `SEARXNG_BASE_URL` and Gemini intent/analysis keys.
 - `Perplexity Sonar`: set `PERPLEXITY_API_KEY`; this provider does not use Gemini analysis by default.
-- `Firecrawl + Gemini`: currently treated as a limited standalone provider; it is better used as an extraction layer after URL discovery.
-- `Scavio + Gemini`: disabled until an official API contract is supplied.
-- `DataForSEO + Gemini`: disabled until the production search task contract is selected.
+- `Scavio + Gemini`: set `SCAVIO_API_KEY` and Gemini intent/analysis keys. This uses the documented `POST https://api.scavio.dev/api/v1/google` Google Search API in light mode. `SCAVIO_BASE_URL` is not required.
 
 `GET /providers` reports configuration state without exposing secrets.
 
@@ -115,13 +114,13 @@ Each provider run reports:
 
 Validated supplier results also show evidence level, confidence, price evidence, MOQ evidence, warnings, and source URLs. Raw evidence is expandable in the UI so provider output can be inspected without overwhelming the main result surface.
 
-The comparison summary is metric-based. It can highlight the fastest provider, the provider with the most Tunisian or Chinese results, the most source-backed prices, the most complete result set, and the lowest cost risk. It should not be read as an automatic “best production provider” decision.
+The raw-evidence cap is China-aware. When a provider returns more sources than `MAX_RAW_SOURCES_PER_PROVIDER`, the benchmark preserves Chinese evidence first so the cheapest-China path is less likely to be dropped before Gemini extraction and backend validation.
+
+The comparison summary is metric-based. It can highlight the fastest provider, the provider with the most Tunisian or Chinese results, the most source-backed prices, the most complete result set, and the lowest cost risk. It should not be read as an automatic "best production provider" decision.
 
 ## Placeholder and Limited Providers
 
-- Firecrawl may show as disabled or not configured for standalone search. In this prototype it is documented as better after URL discovery.
-- Scavio is disabled until official endpoint details are supplied.
-- DataForSEO is disabled until the production search contract is chosen.
+- Firecrawl, DataForSEO, and Scavio are real benchmark providers now, but their pricing, field coverage, and search behavior can still change.
 
 These providers must not block the rest of the benchmark.
 
@@ -139,7 +138,7 @@ The test suite uses fake Gemini and provider responses and does not consume live
 - Search and AI outputs can be incomplete, stale, duplicated, or commercially misleading.
 - Benchmark validation reduces risk but does not guarantee supplier correctness.
 - Supplier identity, price, MOQ, stock, certifications, and availability still require direct verification.
-- Firecrawl, Scavio, and DataForSEO may remain limited or disabled depending on available official contracts.
+- Scavio now uses the documented Google Search API contract, but provider pricing, credit rules, and response fields can still change.
 - `Perplexity Sonar` returns a web-grounded answer directly, but its output still passes through backend validation and ranking rules.
 
 ## Security Notes

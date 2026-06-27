@@ -149,24 +149,11 @@ class GeminiRoleWrapperTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.market_summary, "Evidence found.")
         prompt, response_model = base.calls[0]
-        self.assertEqual(
-            prompt,
-            (
-                "Extract structured supplier/source evidence for the VORA benchmark. "
-                "Use only the provider evidence supplied below. Do not invent suppliers, prices, "
-                "MOQ, stock, ratings, availability, URLs, or claims. If a price or MOQ is missing, "
-                "return null numeric fields and mark the evidence as not_found. Prefer direct "
-                "product pages over search snippets. Return strict JSON matching the schema.\n\n"
-                "Product: portable blender\n"
-                "Provider: brave\n\n"
-                "Evidence:\n"
-                "Source 1:\n"
-                "Title: Listing\n"
-                "URL: https://example.com/item\n"
-                "Region hint: tunisia\n"
-                "Source type: product_page\n"
-                "Snippet: 89 TND\n"
-                "Content: Portable blender available now"
-            ),
-        )
+        self.assertIn("Tunisia: extract normal Tunisian local market or retail selling prices in TND", prompt)
+        self.assertIn("China: extract China wholesale unit price product offers in USD", prompt)
+        self.assertIn("supplier/company name is secondary", prompt)
+        self.assertIn("Do not return generic wholesaler/company pages without product-level price evidence", prompt)
+        self.assertIn("Product match must be one of exact, close, broad, or weak", prompt)
+        self.assertIn("Product: portable blender", prompt)
+        self.assertIn("Content: Portable blender available now", prompt)
         self.assertIs(response_model, ProviderAnalysisResult)

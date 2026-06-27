@@ -129,6 +129,121 @@ class BenchmarkValidationTests(unittest.TestCase):
         self.assertEqual(supplier.moq_evidence, "not_found")
         self.assertIsNone(supplier.moq_numeric)
 
+    def test_product_match_downgrades_confidence(self) -> None:
+        analysis = ProviderAnalysisResult(
+            tunisia_cheapest_suppliers=[
+                TunisiaBenchmarkSupplier(
+                    name="Weak Match",
+                    price_min_tnd_numeric=10,
+                    price_range_tnd="10 TND",
+                    source_url="https://tn.example/weak",
+                    evidence_level="direct",
+                    price_evidence="direct",
+                    confidence="high",
+                    product_match="weak",
+                ),
+                TunisiaBenchmarkSupplier(
+                    name="Broad Match",
+                    price_min_tnd_numeric=12,
+                    price_range_tnd="12 TND",
+                    source_url="https://tn.example/broad",
+                    evidence_level="direct",
+                    price_evidence="direct",
+                    confidence="high",
+                    product_match="broad",
+                ),
+            ]
+        )
+
+        validated = validate_provider_result(analysis, raw_sources=[])
+        by_name = {supplier.name: supplier for supplier in validated.tunisia_cheapest_suppliers}
+
+        self.assertEqual(by_name["Weak Match"].confidence, "low")
+        self.assertEqual(by_name["Broad Match"].confidence, "medium")
+
+    def test_china_product_match_affects_ranking_after_price_backing(self) -> None:
+        analysis = ProviderAnalysisResult(
+            china_cheapest_suppliers=[
+                ChinaBenchmarkSupplier(
+                    name="Weak Cheap",
+                    price_min_usd_numeric=1,
+                    price_range_usd="US$1",
+                    source_url="https://china.example/weak",
+                    price_evidence="direct",
+                    evidence_level="direct",
+                    confidence="high",
+                    product_match="weak",
+                ),
+                ChinaBenchmarkSupplier(
+                    name="Exact Slightly Higher",
+                    price_min_usd_numeric=1.2,
+                    price_range_usd="US$1.20",
+                    source_url="https://china.example/exact",
+                    price_evidence="direct",
+                    evidence_level="direct",
+                    confidence="high",
+                    product_match="exact",
+                ),
+                ChinaBenchmarkSupplier(
+                    name="Close",
+                    price_min_usd_numeric=1.1,
+                    price_range_usd="US$1.10",
+                    source_url="https://china.example/close",
+                    price_evidence="direct",
+                    evidence_level="direct",
+                    confidence="high",
+                    product_match="close",
+                ),
+                ChinaBenchmarkSupplier(
+                    name="No Price Exact",
+                    source_url="https://china.example/no-price",
+                    evidence_level="direct",
+                    price_evidence="direct",
+                    confidence="high",
+                    product_match="exact",
+                ),
+            ]
+        )
+
+        validated = validate_provider_result(analysis, raw_sources=[])
+
+        self.assertEqual(
+            [supplier.name for supplier in validated.china_cheapest_suppliers],
+            ["Close", "Exact Slightly Higher", "Weak Cheap"],
+        )
+        self.assertEqual(validated.china_cheapest_suppliers[-1].confidence, "low")
+
+    def test_china_generic_supplier_without_product_price_is_downgraded(self) -> None:
+        analysis = ProviderAnalysisResult(
+            china_cheapest_suppliers=[
+                ChinaBenchmarkSupplier(
+                    name="Generic Supplier",
+                    type="supplier_profile",
+                    source_url="https://china.example/company",
+                    evidence_level="direct",
+                    price_evidence="direct",
+                    confidence="high",
+                    product_match="broad",
+                )
+            ]
+        )
+
+        validated = validate_provider_result(
+            analysis,
+            raw_sources=[
+                ProviderRawSource(
+                    url="https://china.example/company",
+                    source_type="supplier_profile",
+                    region_hint="china",
+                )
+            ],
+        )
+        supplier = validated.china_cheapest_suppliers[0]
+
+        self.assertEqual(supplier.evidence_level, "weak")
+        self.assertEqual(supplier.confidence, "low")
+        self.assertEqual(supplier.price_evidence, "not_found")
+
     def test_warnings_are_based_on_price_backed_results_not_row_count(self) -> None:
         analysis = ProviderAnalysisResult(
             tunisia_cheapest_suppliers=[
