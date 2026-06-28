@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pydantic import Field
+
 from app.schemas import IntentResult, StrictModel
 
 
@@ -7,6 +9,16 @@ class IntentClassificationPayload(StrictModel):
     is_valid_product: bool
     normalized_product: str | None = None
     reason: str
+    original_product: str = ""
+    product_category: str = ""
+    brand_or_model: str | None = None
+    english_search_name: str = ""
+    french_search_name: str = ""
+    must_include_terms: list[str] = Field(default_factory=list)
+    optional_terms: list[str] = Field(default_factory=list)
+    excluded_terms: list[str] = Field(default_factory=list)
+    needs_more_specification: bool = False
+    specification_questions: list[str] = Field(default_factory=list)
 
 
 class IntentClassifierAgent:

@@ -59,7 +59,18 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
                     {
                         "organic": [
                             {
-                                "title": "TN",
+                                "title": "TN sourcing",
+                                "link": "https://tn-source.example/item",
+                                "snippet": "prix gros 70 TND",
+                            }
+                        ]
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "organic": [
+                            {
+                                "title": "TN retail",
                                 "link": "https://tn.example/item",
                                 "snippet": "89 TND",
                             }
@@ -85,10 +96,12 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         evidence = await adapter.search("wireless earbuds")
 
-        self.assertEqual(evidence.provider_api_calls, 2)
-        self.assertEqual(evidence.raw_queries_count, 2)
-        self.assertEqual(len(evidence.sources), 2)
-        self.assertEqual(evidence.sources[0].region_hint, "china")
+        self.assertEqual(evidence.provider_api_calls, 3)
+        self.assertEqual(evidence.raw_queries_count, 3)
+        self.assertEqual(len(evidence.sources), 3)
+        self.assertEqual(evidence.sources[0].region_hint, "china_sourcing")
+        self.assertEqual(evidence.sources[1].region_hint, "tunisia_sourcing")
+        self.assertEqual(evidence.sources[2].region_hint, "tunisia_retail")
 
     async def test_serper_cap_preserves_china_sources_when_limits_are_tight(self) -> None:
         adapter = SerperAdapter(
@@ -153,7 +166,7 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
         evidence = await adapter.search("wireless earbuds")
 
         self.assertEqual(len(evidence.sources), 2)
-        self.assertEqual([source.region_hint for source in evidence.sources], ["china", "tunisia"])
+        self.assertEqual([source.region_hint for source in evidence.sources], ["china_sourcing", "tunisia_sourcing"])
 
     async def test_serper_cap_prefers_china_when_only_one_source_fits(self) -> None:
         adapter = SerperAdapter(
@@ -196,7 +209,7 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
         evidence = await adapter.search("wireless earbuds")
 
         self.assertEqual(len(evidence.sources), 1)
-        self.assertEqual(evidence.sources[0].region_hint, "china")
+        self.assertEqual(evidence.sources[0].region_hint, "china_sourcing")
 
     async def test_brave_normalizes_web_results(self) -> None:
         adapter = BraveSearchAdapter(
@@ -212,9 +225,9 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
                         "web": {
                             "results": [
                                 {
-                                    "title": "TN",
-                                    "url": "https://tn.example/item",
-                                    "description": "89 TND",
+                                    "title": "CN",
+                                    "url": "https://cn.example/item",
+                                    "description": "US$4",
                                 }
                             ]
                         }
@@ -225,9 +238,22 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
                         "web": {
                             "results": [
                                 {
-                                    "title": "CN",
-                                    "url": "https://cn.example/item",
-                                    "description": "US$4",
+                                    "title": "TN sourcing",
+                                    "url": "https://tn-source.example/item",
+                                    "description": "prix gros 70 TND",
+                                }
+                            ]
+                        }
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "web": {
+                            "results": [
+                                {
+                                    "title": "TN retail",
+                                    "url": "https://tn.example/item",
+                                    "description": "89 TND",
                                 }
                             ]
                         }
@@ -241,8 +267,8 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         evidence = await adapter.search("wireless earbuds")
 
-        self.assertEqual(evidence.provider_api_calls, 2)
-        self.assertEqual(evidence.sources[0].region_hint, "china")
+        self.assertEqual(evidence.provider_api_calls, 3)
+        self.assertEqual(evidence.sources[0].region_hint, "china_sourcing")
 
     async def test_exa_normalizes_content_results(self) -> None:
         adapter = ExaAdapter(
@@ -261,6 +287,7 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
                         ]
                     }
                 ),
+                FakeResponse({"results": []}),
                 FakeResponse({"results": []}),
             ]
         )
@@ -292,6 +319,7 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
                         ]
                     }
                 ),
+                FakeResponse({"results": []}),
                 FakeResponse({"results": []}),
             ]
         )
@@ -332,7 +360,22 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
                         "data": {
                             "web": [
                                 {
-                                    "title": "TN listing",
+                                    "title": "TN sourcing",
+                                    "url": "https://tn-source.example/item",
+                                    "description": "prix gros 70 TND",
+                                    "markdown": "# TN sourcing\nprix gros 70 TND",
+                                }
+                            ]
+                        },
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "success": True,
+                        "data": {
+                            "web": [
+                                {
+                                    "title": "TN retail",
                                     "url": "https://tn.example/item",
                                     "description": "89 TND",
                                     "markdown": "# TN listing\n89 TND",
@@ -353,12 +396,13 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         evidence = await adapter.search("wireless earbuds")
 
-        self.assertEqual(evidence.provider_api_calls, 2)
-        self.assertEqual(evidence.raw_queries_count, 2)
-        self.assertEqual(len(evidence.sources), 2)
+        self.assertEqual(evidence.provider_api_calls, 3)
+        self.assertEqual(evidence.raw_queries_count, 3)
+        self.assertEqual(len(evidence.sources), 3)
         self.assertEqual(evidence.sources[0].snippet, "US$4 MOQ 100")
-        self.assertEqual(evidence.sources[0].region_hint, "china")
-        self.assertEqual(evidence.sources[1].content, "# TN listing\n89 TND")
+        self.assertEqual(evidence.sources[0].region_hint, "china_sourcing")
+        self.assertEqual(evidence.sources[1].region_hint, "tunisia_sourcing")
+        self.assertEqual(evidence.sources[2].content, "# TN listing\n89 TND")
 
     async def test_firecrawl_accepts_documented_list_data_shape(self) -> None:
         adapter = FirecrawlAdapter(
@@ -386,7 +430,19 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
                         "success": True,
                         "data": [
                             {
-                                "title": "TN listing",
+                                "title": "TN sourcing",
+                                "url": "https://tn-source.example/item",
+                                "description": "prix gros 70 TND",
+                            }
+                        ],
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "success": True,
+                        "data": [
+                            {
+                                "title": "TN retail",
                                 "url": "https://tn.example/item",
                                 "description": "89 TND",
                             }
@@ -401,9 +457,9 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         evidence = await adapter.search("wireless earbuds")
 
-        self.assertEqual(evidence.provider_api_calls, 2)
-        self.assertEqual(evidence.raw_queries_count, 2)
-        self.assertEqual(evidence.sources[0].region_hint, "china")
+        self.assertEqual(evidence.provider_api_calls, 3)
+        self.assertEqual(evidence.raw_queries_count, 3)
+        self.assertEqual(evidence.sources[0].region_hint, "china_sourcing")
 
     async def test_firecrawl_search_prioritizes_china_and_stops_after_cap(self) -> None:
         adapter = FirecrawlAdapter(
@@ -443,7 +499,7 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(evidence.provider_api_calls, 1)
         self.assertEqual(evidence.raw_queries_count, 1)
-        self.assertEqual(evidence.sources[0].region_hint, "china")
+        self.assertEqual(evidence.sources[0].region_hint, "china_sourcing")
         self.assertEqual(fake_client.calls[0][2]["json"]["location"], "China")
 
     async def test_firecrawl_errors_are_sanitized(self) -> None:
@@ -505,7 +561,27 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
                                         "items": [
                                             {
                                                 "type": "organic",
-                                                "title": "TN listing",
+                                                "title": "TN sourcing",
+                                                "url": "https://tn-source.example/item",
+                                                "description": "prix gros 70 TND",
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "tasks": [
+                            {
+                                "result": [
+                                    {
+                                        "items": [
+                                            {
+                                                "type": "organic",
+                                                "title": "TN retail",
                                                 "url": "https://tn.example/item",
                                                 "description": "95 TND",
                                             }
@@ -528,12 +604,13 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         evidence = await adapter.search("wireless earbuds")
 
-        self.assertEqual(evidence.provider_api_calls, 2)
-        self.assertEqual(evidence.raw_queries_count, 2)
-        self.assertEqual(len(evidence.sources), 2)
+        self.assertEqual(evidence.provider_api_calls, 3)
+        self.assertEqual(evidence.raw_queries_count, 3)
+        self.assertEqual(len(evidence.sources), 3)
         self.assertEqual(evidence.sources[0].snippet, "US$4 MOQ 100")
-        self.assertEqual(evidence.sources[0].region_hint, "china")
-        self.assertEqual(evidence.sources[1].snippet, "95 TND")
+        self.assertEqual(evidence.sources[0].region_hint, "china_sourcing")
+        self.assertEqual(evidence.sources[1].region_hint, "tunisia_sourcing")
+        self.assertEqual(evidence.sources[2].snippet, "95 TND")
 
     async def test_dataforseo_errors_are_sanitized(self) -> None:
         adapter = DataForSEOAdapter(
@@ -619,7 +696,20 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
                     {
                         "results": [
                             {
-                                "title": "TN listing",
+                                "title": "TN sourcing",
+                                "url": "https://tn-source.example/item",
+                                "content": "prix gros 70 TND",
+                                "position": 1,
+                            }
+                        ],
+                        "credits_used": 1,
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "results": [
+                            {
+                                "title": "TN retail",
                                 "url": "https://tn.example/item",
                                 "content": "95 TND",
                                 "position": 1,
@@ -640,12 +730,13 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         evidence = await adapter.search("wireless earbuds")
 
-        self.assertEqual(evidence.provider_api_calls, 2)
-        self.assertEqual(evidence.raw_queries_count, 2)
-        self.assertEqual(len(evidence.sources), 2)
+        self.assertEqual(evidence.provider_api_calls, 3)
+        self.assertEqual(evidence.raw_queries_count, 3)
+        self.assertEqual(len(evidence.sources), 3)
         self.assertEqual(evidence.sources[0].snippet, "US$4 MOQ 100")
-        self.assertEqual(evidence.sources[0].region_hint, "china")
-        self.assertEqual(evidence.sources[1].snippet, "95 TND")
+        self.assertEqual(evidence.sources[0].region_hint, "china_sourcing")
+        self.assertEqual(evidence.sources[1].region_hint, "tunisia_sourcing")
+        self.assertEqual(evidence.sources[2].snippet, "95 TND")
 
     async def test_scavio_search_prioritizes_china_and_stops_after_cap(self) -> None:
         adapter = ScavioAdapter(
@@ -683,7 +774,7 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
         evidence = await adapter.search("wireless earbuds")
 
         self.assertEqual(evidence.provider_api_calls, 1)
-        self.assertEqual(evidence.sources[0].region_hint, "china")
+        self.assertEqual(evidence.sources[0].region_hint, "china_sourcing")
         self.assertEqual(fake_client.calls[0][2]["json"]["country_code"], "cn")
 
     async def test_scavio_errors_are_sanitized(self) -> None:

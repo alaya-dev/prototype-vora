@@ -48,7 +48,7 @@ class FirecrawlAdapter(SearchProviderAdapter):
         try:
             async with self._client_factory() as client:
                 for region, query_list in query_groups:
-                    location = "China" if region == "china" else "Tunisia"
+                    location = "China" if region in {"china", "china_sourcing"} else "Tunisia"
                     for query in query_list:
                         response = await client.post(
                             "https://api.firecrawl.dev/v2/search",

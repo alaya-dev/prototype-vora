@@ -9,6 +9,7 @@ from app.benchmark.providers.base import (
     new_http_client,
 )
 from app.benchmark.schemas import ProviderAnalysisResult, ProviderEvidence
+from app.schemas import ProductUnderstanding
 
 
 class PerplexitySonarAdapter(SearchProviderAdapter):
@@ -38,14 +39,14 @@ class PerplexitySonarAdapter(SearchProviderAdapter):
             "Perplexity Sonar uses direct web-grounded analysis in this benchmark mode."
         )
 
-    async def analyze_direct(self, product: str) -> ProviderAnalysisResult:
+    async def analyze_direct(self, product: str | ProductUnderstanding) -> ProviderAnalysisResult:
         self._raise_if_not_configured()
         prompt = (
             "Use web-grounded search to find sourcing evidence for this product. "
             "Return only strict JSON matching this schema: "
             f"{ProviderAnalysisResult.model_json_schema()}. "
             "Do not invent suppliers, prices, MOQ, stock, ratings, availability, or URLs. "
-            f"Product: {product}"
+            f"Product: {_format_product(product)}"
         )
         try:
             async with self._client_factory() as client:
@@ -76,3 +77,12 @@ class PerplexitySonarAdapter(SearchProviderAdapter):
             raise ProviderAdapterError(
                 f"{self.provider_name} returned invalid JSON."
             ) from error
+
+
+def _format_product(product: str | ProductUnderstanding) -> str:
+    if isinstance(product, ProductUnderstanding):
+        return (
+            f"{product.normalized_product}; English search name: {product.english_search_name}; "
+            f"French search name: {product.french_search_name}; brand/model: {product.brand_or_model or ''}"
+        )
+    return product

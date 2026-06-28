@@ -57,10 +57,26 @@ class AnalyzeRequest(StrictModel):
     category: ProductCategory | None = None
 
 
+class ProductUnderstanding(StrictModel):
+    original_product: str = ""
+    normalized_product: str = ""
+    product_category: str = ""
+    brand_or_model: str | None = None
+    english_search_name: str = ""
+    french_search_name: str = ""
+    must_include_terms: list[str] = Field(default_factory=list)
+    optional_terms: list[str] = Field(default_factory=list)
+    excluded_terms: list[str] = Field(default_factory=list)
+    needs_more_specification: bool = False
+    specification_questions: list[str] = Field(default_factory=list)
+
+
 class IntentResult(StrictModel):
     is_valid_product: bool
     normalized_product: str | None = None
     reason: str
+    product_understanding: ProductUnderstanding | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class SupplierOption(StrictModel):

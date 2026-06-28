@@ -31,7 +31,14 @@ class Settings:
     benchmark_max_providers_parallel: int = 8
     search_results_per_query: int = 10
     search_queries_per_region: int = 4
+    search_queries_per_group: int = 4
     max_raw_sources_per_provider: int = 20
+
+    @property
+    def effective_search_queries_per_group(self) -> int:
+        if self.search_queries_per_group == 4 and self.search_queries_per_region != 4:
+            return self.search_queries_per_region
+        return self.search_queries_per_group
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -77,6 +84,15 @@ class Settings:
             search_queries_per_region=_read_int(
                 "SEARCH_QUERIES_PER_REGION",
                 default=4,
+                minimum=1,
+            ),
+            search_queries_per_group=_read_int(
+                "SEARCH_QUERIES_PER_GROUP",
+                default=_read_int(
+                    "SEARCH_QUERIES_PER_REGION",
+                    default=4,
+                    minimum=1,
+                ),
                 minimum=1,
             ),
             max_raw_sources_per_provider=_read_int(

@@ -16,6 +16,17 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.gemini_intent_api_key, "")
         self.assertEqual(settings.benchmark_provider_timeout_seconds, 45)
         self.assertEqual(settings.max_raw_sources_per_provider, 20)
+        self.assertEqual(settings.effective_search_queries_per_group, 4)
+
+    def test_direct_region_override_is_still_used_as_group_limit(self) -> None:
+        settings = Settings(
+            gemini_api_key="test-gemini",
+            gemini_model="gemini-3.1-flash-lite",
+            analysis_timeout_seconds=45,
+            search_queries_per_region=1,
+        )
+
+        self.assertEqual(settings.effective_search_queries_per_group, 1)
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("app.config.load_dotenv")
@@ -28,6 +39,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.benchmark_max_providers_parallel, 8)
         self.assertEqual(settings.search_results_per_query, 10)
         self.assertEqual(settings.search_queries_per_region, 4)
+        self.assertEqual(settings.search_queries_per_group, 4)
         self.assertEqual(settings.max_raw_sources_per_provider, 20)
 
     @patch.dict(
@@ -51,6 +63,7 @@ class SettingsTests(unittest.TestCase):
             "BENCHMARK_MAX_PROVIDERS_PARALLEL": "3",
             "SEARCH_RESULTS_PER_QUERY": "7",
             "SEARCH_QUERIES_PER_REGION": "2",
+            "SEARCH_QUERIES_PER_GROUP": "5",
             "MAX_RAW_SOURCES_PER_PROVIDER": "11",
         },
         clear=True,
@@ -76,7 +89,15 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.benchmark_max_providers_parallel, 3)
         self.assertEqual(settings.search_results_per_query, 7)
         self.assertEqual(settings.search_queries_per_region, 2)
+        self.assertEqual(settings.search_queries_per_group, 5)
         self.assertEqual(settings.max_raw_sources_per_provider, 11)
+
+    @patch.dict(os.environ, {"SEARCH_QUERIES_PER_REGION": "3"}, clear=True)
+    @patch("app.config.load_dotenv")
+    def test_search_queries_per_group_falls_back_to_region_name(self, _load_dotenv_mock) -> None:
+        settings = Settings.from_env()
+
+        self.assertEqual(settings.search_queries_per_group, 3)
 
     @patch.dict(os.environ, {"BENCHMARK_MAX_PROVIDERS_PARALLEL": "not-an-integer"}, clear=True)
     @patch("app.config.load_dotenv")

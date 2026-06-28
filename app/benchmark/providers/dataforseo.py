@@ -52,7 +52,7 @@ class DataForSEOAdapter(SearchProviderAdapter):
         try:
             async with self._client_factory() as client:
                 for region, query_list in query_groups:
-                    location_name = "China" if region == "china" else "Tunisia"
+                    location_name = "China" if region in {"china", "china_sourcing"} else "Tunisia"
                     for query in query_list:
                         response = await client.post(
                             "https://api.dataforseo.com/v3/serp/google/organic/live/regular",

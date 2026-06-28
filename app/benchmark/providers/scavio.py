@@ -45,7 +45,7 @@ class ScavioAdapter(SearchProviderAdapter):
         try:
             async with self._client_factory() as client:
                 for region, query_list in query_groups:
-                    country_code = "cn" if region == "china" else "tn"
+                    country_code = "cn" if region in {"china", "china_sourcing"} else "tn"
                     for query in query_list:
                         response = await client.post(
                             "https://api.scavio.dev/api/v1/google",

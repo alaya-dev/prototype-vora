@@ -14,6 +14,7 @@ from app.benchmark.schemas import (
 )
 from app.config import Settings
 from app.schemas import IntentResult
+from app.schemas import ProductUnderstanding
 from app.services.gemini_client import GeminiClientError
 
 
@@ -62,7 +63,12 @@ class FakeAdapter(SearchProviderAdapter):
     production_risk = "medium"
     cost_notes = "Fake cost notes."
 
-    async def search(self, product: str) -> ProviderEvidence:
+    def __init__(self, settings: Settings) -> None:
+        super().__init__(settings)
+        self.seen_product = None
+
+    async def search(self, product) -> ProviderEvidence:
+        self.seen_product = product
         return ProviderEvidence(
             provider_id=self.provider_id,
             sources=[
@@ -139,20 +145,30 @@ class BenchmarkPipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(response.intent.is_valid_product)
 
     async def test_gemini_analysis_used_for_evidence_provider(self) -> None:
+        product_understanding = ProductUnderstanding(
+            original_product="lamp",
+            normalized_product="LED lamp",
+            product_category="lighting",
+            english_search_name="LED lamp",
+            french_search_name="lampe LED",
+            must_include_terms=["LED"],
+        )
         intent = RecordingIntentClient(
             IntentResult(
                 is_valid_product=True,
                 normalized_product="lamp",
                 reason="Valid.",
+                product_understanding=product_understanding,
             )
         )
         analysis = RecordingAnalysisClient(
             ProviderAnalysisResult(market_summary="Analyzed.")
         )
+        adapter = FakeAdapter(_settings())
         pipeline = BenchmarkPipeline(
             intent,
             analysis,
-            {"fake": FakeAdapter(_settings())},
+            {"fake": adapter},
             _settings(),
         )
 
@@ -162,6 +178,8 @@ class BenchmarkPipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(analysis.calls, 1)
         self.assertEqual(response.runs[0].gemini_analysis_calls, 1)
         self.assertEqual(response.runs[0].provider_api_calls, 2)
+        self.assertIs(adapter.seen_product, product_understanding)
+        self.assertEqual(response.intent.product_understanding.french_search_name, "lampe LED")
 
     async def test_perplexity_does_not_use_gemini_analysis(self) -> None:
         intent = RecordingIntentClient(

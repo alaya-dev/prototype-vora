@@ -576,6 +576,7 @@ function renderComparison(summary, intent) {
 
   comparisonPanel.innerHTML = `
     <h2>Comparison Summary</h2>
+    ${renderProductUnderstanding(intent)}
     <div class="comparison-grid">
       ${metric("Fastest provider", escapeHtml(summary.fastest_provider || "None"))}
       ${metric("Most Tunisian results", escapeHtml(summary.most_tunisian_results || "None"))}
@@ -584,6 +585,30 @@ function renderComparison(summary, intent) {
       ${metric("Most complete provider", escapeHtml(summary.most_complete_provider || "None"))}
       ${metric("Lowest cost risk", escapeHtml(summary.lowest_cost_risk || "None"))}
       ${metric("Notes", escapeHtml(summary.notes || "No notes"))}
+    </div>
+  `;
+}
+
+function renderProductUnderstanding(intent) {
+  const product = intent?.product_understanding;
+  if (!product) {
+    return "";
+  }
+  const questions = product.specification_questions?.length
+    ? product.specification_questions.map((question) => `<div>${escapeHtml(question)}</div>`).join("")
+    : "None";
+  return `
+    <div class="stack">
+      <div class="section-title">Product understanding</div>
+      <div class="comparison-grid">
+        ${metric("Original product", escapeHtml(product.original_product || ""))}
+        ${metric("English search name", escapeHtml(product.english_search_name || ""))}
+        ${metric("French search name", escapeHtml(product.french_search_name || ""))}
+        ${metric("Category", escapeHtml(product.product_category || "Not detected"))}
+        ${metric("Brand/model", escapeHtml(product.brand_or_model || "Not detected"))}
+        ${metric("Needs more specification", product.needs_more_specification ? "Yes" : "No")}
+        ${metric("Specification questions", questions)}
+      </div>
     </div>
   `;
 }
@@ -627,12 +652,16 @@ function renderResults(runs, intent) {
 
         <div class="supplier-grid">
           <div class="stack">
-            <div class="section-title">Tunisia local market prices</div>
-            ${renderSuppliers(run.tunisia_cheapest_suppliers, "tnd")}
+            <div class="section-title">China sourcing prices</div>
+            ${renderSourcingOffers(run.china_sourcing_offers || run.china_cheapest_suppliers, "usd")}
           </div>
           <div class="stack">
-            <div class="section-title">China wholesale product prices</div>
-            ${renderSuppliers(run.china_cheapest_suppliers, "usd")}
+            <div class="section-title">Tunisia sourcing prices</div>
+            ${renderSourcingOffers(run.tunisia_sourcing_offers || run.tunisia_cheapest_suppliers, "tnd")}
+          </div>
+          <div class="stack">
+            <div class="section-title">Tunisia retail market</div>
+            ${renderRetailMarket(run.tunisia_retail_market)}
           </div>
         </div>
 
@@ -660,8 +689,11 @@ function renderResults(runs, intent) {
   `).join("");
 }
 
-function renderSuppliers(suppliers, currencyMode) {
+function renderSourcingOffers(suppliers, currencyMode) {
   if (!suppliers || suppliers.length === 0) {
+    if (currencyMode === "tnd") {
+      return '<div class="source-empty">No reliable Tunisian wholesale sourcing offer was found for this product.</div>';
+    }
     return '<div class="source-empty">No validated results.</div>';
   }
   return suppliers.map((supplier) => `
@@ -682,6 +714,52 @@ function renderSuppliers(suppliers, currencyMode) {
         ${currencyMode === "usd" ? `<div><strong>MOQ evidence:</strong> ${escapeHtml(supplier.moq_evidence || "not_found")}</div>` : ""}
         <div><strong>Notes:</strong> ${escapeHtml(supplier.notes || "None")}</div>
         <div><strong>Source:</strong> ${supplier.source_url ? `<a href="${escapeAttribute(supplier.source_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(supplier.source_url)}</a>` : "No source URL"}</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderRetailMarket(market) {
+  if (!market) {
+    return '<div class="source-empty">No Tunisia retail market evidence.</div>';
+  }
+  return `
+    <div class="supplier-card">
+      <h3>Retail market metrics</h3>
+      <div class="supplier-meta">
+        <div><strong>Retail min:</strong> ${escapeHtml(market.price_min_tnd ?? "Not found")}</div>
+        <div><strong>Retail max:</strong> ${escapeHtml(market.price_max_tnd ?? "Not found")}</div>
+        <div><strong>Retail average:</strong> ${escapeHtml(market.price_avg_tnd ?? "Not found")}</div>
+        <div><strong>seller_density:</strong> ${escapeHtml(market.seller_density || "unknown")}</div>
+        <div><strong>unique_sellers_count:</strong> ${escapeHtml(String(market.unique_sellers_count ?? 0))}</div>
+        <div><strong>retail_sources_count:</strong> ${escapeHtml(String(market.retail_sources_count ?? 0))}</div>
+        <div><strong>Competition notes:</strong> ${escapeHtml(market.competition_notes || "None")}</div>
+        <div><strong>Availability notes:</strong> ${escapeHtml(market.availability_notes || "None")}</div>
+      </div>
+    </div>
+    ${renderRetailOffers(market.retail_offers)}
+  `;
+}
+
+function renderRetailOffers(offers) {
+  if (!offers || offers.length === 0) {
+    return '<div class="source-empty">No validated retail offers.</div>';
+  }
+  return offers.map((offer) => `
+    <div class="supplier-card">
+      <h3>${escapeHtml(offer.seller_name || "Retail seller")}</h3>
+      <div class="supplier-meta">
+        <div><strong>Rank:</strong> ${escapeHtml(String(offer.rank ?? ""))}</div>
+        <div><strong>Seller type:</strong> ${escapeHtml(offer.seller_type || "unknown")}</div>
+        <div><strong>Product:</strong> ${escapeHtml(offer.product_title || "Not provided")}</div>
+        <div><strong>Price:</strong> ${escapeHtml(offer.price_range_tnd || "Not found")}</div>
+        <div><strong>Evidence level:</strong> ${escapeHtml(offer.evidence_level || "weak")}</div>
+        <div><strong>Confidence:</strong> ${escapeHtml(offer.confidence || "low")}</div>
+        <div><strong>product_match:</strong> ${escapeHtml(offer.product_match || "broad")}</div>
+        <div><strong>match_notes:</strong> ${escapeHtml(offer.match_notes || "None")}</div>
+        <div><strong>Price evidence:</strong> ${escapeHtml(offer.price_evidence || "not_found")}</div>
+        <div><strong>Notes:</strong> ${escapeHtml(offer.notes || "None")}</div>
+        <div><strong>Source:</strong> ${offer.source_url ? `<a href="${escapeAttribute(offer.source_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(offer.source_url)}</a>` : "No source URL"}</div>
       </div>
     </div>
   `).join("");

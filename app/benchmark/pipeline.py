@@ -62,8 +62,9 @@ class BenchmarkPipeline:
 
         selected_ids = provider_ids or list(self.providers.keys())
         semaphore = asyncio.Semaphore(self.settings.benchmark_max_providers_parallel)
+        benchmark_product = intent.product_understanding or intent.normalized_product
         tasks = [
-            self._run_with_semaphore(semaphore, provider_id, intent.normalized_product)
+            self._run_with_semaphore(semaphore, provider_id, benchmark_product)
             for provider_id in selected_ids
         ]
         runs = await asyncio.gather(*tasks)
@@ -110,8 +111,9 @@ class BenchmarkPipeline:
             status = "success"
             if (
                 validated.warnings
-                or len(validated.tunisia_cheapest_suppliers) < 3
-                or len(validated.china_cheapest_suppliers) < 3
+                or len(validated.china_sourcing_offers) < 3
+                or len(validated.tunisia_sourcing_offers) < 3
+                or len(validated.tunisia_retail_market.retail_offers) == 0
             ):
                 status = "partial"
             return self._build_run(
@@ -182,6 +184,9 @@ class BenchmarkPipeline:
             cost_notes=provider.cost_notes,
             production_risk=provider.production_risk,
             market_summary=analysis.market_summary,
+            china_sourcing_offers=analysis.china_sourcing_offers,
+            tunisia_sourcing_offers=analysis.tunisia_sourcing_offers,
+            tunisia_retail_market=analysis.tunisia_retail_market,
             tunisia_cheapest_suppliers=analysis.tunisia_cheapest_suppliers,
             china_cheapest_suppliers=analysis.china_cheapest_suppliers,
             research_sources=analysis.research_sources,

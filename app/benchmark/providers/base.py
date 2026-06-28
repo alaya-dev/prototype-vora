@@ -90,10 +90,11 @@ def prioritized_query_groups(
     product: str,
     settings: Settings,
 ) -> list[tuple[str, list[str]]]:
-    queries = build_regional_queries(product, settings.search_queries_per_region)
+    queries = build_regional_queries(product, settings.effective_search_queries_per_group)
     return [
-        ("china", queries.china),
-        ("tunisia", queries.tunisia),
+        ("china_sourcing", queries.china_sourcing),
+        ("tunisia_sourcing", queries.tunisia_sourcing),
+        ("tunisia_retail", queries.tunisia_retail),
     ]
 
 
@@ -106,9 +107,18 @@ def can_stop_after_source_cap(
     if settings.max_raw_sources_per_provider <= 1:
         return True
 
-    has_china = any(source.region_hint == "china" for source in sources)
-    has_tunisia = any(source.region_hint == "tunisia" for source in sources)
-    return has_china and has_tunisia
+    required_groups = ["china_sourcing", "tunisia_sourcing", "tunisia_retail"][
+        : min(settings.max_raw_sources_per_provider, 3)
+    ]
+    aliases = {
+        "china_sourcing": {"china", "china_sourcing"},
+        "tunisia_sourcing": {"tunisia_sourcing"},
+        "tunisia_retail": {"tunisia", "tunisia_retail"},
+    }
+    return all(
+        any(source.region_hint in aliases[group] for source in sources)
+        for group in required_groups
+    )
 
 
 def cap_sources_balanced(
@@ -118,14 +128,21 @@ def cap_sources_balanced(
     if maximum <= 0 or len(sources) <= maximum:
         return sources[: max(0, maximum)]
 
-    buckets = {"tunisia": [], "china": [], "unknown": []}
+    buckets = {
+        "china_sourcing": [],
+        "china": [],
+        "tunisia_sourcing": [],
+        "tunisia_retail": [],
+        "tunisia": [],
+        "unknown": [],
+    }
     for source in sources:
         buckets.setdefault(source.region_hint, []).append(source)
 
     selected: list[ProviderRawSource] = []
     while len(selected) < maximum:
         progressed = False
-        for region in ("china", "tunisia", "unknown"):
+        for region in ("china_sourcing", "china", "tunisia_sourcing", "tunisia_retail", "tunisia", "unknown"):
             bucket = buckets.get(region, [])
             if not bucket or len(selected) >= maximum:
                 continue

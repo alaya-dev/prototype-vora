@@ -30,8 +30,23 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("runAllConfigured", self.html)
 
     def test_market_result_labels_are_product_price_focused(self) -> None:
-        self.assertIn("Tunisia local market prices", self.html)
-        self.assertIn("China wholesale product prices", self.html)
+        self.assertIn("China sourcing prices", self.html)
+        self.assertIn("Tunisia sourcing prices", self.html)
+        self.assertIn("Tunisia retail market", self.html)
         self.assertIn("Product offer", self.html)
+        self.assertIn("seller_density", self.html)
+        self.assertIn("unique_sellers_count", self.html)
         self.assertIn("product_match", self.html)
         self.assertIn("match_notes", self.html)
+
+    def test_product_understanding_is_visible(self) -> None:
+        self.assertIn("Product understanding", self.html)
+        self.assertIn("English search name", self.html)
+        self.assertIn("French search name", self.html)
+        self.assertIn("Specification questions", self.html)
+
+    def test_empty_tunisia_sourcing_has_clean_message(self) -> None:
+        self.assertIn(
+            "No reliable Tunisian wholesale sourcing offer was found for this product.",
+            self.html,
+        )
