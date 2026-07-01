@@ -10,6 +10,7 @@ from app.benchmark.providers.perplexity import PerplexitySonarAdapter
 from app.benchmark.providers.scavio import ScavioAdapter
 from app.benchmark.providers.searxng import SearXNGAdapter
 from app.benchmark.providers.serper import SerperAdapter
+from app.benchmark.providers.tavily import TavilyAdapter
 from app.benchmark.providers.base import ProviderAdapterError, ProviderNotConfiguredError
 from app.benchmark.schemas import ProviderAnalysisResult
 from app.config import Settings
@@ -633,6 +634,49 @@ class ProviderAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(str(context.exception), "DataForSEO + Gemini request failed.")
         self.assertNotIn("bad auth", str(context.exception))
         self.assertNotIn("dfs-password", str(context.exception))
+
+    async def test_tavily_normalizes_search_results_and_images(self) -> None:
+        adapter = TavilyAdapter(
+            _settings(
+                tavily_api_key="tvly-key",
+                gemini_analysis_api_key="analysis",
+            )
+        )
+        adapter._client_factory = lambda: FakeHttpClient(
+            [
+                FakeResponse(
+                    {
+                        "results": [
+                            {
+                                "title": "CN listing",
+                                "url": "https://cn.example/item",
+                                "content": "US$4 MOQ 100",
+                                "raw_content": "# listing",
+                                "images": [{"url": "https://cn.example/t9.jpg"}],
+                            }
+                        ],
+                        "usage": {"credits": 1},
+                    }
+                ),
+                FakeResponse({"results": [], "usage": {"credits": 1}}),
+                FakeResponse({"results": [], "usage": {"credits": 1}}),
+            ]
+        )
+        adapter.settings = adapter.settings.__class__(
+            **{
+                **adapter.settings.__dict__,
+                "search_queries_per_region": 1,
+                "search_results_per_query": 3,
+            }
+        )
+
+        evidence = await adapter.search("wireless earbuds")
+
+        self.assertEqual(evidence.provider_api_calls, 3)
+        self.assertEqual(evidence.raw_queries_count, 3)
+        self.assertEqual(evidence.sources[0].snippet, "US$4 MOQ 100")
+        self.assertEqual(evidence.sources[0].content, "# listing")
+        self.assertEqual(evidence.sources[0].region_hint, "china_sourcing")
 
     async def test_perplexity_returns_analysis_without_gemini(self) -> None:
         adapter = PerplexitySonarAdapter(_settings(perplexity_api_key="pplx"))

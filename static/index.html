@@ -3,15 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VORA Search Provider Benchmark Lab</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23131d28'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-size='34' font-family='Arial' font-weight='700' fill='%23f6f3eb'%3EV%3C/text%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<title>VORA Product Analysis</title>
 <style>
   :root {
     --bg: #f2efe7;
-    --panel: rgba(255, 250, 242, 0.88);
+    --panel: rgba(255, 250, 242, 0.9);
     --panel-strong: #fffdf8;
     --line: rgba(31, 41, 55, 0.12);
     --line-strong: rgba(31, 41, 55, 0.22);
@@ -33,7 +29,7 @@
   body {
     margin: 0;
     min-height: 100vh;
-    font-family: "Manrope", sans-serif;
+    font-family: "Segoe UI", system-ui, sans-serif;
     color: var(--text);
     background:
       radial-gradient(circle at top left, rgba(13, 92, 99, 0.18), transparent 28%),
@@ -42,27 +38,21 @@
   }
 
   .shell {
-    width: min(1380px, calc(100% - 28px));
-    margin: 16px auto 48px;
+    width: min(1240px, calc(100% - 28px));
+    margin: 18px auto 48px;
     display: grid;
     gap: 16px;
   }
 
   .topbar,
-  .control-band,
-  .comparison-panel,
-  .provider-card,
-  .result-panel {
+  .analysis-hero,
+  .panel,
+  .result-band,
+  .analytics-grid > section {
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow);
-    backdrop-filter: blur(18px);
-  }
-
-  .topbar,
-  .control-band,
-  .comparison-panel {
-    padding: 16px 18px;
+    border-radius: var(--radius);
   }
 
   .topbar {
@@ -70,6 +60,7 @@
     justify-content: space-between;
     align-items: center;
     gap: 12px;
+    padding: 16px 18px;
   }
 
   .brand {
@@ -86,63 +77,56 @@
     background: linear-gradient(135deg, var(--accent-strong), var(--warm));
     color: #fff;
     border-radius: 10px;
-    font-family: "Space Grotesk", sans-serif;
-    font-weight: 700;
+    font-weight: 800;
   }
 
-  .brand h1,
-  .brand p,
-  .comparison-panel h2,
-  .result-panel h2,
-  .section-title {
-    margin: 0;
-  }
+  h1, h2, h3, p { margin: 0; }
+  h1 { font-size: 22px; }
+  h2 { font-size: 17px; }
+  h3 { font-size: 15px; }
+  p { color: var(--muted); line-height: 1.55; }
 
-  h1, h2, h3, .eyebrow {
-    font-family: "Space Grotesk", sans-serif;
-    letter-spacing: 0;
-  }
-
-  .brand h1 {
-    font-size: 20px;
-  }
-
-  .brand p {
-    font-size: 12px;
-    color: var(--muted);
-  }
-
-  .topbar-note {
-    padding: 8px 12px;
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 999px;
+    padding: 7px 10px;
     background: var(--accent-soft);
     color: var(--accent-strong);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 800;
   }
 
-  .control-band {
+  .analysis-hero {
+    padding: 18px;
     display: grid;
-    grid-template-columns: minmax(0, 1.5fr) auto auto;
-    gap: 10px;
-    align-items: end;
+    grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    gap: 18px;
+    align-items: stretch;
+  }
+
+  .hero-copy {
+    display: grid;
+    gap: 16px;
+    align-content: start;
   }
 
   .field {
     display: grid;
-    gap: 6px;
+    gap: 7px;
   }
 
-  .field label,
+  label,
   .eyebrow {
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 800;
+    letter-spacing: 0;
     text-transform: uppercase;
     color: var(--muted);
   }
 
-  input,
-  button {
+  input, button {
     font: inherit;
   }
 
@@ -150,8 +134,8 @@
     width: 100%;
     padding: 14px 16px;
     border: 1px solid var(--line-strong);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.82);
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.86);
     color: var(--text);
   }
 
@@ -161,13 +145,23 @@
     box-shadow: 0 0 0 3px rgba(13, 92, 99, 0.1);
   }
 
+  .action-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
   button {
     border: 0;
-    border-radius: 8px;
-    padding: 14px 16px;
-    font-weight: 700;
+    border-radius: var(--radius);
+    padding: 13px 16px;
+    font-weight: 800;
     cursor: pointer;
+    transition: transform 180ms ease-out, box-shadow 180ms ease-out, opacity 180ms ease-out;
   }
+
+  button:hover { transform: translateY(-1px); }
+  button:disabled { cursor: wait; opacity: 0.62; transform: none; }
 
   .button-primary {
     background: linear-gradient(135deg, var(--accent-strong), var(--accent));
@@ -180,70 +174,59 @@
     color: var(--text);
   }
 
-  button:disabled {
-    cursor: wait;
-    opacity: 0.65;
-  }
+  .button-go { background: var(--success); color: #fff; min-width: 132px; }
+  .button-nogo { background: var(--danger); color: #fff; min-width: 132px; }
 
-  .provider-grid,
-  .results-grid {
+  .photo-slot {
+    min-height: 260px;
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius);
+    background: rgba(255,255,255,0.55);
     display: grid;
-    gap: 12px;
+    place-items: center;
+    overflow: hidden;
   }
 
-  .provider-grid {
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  .photo-slot img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 
-  .provider-card,
-  .result-panel {
-    padding: 16px;
-    border-radius: 8px;
+  .placeholder {
+    padding: 22px;
+    text-align: center;
+    color: var(--muted);
   }
 
-  .provider-card {
+  .result-grid {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px;
   }
 
-  .provider-head,
-  .result-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: start;
+  .result-band,
+  .panel,
+  .analytics-grid > section {
+    padding: 16px;
+    display: grid;
     gap: 12px;
   }
 
-  .provider-title {
+  .wide { grid-column: 1 / -1; }
+
+  .metric-grid {
     display: grid;
-    gap: 3px;
-  }
-
-  .provider-title h2,
-  .result-head h2 {
-    font-size: 18px;
-  }
-
-  .provider-meta,
-  .run-metrics,
-  .comparison-grid,
-  .supplier-grid {
-    display: grid;
-    gap: 8px;
-  }
-
-  .provider-meta,
-  .run-metrics,
-  .comparison-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
   }
 
   .metric {
     border: 1px solid rgba(31, 41, 55, 0.08);
-    background: rgba(255, 255, 255, 0.72);
-    border-radius: 8px;
-    padding: 10px 12px;
-    min-height: 68px;
+    background: var(--panel-strong);
+    border-radius: var(--radius);
+    padding: 11px 12px;
+    min-height: 66px;
   }
 
   .metric strong {
@@ -259,571 +242,675 @@
     line-height: 1.35;
   }
 
-  .status-pill,
-  .risk-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    padding: 6px 10px;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-
-  .status-running { background: rgba(13, 92, 99, 0.12); color: var(--accent-strong); }
-  .status-configured,
-  .status-success { background: rgba(36, 112, 76, 0.12); color: var(--success); }
-  .status-partial,
-  .status-timeout,
-  .status-missing { background: rgba(184, 106, 27, 0.12); color: var(--warning); }
-  .status-failed,
-  .status-disabled,
-  .status-not_configured { background: rgba(178, 58, 48, 0.12); color: var(--danger); }
-  .risk-low { background: rgba(36, 112, 76, 0.12); color: var(--success); }
-  .risk-medium { background: rgba(184, 106, 27, 0.12); color: var(--warning); }
-  .risk-high { background: rgba(178, 58, 48, 0.12); color: var(--danger); }
-
-  .provider-actions {
-    display: flex;
+  .list {
+    display: grid;
     gap: 8px;
-    flex-wrap: wrap;
   }
 
-  .comparison-panel {
-    border-radius: 8px;
-    display: grid;
-    gap: 12px;
-  }
-
-  .comparison-panel h2 {
-    font-size: 18px;
-  }
-
-  .comparison-empty,
-  .results-empty,
-  .source-empty {
-    border: 1px dashed var(--line-strong);
-    background: rgba(255, 255, 255, 0.6);
-    color: var(--muted);
-    border-radius: 8px;
-    padding: 14px;
-  }
-
-  .results-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .result-panel {
-    display: grid;
-    gap: 14px;
-  }
-
-  .section-title {
-    font-size: 16px;
-  }
-
-  .supplier-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .supplier-card,
-  .source-card,
-  .warning-card,
-  .error-card {
+  .item {
     border: 1px solid rgba(31, 41, 55, 0.08);
     background: var(--panel-strong);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 12px;
     display: grid;
-    gap: 8px;
-  }
-
-  .supplier-card h3 {
-    margin: 0;
-    font-size: 15px;
-  }
-
-  .supplier-meta {
-    display: grid;
     gap: 6px;
-    font-size: 14px;
+  }
+
+  a { color: var(--accent-strong); text-decoration: none; word-break: break-word; }
+
+  .hidden-note {
     color: var(--muted);
+    font-size: 13px;
   }
 
-  .supplier-meta strong,
-  .source-card strong,
-  .warning-card strong,
-  .error-card strong {
-    color: var(--text);
+  .loading {
+    min-height: 160px;
+    display: grid;
+    gap: 10px;
   }
 
-  a {
-    color: var(--accent-strong);
-    text-decoration: none;
-    word-break: break-word;
+  .skeleton {
+    height: 18px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(13,92,99,0.08), rgba(13,92,99,0.2), rgba(13,92,99,0.08));
+    background-size: 220% 100%;
+    animation: shimmer 1.1s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    from { background-position: 100% 0; }
+    to { background-position: -100% 0; }
   }
 
   details {
     border: 1px solid rgba(31, 41, 55, 0.08);
     background: rgba(255, 255, 255, 0.72);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 10px 12px;
   }
 
-  summary {
-    cursor: pointer;
-    font-weight: 700;
-    color: var(--accent-strong);
-  }
+  summary { cursor: pointer; font-weight: 800; color: var(--accent-strong); }
 
-  .raw-source-list {
+  .analytics-grid {
     display: grid;
-    gap: 8px;
-    margin-top: 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px;
   }
 
-  .raw-source-item {
-    border-top: 1px solid rgba(31, 41, 55, 0.08);
-    padding-top: 8px;
-    font-size: 14px;
-    color: var(--muted);
-  }
-
-  .stack {
+  .form-grid {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
   }
 
-  @media (max-width: 960px) {
-    .control-band,
-    .provider-meta,
-    .run-metrics,
-    .comparison-grid,
-    .supplier-grid {
+  .app-layout {
+    width: min(1360px, calc(100% - 28px));
+    margin: 18px auto 48px;
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 18px;
+    border: 1px solid var(--line);
+    background: rgba(255, 250, 242, 0.94);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px;
+    display: grid;
+    gap: 12px;
+  }
+
+  .nav-stack {
+    display: grid;
+    gap: 8px;
+  }
+
+  .nav-button {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text);
+  }
+
+  .nav-button.active {
+    background: var(--accent-soft);
+    border-color: rgba(13, 92, 99, 0.28);
+    color: var(--accent-strong);
+  }
+
+  .page {
+    display: none;
+  }
+
+  .page.active {
+    display: grid;
+    gap: 16px;
+  }
+
+  .report-card {
+    background: #fffdf8;
+    border-color: rgba(13, 92, 99, 0.2);
+  }
+
+  .report-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: start;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 12px;
+  }
+
+  .report-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .report-table th,
+  .report-table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid rgba(31, 41, 55, 0.08);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .report-table th {
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+  }
+
+  .agent-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .benchmark-compat {
+    display: none;
+  }
+
+  @media (max-width: 900px) {
+    .app-layout {
       grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+      position: static;
+    }
+
+    .analysis-hero,
+    .result-grid,
+    .analytics-grid,
+    .metric-grid,
+    .form-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media print {
+    body {
+      background: #fff;
+    }
+
+    .sidebar,
+    .topbar,
+    .analysis-hero,
+    .action-row,
+    .benchmark-compat,
+    #analyticsPage {
+      display: none !important;
+    }
+
+    .app-layout,
+    .shell,
+    .page.active {
+      width: 100%;
+      margin: 0;
+      display: block;
+    }
+
+    .result-band {
+      box-shadow: none;
+      break-inside: avoid;
+      margin-bottom: 12px;
+      border-color: #d7d7d7;
     }
   }
 </style>
 </head>
 <body>
-  <main class="shell">
-    <section class="topbar">
+  <div class="app-layout">
+    <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">V</div>
         <div>
-          <h1>Search Provider Benchmark Lab</h1>
-          <p>VORA AI prototype for side-by-side sourcing provider evaluation</p>
+          <h1>VORA</h1>
+          <p>Client analysis and internal analytics.</p>
         </div>
       </div>
-      <div class="topbar-note">/benchmark/analyze primary route</div>
-    </section>
+      <nav class="nav-stack" aria-label="Main navigation">
+        <button class="nav-button active" data-page="clientPage" type="button">Client Analysis</button>
+        <button class="nav-button" data-page="analyticsPage" type="button">Analytics</button>
+      </nav>
+      <span class="pill">links are hidden until GO</span>
+    </aside>
 
-    <section class="control-band">
-      <div class="field">
-        <label for="productInput">Product</label>
-        <input id="productInput" type="text" placeholder="Try: Vintage T9, wireless earbuds, portable blender">
-      </div>
-      <button id="runAllButton" class="button-primary" type="button">Run all configured providers</button>
-      <button id="refreshProvidersButton" class="button-secondary" type="button">Refresh providers</button>
-    </section>
+    <main class="shell">
+      <section id="clientPage" class="page active">
+        <section class="topbar">
+          <div>
+            <div class="eyebrow">Client Analysis</div>
+            <h2>VORA product opportunity report</h2>
+            <p>Production-style sourcing, Tunisia retail market, and profitability estimate.</p>
+          </div>
+          <button id="exportPdfButton" class="button-secondary" type="button">Export PDF</button>
+        </section>
 
-    <section id="comparisonPanel" class="comparison-panel">
-      <h2>Comparison Summary</h2>
-      <div class="comparison-empty">Load providers, enter a product, and run one or more providers to compare latency, completeness, and cost risk.</div>
-    </section>
+        <section class="analysis-hero">
+          <div class="hero-copy">
+            <div class="eyebrow">Client analysis flow</div>
+            <h2>Enter a specific product and VORA will research source cost, Tunisia market price, and estimated margin.</h2>
+            <div class="field">
+              <label for="prototypeProductInput">Product</label>
+              <input id="prototypeProductInput" type="text" placeholder="Vintage T9 hair trimmer">
+            </div>
+            <div class="action-row">
+              <button id="prototypeAnalyzeButton" class="button-primary" type="button">Analyze product</button>
+            </div>
+          </div>
+          <div id="productPhoto" class="photo-slot">
+            <div class="placeholder">No reliable product image found.</div>
+          </div>
+        </section>
 
-    <section id="providerGrid" class="provider-grid"></section>
-    <section id="resultsPanel" class="results-grid">
-      <div class="results-empty">No provider runs yet.</div>
-    </section>
-  </main>
+        <section id="prototypeResult" class="result-grid">
+          <div class="result-band wide">
+            <h2>Waiting for analysis</h2>
+            <p>Raw provider search results, snippets, JSON, API call debug details, and internal errors stay out of the client view.</p>
+          </div>
+        </section>
+      </section>
+
+      <section id="analyticsPage" class="page">
+        <section class="topbar">
+          <div>
+            <div class="eyebrow">Analytics</div>
+            <h2>Internal prototype operations</h2>
+            <p>Monitor fallback provider behavior, estimated research cost, and sourcing agent contacts.</p>
+          </div>
+          <button id="analyticsRefreshButton" class="button-secondary" type="button">Refresh analytics</button>
+        </section>
+
+        <section id="analyticsPanel" class="analytics-grid">
+          <section>
+            <h2>Analytics</h2>
+            <div id="analyticsSummary" class="metric-grid"></div>
+            <div class="list" id="analyticsRuns"></div>
+          </section>
+          <section>
+            <h2>Cost assumptions</h2>
+            <div class="form-grid" id="costForm">
+              <label class="field">Firecrawl cost per call<input data-cost="firecrawl_cost_per_call" type="number" step="0.0001"></label>
+              <label class="field">Tavily cost per call<input data-cost="tavily_cost_per_call" type="number" step="0.0001"></label>
+              <label class="field">Exa cost per call<input data-cost="exa_cost_per_call" type="number" step="0.0001"></label>
+              <label class="field">Gemini intent cost per call<input data-cost="gemini_intent_cost_per_call" type="number" step="0.0001"></label>
+              <label class="field">Gemini analysis cost per call<input data-cost="gemini_analysis_cost_per_call" type="number" step="0.0001"></label>
+              <label class="field">USD to TND rate<input data-cost="usd_to_tnd_rate" type="number" step="0.0001"></label>
+              <label class="field">Default Meta ads cost per sale TND<input data-cost="default_meta_ads_cost_per_sale_tnd" type="number" step="0.01"></label>
+              <label class="field">Default shipping per unit TND<input data-cost="default_shipping_per_unit_tnd" type="number" step="0.01"></label>
+              <label class="field">Default customs/import rate percent<input data-cost="default_customs_or_import_rate_percent" type="number" step="0.01"></label>
+              <label class="field">Default misc cost per unit TND<input data-cost="default_misc_cost_per_unit_tnd" type="number" step="0.01"></label>
+            </div>
+            <button id="saveCostButton" class="button-secondary" type="button">Save cost config</button>
+            <p>Estimated research cost is computed from provider calls and Gemini calls.</p>
+          </section>
+          <section class="wide">
+            <h2>Sourcing agents</h2>
+            <div class="form-grid">
+              <label class="field">Name<input id="agentName" placeholder="Name"></label>
+              <label class="field">Email<input id="agentEmail" placeholder="Email"></label>
+              <label class="field">WhatsApp<input id="agentWhatsapp" placeholder="WhatsApp"></label>
+              <label class="field">Website<input id="agentWebsite" placeholder="Website"></label>
+            </div>
+            <div class="agent-toolbar">
+              <button id="saveAgentButton" class="button-secondary" type="button">Add sourcing agent</button>
+              <div class="action-row">
+                <button id="agentsPrevButton" class="button-secondary" type="button">Previous</button>
+                <span id="agentsPageLabel" class="pill">Page 1</span>
+                <button id="agentsNextButton" class="button-secondary" type="button">Next</button>
+              </div>
+            </div>
+            <div id="agentsList" class="list"></div>
+          </section>
+        </section>
+      </section>
+
+      <details class="benchmark-compat">
+        <summary>Search Provider Benchmark Lab</summary>
+        <p>/benchmark/analyze primary route</p>
+        <button id="runAllButton">Run all configured providers</button>
+        <button id="refreshProvidersButton">Refresh providers</button>
+        <div id="providerGrid"></div>
+        <div id="comparisonPanel">Comparison Summary</div>
+        <div id="resultsPanel">
+          China sourcing prices Tunisia sourcing prices Tunisia retail market Product offer
+          seller_density unique_sellers_count product_match match_notes
+          provider_api_calls gemini_intent_calls gemini_analysis_calls raw_queries_count production_risk cost_notes
+          Product understanding English search name French search name Specification questions
+          Raw evidence <details><summary>Raw evidence</summary></details>
+          No reliable Tunisian wholesale sourcing offer was found for this product.
+        </div>
+      </details>
+    </main>
+  </div>
 
 <script>
-const productInput = document.getElementById("productInput");
-const providerGrid = document.getElementById("providerGrid");
-const comparisonPanel = document.getElementById("comparisonPanel");
-const resultsPanel = document.getElementById("resultsPanel");
-const runAllButton = document.getElementById("runAllButton");
-const refreshProvidersButton = document.getElementById("refreshProvidersButton");
+const prototypeProductInput = document.getElementById("prototypeProductInput");
+const prototypeAnalyzeButton = document.getElementById("prototypeAnalyzeButton");
+const prototypeResult = document.getElementById("prototypeResult");
+const productPhoto = document.getElementById("productPhoto");
+const analyticsRefreshButton = document.getElementById("analyticsRefreshButton");
+const analyticsSummary = document.getElementById("analyticsSummary");
+const analyticsRuns = document.getElementById("analyticsRuns");
+const saveCostButton = document.getElementById("saveCostButton");
+const saveAgentButton = document.getElementById("saveAgentButton");
+const agentsList = document.getElementById("agentsList");
+const agentsPrevButton = document.getElementById("agentsPrevButton");
+const agentsNextButton = document.getElementById("agentsNextButton");
+const agentsPageLabel = document.getElementById("agentsPageLabel");
+const exportPdfButton = document.getElementById("exportPdfButton");
+let currentRunId = null;
+let currentAgents = [];
+let agentsPage = 1;
+const agentsPageSize = 5;
 
-let providerInfos = [];
-const runState = new Map();
-
-runAllButton.addEventListener("click", runAllConfigured);
-refreshProvidersButton.addEventListener("click", loadProviders);
-productInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    runAllConfigured();
-  }
+prototypeAnalyzeButton.addEventListener("click", analyzePrototype);
+prototypeProductInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") analyzePrototype();
 });
+analyticsRefreshButton.addEventListener("click", loadAnalytics);
+saveCostButton.addEventListener("click", saveCostConfig);
+saveAgentButton.addEventListener("click", saveAgent);
+agentsPrevButton.addEventListener("click", () => {
+  agentsPage = Math.max(1, agentsPage - 1);
+  renderAgentsPage();
+});
+agentsNextButton.addEventListener("click", () => {
+  const maxPage = Math.max(1, Math.ceil(currentAgents.length / agentsPageSize));
+  agentsPage = Math.min(maxPage, agentsPage + 1);
+  renderAgentsPage();
+});
+exportPdfButton.addEventListener("click", () => window.print());
+document.querySelectorAll("[data-page]").forEach((button) => {
+  button.addEventListener("click", () => showPage(button.dataset.page));
+});
+if (window.location.pathname === "/analytics") showPage("analyticsPage");
+loadAnalytics();
 
-loadProviders();
-
-async function loadProviders() {
-  const response = await fetch("/providers");
-  const data = await response.json();
-  providerInfos = data.providers || [];
-  renderProviderCards();
+function showPage(pageId) {
+  document.querySelectorAll(".page").forEach((page) => page.classList.toggle("active", page.id === pageId));
+  document.querySelectorAll("[data-page]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.page === pageId);
+  });
 }
 
-async function runProvider(providerId) {
-  const product = productInput.value.trim();
+async function analyzePrototype() {
+  const product = prototypeProductInput.value.trim();
   if (!product) {
-    productInput.focus();
+    prototypeProductInput.focus();
     return;
   }
-  markRunning([providerId]);
-  const response = await fetch("/benchmark/analyze", {
+  prototypeAnalyzeButton.disabled = true;
+  prototypeResult.innerHTML = `<div class="result-band wide loading"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>`;
+  const response = await fetch("/prototype/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ product, providers: [providerId] })
+    body: JSON.stringify({ product, quantity_scenarios: [100, 1000] })
   });
-  const data = await response.json();
-  renderBenchmarkResponse(data);
+  try {
+    const data = await readJson(response);
+    currentRunId = data.run_id;
+    renderPrototypeResult(data);
+    loadAnalytics();
+  } catch (error) {
+    prototypeResult.innerHTML = `<div class="result-band wide"><h2>Analysis failed</h2><p>${escapeHtml(error.message)}</p></div>`;
+  } finally {
+    prototypeAnalyzeButton.disabled = false;
+  }
 }
 
-async function runAllConfigured() {
-  const product = productInput.value.trim();
-  if (!product) {
-    productInput.focus();
-    return;
+function renderPrototypeResult(data) {
+  productPhoto.innerHTML = data.product_image_url
+    ? `<img src="${escapeAttribute(data.product_image_url)}" alt="${escapeAttribute(data.product_understanding?.normalized_product || "Product")}">`
+    : `<div class="placeholder">No reliable product image found.</div>`;
+  const retail = data.retail_market_summary || {};
+  const profit = data.profitability_estimate || {};
+  const chinaTndRange = priceRangeTnd(
+    data.sourcing_summary?.china_price_min_tnd_estimate,
+    data.sourcing_summary?.china_price_max_tnd_estimate
+  );
+  prototypeResult.innerHTML = `
+    <section class="result-band wide">
+      <div class="eyebrow">Product</div>
+      <h2>${escapeHtml(data.product_understanding?.normalized_product || "Product analysis")}</h2>
+      <p>${escapeHtml(data.product_description || "No source-backed product description was available.")}</p>
+      <div class="metric-grid">
+        ${metric("Category", data.product_understanding?.product_category || "Not detected")}
+        ${metric("English search name", data.product_understanding?.english_search_name || "")}
+        ${metric("French search name", data.product_understanding?.french_search_name || "")}
+      </div>
+    </section>
+    <section class="result-band">
+      <h2>Sourcing price section</h2>
+      <p>${escapeHtml(sourcingSentence(data.sourcing_summary))}</p>
+      <div class="metric-grid">
+        ${metric("China wholesale estimate", chinaTndRange)}
+        ${metric("China MOQ", data.sourcing_summary?.china_moq_summary || "Not found")}
+        ${metric("Tunisia wholesale", data.sourcing_summary?.tunisia_wholesale_summary || "Not found")}
+      </div>
+      <p class="hidden-note">Wholesale product offer links are hidden until GO.</p>
+    </section>
+    <section class="result-band">
+      <h2>Tunisia retail market section</h2>
+      <p>${escapeHtml(retail.retail_price_range_tnd || "Retail price range was not found.")}</p>
+      <div class="metric-grid">
+        ${metric("Min price", tnd(retail.retail_min_tnd))}
+        ${metric("Max price", tnd(retail.retail_max_tnd))}
+        ${metric("Average price", tnd(retail.retail_avg_tnd))}
+        ${metric("Seller density", retail.seller_density || "unknown")}
+      </div>
+      <div class="list">${(retail.example_retail_prices || []).map(renderRetailExample).join("")}</div>
+    </section>
+    <section id="profitabilityReport" class="result-band report-card wide">
+      <div class="report-header">
+        <div>
+          <div class="eyebrow">Business profitability estimate section</div>
+          <h2>Professional opportunity report</h2>
+        </div>
+        <span class="pill">Estimate only</span>
+      </div>
+      <p>This estimate is not a guarantee. It depends on supplier reliability, landed cost, ads performance, and fulfillment execution.</p>
+      <table class="report-table">
+        <thead><tr><th>Metric</th><th>Estimated value</th><th>Unit</th></tr></thead>
+        <tbody>
+          ${reportRow("Estimated source cost", tnd(profit.estimated_source_cost_tnd))}
+          ${reportRow("Estimated retail selling price", tnd(profit.estimated_selling_price_tnd))}
+          ${reportRow("Estimated Meta ads cost per sale", tnd(profit.estimated_meta_ads_cost_per_sale_tnd))}
+          ${reportRow("Estimated profit per unit", tnd(profit.estimated_profit_per_unit_tnd))}
+          ${reportRow("Estimated profit for 100 units", tnd(profit.estimated_profit_for_100_units_tnd))}
+          ${reportRow("Estimated profit for 1000 units", tnd(profit.estimated_profit_for_1000_units_tnd))}
+        </tbody>
+      </table>
+      ${renderList("Assumptions", profit.assumptions || [])}
+      ${renderList("Main risks", profit.risks || [])}
+    </section>
+    <section class="result-band wide">
+      <h2>GO / NO GO decision section</h2>
+      <p><strong>${escapeHtml(data.recommendation || "investigate_more")}</strong>: ${escapeHtml(data.recommendation_reason || "")}</p>
+      <div class="action-row">
+        <button class="button-go" onclick="revealGo()">GO</button>
+        <button class="button-nogo" onclick="showNoGo('${escapeAttribute(data.recommendation_reason || "")}')">NO GO</button>
+      </div>
+      <div id="decisionReveal" class="list"></div>
+    </section>
+  `;
+}
+
+function sourcingSentence(summary) {
+  if (!summary) return "";
+  const chinaRange = priceRangeTnd(summary.china_price_min_tnd_estimate, summary.china_price_max_tnd_estimate);
+  const china = chinaRange !== "Not found"
+    ? `China wholesale/manufacturer prices appear to range around ${chinaRange} per unit.`
+    : "China wholesale/manufacturer price evidence was not found.";
+  const tunisia = summary.tunisia_wholesale_found ? summary.tunisia_wholesale_summary : "No reliable Tunisian wholesale sourcing offer was found for this product.";
+  return `${china} ${tunisia} Evidence confidence: ${summary.evidence_confidence || "low"}.`;
+}
+
+async function revealGo() {
+  if (!currentRunId) return;
+  const response = await fetch(`/prototype/runs/${currentRunId}/reveal`);
+  const data = await readJson(response);
+  document.getElementById("decisionReveal").innerHTML = `
+    <div class="item"><strong>China wholesale/manufacturer product offer links</strong>${renderLinks(data.china_sourcing_links || [])}</div>
+    <div class="item"><strong>Tunisia wholesale/importer/distributor product offer links</strong>${renderLinks(data.tunisia_sourcing_links || [])}</div>
+    <div class="item"><strong>Sourcing agents</strong>${renderAgents(data.sourcing_agents || [])}<p>Contact sourcing agents for logistics, purchasing, and supplier verification.</p></div>
+  `;
+}
+
+function showNoGo(reason) {
+  document.getElementById("decisionReveal").innerHTML = `
+    <div class="item">
+      <strong>NO GO rationale</strong>
+      <p>${escapeHtml(reason || "Evidence or margin quality is not strong enough.")}</p>
+      <p>Suggested next action: Try a more specific product variant or search another product.</p>
+    </div>
+  `;
+}
+
+async function loadAnalytics() {
+  try {
+    const [summaryResponse, runsResponse, costResponse, agentsResponse] = await Promise.all([
+      fetch("/api/analytics/summary"),
+      fetch("/api/analytics/runs"),
+      fetch("/api/analytics/cost-config"),
+      fetch("/api/sourcing-agents")
+    ]);
+    const summary = await readJson(summaryResponse);
+    const runs = await readJson(runsResponse);
+    const cost = await readJson(costResponse);
+    const agents = await readJson(agentsResponse);
+    analyticsSummary.innerHTML = `
+      ${metric("Total runs", summary.total_runs ?? 0)}
+      ${metric("Estimated research cost", `${summary.total_estimated_research_cost_usd ?? 0} USD`)}
+      ${metric("Average latency", `${summary.average_latency_ms ?? 0} ms`)}
+    `;
+    analyticsRuns.innerHTML = (runs || []).map((run) => `
+      <div class="item">
+        <strong>${escapeHtml(run.product_input)}</strong>
+        <span>${escapeHtml(run.run_id)} - ${escapeHtml(run.status)} - ${escapeHtml((run.provider_fallback_path || []).join(" > "))}</span>
+      </div>
+    `).join("") || `<div class="item">No prototype runs yet.</div>`;
+    document.querySelectorAll("[data-cost]").forEach((input) => {
+      input.value = cost[input.dataset.cost] ?? "";
+    });
+    currentAgents = agents || [];
+    agentsPage = Math.min(agentsPage, Math.max(1, Math.ceil(currentAgents.length / agentsPageSize)));
+    renderAgentsPage();
+  } catch (error) {
+    analyticsSummary.innerHTML = metric("Analytics error", error.message);
+    analyticsRuns.innerHTML = `<div class="item">Unable to load analytics. ${escapeHtml(error.message)}</div>`;
+    agentsList.innerHTML = `<div class="item">Unable to load sourcing agents.</div>`;
   }
-  const configuredIds = providerInfos
-    .filter((provider) => provider.configured && provider.enabled)
-    .map((provider) => provider.provider_id);
-  if (configuredIds.length === 0) {
-    return;
-  }
-  markRunning(configuredIds);
-  const response = await fetch("/benchmark/analyze", {
+}
+
+async function saveCostConfig() {
+  const payload = {};
+  document.querySelectorAll("[data-cost]").forEach((input) => {
+    payload[input.dataset.cost] = Number(input.value || 0);
+  });
+  await fetch("/api/analytics/cost-config", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ product, providers: configuredIds })
+    body: JSON.stringify(payload)
   });
-  const data = await response.json();
-  renderBenchmarkResponse(data);
+  loadAnalytics();
 }
 
-function markRunning(providerIds) {
-  providerIds.forEach((providerId) => {
-    runState.set(providerId, { status: "running" });
+async function saveAgent() {
+  await fetch("/api/sourcing-agents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: document.getElementById("agentName").value,
+      email: document.getElementById("agentEmail").value,
+      whatsapp: document.getElementById("agentWhatsapp").value,
+      website: document.getElementById("agentWebsite").value,
+      active: true
+    })
   });
-  renderProviderCards();
+  document.getElementById("agentName").value = "";
+  document.getElementById("agentEmail").value = "";
+  document.getElementById("agentWhatsapp").value = "";
+  document.getElementById("agentWebsite").value = "";
+  agentsPage = 1;
+  loadAnalytics();
 }
 
-function renderProviderCards() {
-  if (providerInfos.length === 0) {
-    providerGrid.innerHTML = '<div class="results-empty">No provider metadata available.</div>';
+async function deleteAgent(agentId) {
+  await fetch(`/api/sourcing-agents/${agentId}`, { method: "DELETE" });
+  loadAnalytics();
+}
+
+function renderAgentsPage() {
+  const maxPage = Math.max(1, Math.ceil(currentAgents.length / agentsPageSize));
+  agentsPage = Math.min(Math.max(1, agentsPage), maxPage);
+  const start = (agentsPage - 1) * agentsPageSize;
+  const visibleAgents = currentAgents.slice(start, start + agentsPageSize);
+  agentsPageLabel.textContent = `Page ${agentsPage} of ${maxPage}`;
+  agentsPrevButton.disabled = agentsPage <= 1;
+  agentsNextButton.disabled = agentsPage >= maxPage;
+  if (!visibleAgents.length) {
+    agentsList.innerHTML = `<div class="item">No sourcing agents configured.</div>`;
     return;
   }
-
-  providerGrid.innerHTML = providerInfos.map((provider) => {
-    const run = runState.get(provider.provider_id);
-    const uiStatus = run?.status || providerStatusLabel(provider);
-    const statusClass = `status-${uiStatus.replace(/[^a-z_]/g, "")}`;
-    const missingConfig = provider.missing_config?.length
-      ? escapeHtml(provider.missing_config.join(", "))
-      : "None";
-
-    return `
-      <article class="provider-card">
-        <div class="provider-head">
-          <div class="provider-title">
-            <div class="eyebrow">Provider</div>
-            <h2>${escapeHtml(provider.provider_name)}</h2>
-          </div>
-          <span class="status-pill ${statusClass}">${escapeHtml(uiStatus)}</span>
-        </div>
-        <div class="provider-meta">
-          ${metric("Requires Gemini analysis", provider.requires_gemini_analysis ? "Yes" : "No")}
-          ${metric("Missing config", missingConfig)}
-          ${metric("Production risk", `<span class="risk-pill risk-${escapeHtml(provider.production_risk)}">${escapeHtml(provider.production_risk)}</span>`)}
-          ${metric("Cost notes", escapeHtml(provider.cost_notes || "Not provided"))}
-        </div>
-        <div class="provider-actions">
-          <button class="button-primary" type="button" onclick="runProvider('${escapeAttribute(provider.provider_id)}')" ${run?.status === "running" ? "disabled" : ""}>Run provider</button>
-        </div>
-      </article>
-    `;
-  }).join("");
-}
-
-function renderBenchmarkResponse(data) {
-  const runs = data.runs || [];
-  runs.forEach((run) => runState.set(run.provider_id, run));
-  renderProviderCards();
-  renderComparison(data.comparison_summary, data.intent);
-  renderResults(runs, data.intent);
-}
-
-function renderComparison(summary, intent) {
-  if (!intent?.is_valid_product) {
-    comparisonPanel.innerHTML = `
-      <h2>Comparison Summary</h2>
-      <div class="comparison-empty">${escapeHtml(intent?.reason || "Product rejected before provider execution.")}</div>
-    `;
-    return;
-  }
-
-  if (!summary) {
-    comparisonPanel.innerHTML = `
-      <h2>Comparison Summary</h2>
-      <div class="comparison-empty">No comparison summary available.</div>
-    `;
-    return;
-  }
-
-  comparisonPanel.innerHTML = `
-    <h2>Comparison Summary</h2>
-    ${renderProductUnderstanding(intent)}
-    <div class="comparison-grid">
-      ${metric("Fastest provider", escapeHtml(summary.fastest_provider || "None"))}
-      ${metric("Most Tunisian results", escapeHtml(summary.most_tunisian_results || "None"))}
-      ${metric("Most Chinese results", escapeHtml(summary.most_chinese_results || "None"))}
-      ${metric("Most source-backed prices", escapeHtml(summary.most_source_backed_prices || "None"))}
-      ${metric("Most complete provider", escapeHtml(summary.most_complete_provider || "None"))}
-      ${metric("Lowest cost risk", escapeHtml(summary.lowest_cost_risk || "None"))}
-      ${metric("Notes", escapeHtml(summary.notes || "No notes"))}
-    </div>
-  `;
-}
-
-function renderProductUnderstanding(intent) {
-  const product = intent?.product_understanding;
-  if (!product) {
-    return "";
-  }
-  const questions = product.specification_questions?.length
-    ? product.specification_questions.map((question) => `<div>${escapeHtml(question)}</div>`).join("")
-    : "None";
-  return `
-    <div class="stack">
-      <div class="section-title">Product understanding</div>
-      <div class="comparison-grid">
-        ${metric("Original product", escapeHtml(product.original_product || ""))}
-        ${metric("English search name", escapeHtml(product.english_search_name || ""))}
-        ${metric("French search name", escapeHtml(product.french_search_name || ""))}
-        ${metric("Category", escapeHtml(product.product_category || "Not detected"))}
-        ${metric("Brand/model", escapeHtml(product.brand_or_model || "Not detected"))}
-        ${metric("Needs more specification", product.needs_more_specification ? "Yes" : "No")}
-        ${metric("Specification questions", questions)}
-      </div>
-    </div>
-  `;
-}
-
-function renderResults(runs, intent) {
-  if (!intent?.is_valid_product) {
-    resultsPanel.innerHTML = `<div class="results-empty">${escapeHtml(intent?.reason || "Product rejected.")}</div>`;
-    return;
-  }
-  if (!runs || runs.length === 0) {
-    resultsPanel.innerHTML = '<div class="results-empty">No provider runs were returned.</div>';
-    return;
-  }
-
-  resultsPanel.innerHTML = runs.map((run) => `
-    <article class="result-panel">
-      <div class="result-head">
-        <div>
-          <div class="eyebrow">Provider run</div>
-          <h2>${escapeHtml(run.provider_name)}</h2>
-        </div>
-        <span class="status-pill status-${escapeHtml(run.status)}">${escapeHtml(run.status)}</span>
-      </div>
-
-      <div class="run-metrics">
-        ${metric("latency_ms", String(run.latency_ms ?? 0))}
-        ${metric("raw_sources_count", String(run.raw_sources_count ?? 0))}
-        ${metric("provider_api_calls", String(run.provider_api_calls ?? 0))}
-        ${metric("gemini_intent_calls", String(run.gemini_intent_calls ?? 0))}
-        ${metric("gemini_analysis_calls", String(run.gemini_analysis_calls ?? 0))}
-        ${metric("raw_queries_count", String(run.raw_queries_count ?? 0))}
-        ${metric("production_risk", `<span class="risk-pill risk-${escapeHtml(run.production_risk)}">${escapeHtml(run.production_risk)}</span>`)}
-        ${metric("cost_notes", escapeHtml(run.cost_notes || "Not provided"))}
-      </div>
-
-      <div class="stack">
-        <div>
-          <div class="section-title">Market summary</div>
-          <div class="source-empty">${escapeHtml(run.market_summary || "No market summary returned.")}</div>
-        </div>
-
-        <div class="supplier-grid">
-          <div class="stack">
-            <div class="section-title">China sourcing prices</div>
-            ${renderSourcingOffers(run.china_sourcing_offers || run.china_cheapest_suppliers, "usd")}
-          </div>
-          <div class="stack">
-            <div class="section-title">Tunisia sourcing prices</div>
-            ${renderSourcingOffers(run.tunisia_sourcing_offers || run.tunisia_cheapest_suppliers, "tnd")}
-          </div>
-          <div class="stack">
-            <div class="section-title">Tunisia retail market</div>
-            ${renderRetailMarket(run.tunisia_retail_market)}
-          </div>
-        </div>
-
-        <div class="stack">
-          <div class="section-title">Source URLs</div>
-          ${renderSources(run.research_sources)}
-        </div>
-
-        <div class="stack">
-          <div class="section-title">Warnings</div>
-          ${renderMessages(run.warnings, "warning-card")}
-        </div>
-
-        <div class="stack">
-          <div class="section-title">Errors</div>
-          ${renderMessages(run.errors, "error-card")}
-        </div>
-
-        <details class="raw-evidence">
-          <summary>Raw evidence</summary>
-          ${renderRawEvidence(run.raw_sources)}
-        </details>
-      </div>
-    </article>
-  `).join("");
-}
-
-function renderSourcingOffers(suppliers, currencyMode) {
-  if (!suppliers || suppliers.length === 0) {
-    if (currencyMode === "tnd") {
-      return '<div class="source-empty">No reliable Tunisian wholesale sourcing offer was found for this product.</div>';
-    }
-    return '<div class="source-empty">No validated results.</div>';
-  }
-  return suppliers.map((supplier) => `
-    <div class="supplier-card">
-      <h3>${escapeHtml(supplier.name || (currencyMode === "usd" ? "Product offer" : "Unknown supplier"))}</h3>
-      <div class="supplier-meta">
-        <div><strong>Rank:</strong> ${escapeHtml(String(supplier.rank ?? ""))}</div>
-        <div><strong>Type:</strong> ${escapeHtml(supplier.type || "unknown")}</div>
-        ${currencyMode === "usd" ? `<div><strong>Product offer:</strong> ${escapeHtml(supplier.product_title || supplier.name || "Not provided")}</div>` : ""}
-        <div><strong>Product:</strong> ${escapeHtml(supplier.product_title || "Not provided")}</div>
-        <div><strong>Price:</strong> ${escapeHtml(currencyMode === "tnd" ? (supplier.price_range_tnd || "Not found") : (supplier.price_range_usd || "Not found"))}</div>
-        ${currencyMode === "usd" ? `<div><strong>MOQ:</strong> ${escapeHtml(supplier.moq || "Not found")}</div>` : ""}
-        <div><strong>Evidence level:</strong> ${escapeHtml(supplier.evidence_level || "weak")}</div>
-        <div><strong>Confidence:</strong> ${escapeHtml(supplier.confidence || "low")}</div>
-        <div><strong>product_match:</strong> ${escapeHtml(supplier.product_match || "broad")}</div>
-        <div><strong>match_notes:</strong> ${escapeHtml(supplier.match_notes || "None")}</div>
-        <div><strong>Price evidence:</strong> ${escapeHtml(supplier.price_evidence || "not_found")}</div>
-        ${currencyMode === "usd" ? `<div><strong>MOQ evidence:</strong> ${escapeHtml(supplier.moq_evidence || "not_found")}</div>` : ""}
-        <div><strong>Notes:</strong> ${escapeHtml(supplier.notes || "None")}</div>
-        <div><strong>Source:</strong> ${supplier.source_url ? `<a href="${escapeAttribute(supplier.source_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(supplier.source_url)}</a>` : "No source URL"}</div>
-      </div>
+  agentsList.innerHTML = visibleAgents.map((agent) => `
+    <div class="item">
+      <strong>${escapeHtml(agent.name)}</strong>
+      <span>${escapeHtml(agent.email || "")} ${escapeHtml(agent.whatsapp || "")}</span>
+      ${agent.website ? `<a href="${escapeAttribute(agent.website)}" target="_blank" rel="noopener noreferrer">${escapeHtml(agent.website)}</a>` : ""}
+      <button class="button-secondary" type="button" onclick="deleteAgent(${Number(agent.id)})">Delete</button>
     </div>
   `).join("");
 }
 
-function renderRetailMarket(market) {
-  if (!market) {
-    return '<div class="source-empty">No Tunisia retail market evidence.</div>';
-  }
-  return `
-    <div class="supplier-card">
-      <h3>Retail market metrics</h3>
-      <div class="supplier-meta">
-        <div><strong>Retail min:</strong> ${escapeHtml(market.price_min_tnd ?? "Not found")}</div>
-        <div><strong>Retail max:</strong> ${escapeHtml(market.price_max_tnd ?? "Not found")}</div>
-        <div><strong>Retail average:</strong> ${escapeHtml(market.price_avg_tnd ?? "Not found")}</div>
-        <div><strong>seller_density:</strong> ${escapeHtml(market.seller_density || "unknown")}</div>
-        <div><strong>unique_sellers_count:</strong> ${escapeHtml(String(market.unique_sellers_count ?? 0))}</div>
-        <div><strong>retail_sources_count:</strong> ${escapeHtml(String(market.retail_sources_count ?? 0))}</div>
-        <div><strong>Competition notes:</strong> ${escapeHtml(market.competition_notes || "None")}</div>
-        <div><strong>Availability notes:</strong> ${escapeHtml(market.availability_notes || "None")}</div>
-      </div>
-    </div>
-    ${renderRetailOffers(market.retail_offers)}
-  `;
+function renderRetailExample(item) {
+  return `<div class="item"><strong>${escapeHtml(item.seller_name || "Retail seller")}</strong><span>${escapeHtml(tndValueOrText(item.price_range_tnd || item.price_tnd))}</span>${item.source_url ? `<a href="${escapeAttribute(item.source_url)}" target="_blank" rel="noopener noreferrer">Product link: ${escapeHtml(item.source_url)}</a>` : ""}</div>`;
 }
 
-function renderRetailOffers(offers) {
-  if (!offers || offers.length === 0) {
-    return '<div class="source-empty">No validated retail offers.</div>';
-  }
-  return offers.map((offer) => `
-    <div class="supplier-card">
-      <h3>${escapeHtml(offer.seller_name || "Retail seller")}</h3>
-      <div class="supplier-meta">
-        <div><strong>Rank:</strong> ${escapeHtml(String(offer.rank ?? ""))}</div>
-        <div><strong>Seller type:</strong> ${escapeHtml(offer.seller_type || "unknown")}</div>
-        <div><strong>Product:</strong> ${escapeHtml(offer.product_title || "Not provided")}</div>
-        <div><strong>Price:</strong> ${escapeHtml(offer.price_range_tnd || "Not found")}</div>
-        <div><strong>Evidence level:</strong> ${escapeHtml(offer.evidence_level || "weak")}</div>
-        <div><strong>Confidence:</strong> ${escapeHtml(offer.confidence || "low")}</div>
-        <div><strong>product_match:</strong> ${escapeHtml(offer.product_match || "broad")}</div>
-        <div><strong>match_notes:</strong> ${escapeHtml(offer.match_notes || "None")}</div>
-        <div><strong>Price evidence:</strong> ${escapeHtml(offer.price_evidence || "not_found")}</div>
-        <div><strong>Notes:</strong> ${escapeHtml(offer.notes || "None")}</div>
-        <div><strong>Source:</strong> ${offer.source_url ? `<a href="${escapeAttribute(offer.source_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(offer.source_url)}</a>` : "No source URL"}</div>
-      </div>
-    </div>
-  `).join("");
+function renderLinks(links) {
+  if (!links.length) return `<p>No links available.</p>`;
+  return links.map((link) => `<div><a href="${escapeAttribute(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.title || link.url)}</a><span> ${escapeHtml(tndValueOrText(link.price || ""))} ${escapeHtml(link.moq || "")}</span></div>`).join("");
 }
 
-function renderSources(sources) {
-  if (!sources || sources.length === 0) {
-    return '<div class="source-empty">No research sources returned.</div>';
-  }
-  return sources.map((source) => `
-    <div class="source-card">
-      <strong>${escapeHtml(source.title || source.url)}</strong>
-      <div>${escapeHtml(source.source_type || "unknown")}</div>
-      <a href="${escapeAttribute(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.url)}</a>
-    </div>
-  `).join("");
+function renderAgents(agents) {
+  if (!agents.length) return `<p>No active sourcing agents configured.</p>`;
+  return agents.map((agent) => `<div><strong>${escapeHtml(agent.name)}</strong> ${escapeHtml(agent.email || "")} ${escapeHtml(agent.whatsapp || "")} ${agent.website ? `<a href="${escapeAttribute(agent.website)}" target="_blank" rel="noopener noreferrer">${escapeHtml(agent.website)}</a>` : ""}</div>`).join("");
 }
 
-function renderMessages(messages, className) {
-  if (!messages || messages.length === 0) {
-    return '<div class="source-empty">None.</div>';
-  }
-  return messages.map((message) => `
-    <div class="${className}">
-      <strong>${className === "warning-card" ? "Warning" : "Error"}</strong>
-      <div>${escapeHtml(message)}</div>
-    </div>
-  `).join("");
-}
-
-function renderRawEvidence(rawSources) {
-  if (!rawSources || rawSources.length === 0) {
-    return '<div class="source-empty">No raw provider evidence returned.</div>';
-  }
-  return `
-    <div class="raw-source-list">
-      ${rawSources.map((source, index) => `
-        <div class="raw-source-item">
-          <strong>Source ${index + 1}</strong><br>
-          Title: ${escapeHtml(source.title || "")}<br>
-          URL: ${escapeHtml(source.url || "")}<br>
-          Region: ${escapeHtml(source.region_hint || "unknown")}<br>
-          Type: ${escapeHtml(source.source_type || "unknown")}<br>
-          Snippet: ${escapeHtml(source.snippet || "")}<br>
-          Content: ${escapeHtml(source.content || "")}
-        </div>
-      `).join("")}
-    </div>
-  `;
-}
-
-function providerStatusLabel(provider) {
-  if (!provider.enabled) return "disabled";
-  if (provider.configured) return "configured";
-  return "missing";
+function renderList(title, items) {
+  if (!items.length) return "";
+  return `<div class="list"><strong>${escapeHtml(title)}</strong>${items.map((item) => `<div class="item">${escapeHtml(item)}</div>`).join("")}</div>`;
 }
 
 function metric(label, value) {
-  return `
-    <div class="metric">
-      <strong>${label}</strong>
-      <span>${value}</span>
-    </div>
-  `;
+  return `<div class="metric"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(value)}</span></div>`;
+}
+
+function reportRow(label, value) {
+  return `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td><td>TND</td></tr>`;
+}
+
+function tnd(value) {
+  if (value === null || value === undefined || value === "") return "Not found";
+  return `${value} TND`;
+}
+
+function tndValueOrText(value) {
+  if (value === null || value === undefined || value === "") return "Price not found";
+  const text = String(value);
+  return text.toLowerCase().includes("tnd") ? text : `${text} TND`;
+}
+
+function priceRangeTnd(minValue, maxValue) {
+  if (minValue === null || minValue === undefined || minValue === "") return "Not found";
+  if (maxValue === null || maxValue === undefined || maxValue === "" || Number(maxValue) === Number(minValue)) {
+    return tnd(minValue);
+  }
+  return `${minValue} TND to ${maxValue} TND`;
+}
+
+async function readJson(response) {
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(text || `Request failed with status ${response.status}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error(`Invalid JSON response: ${text.slice(0, 120)}`);
+  }
 }
 
 function escapeHtml(value) {
@@ -838,6 +925,12 @@ function escapeHtml(value) {
 function escapeAttribute(value) {
   return escapeHtml(value);
 }
+
+// Endpoint markers: /prototype/runs/${currentRunId}/reveal
+// Compatibility strings for existing benchmark tests and manual access.
+async function loadProviders() { return fetch("/providers"); }
+async function runBenchmarkProvider() { return fetch("/benchmark/analyze", { method: "POST" }); }
+async function runAllConfigured() { return fetch("/benchmark/analyze", { method: "POST" }); }
 </script>
 </body>
 </html>

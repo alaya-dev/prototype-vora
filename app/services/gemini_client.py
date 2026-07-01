@@ -10,6 +10,7 @@ from app.agents.intent_classifier import (
     _looks_like_blocked_request,
 )
 from app.benchmark.schemas import ProviderAnalysisResult, ProviderEvidence
+from app.prototype.schemas import CostConfig, PrototypeAnalysisDraft
 from app.schemas import IntentResult, ProductUnderstanding
 
 try:
@@ -121,6 +122,16 @@ class GeminiAnalysisClient:
     async def extract(self, product: str | ProductUnderstanding, evidence: ProviderEvidence) -> ProviderAnalysisResult:
         prompt = _build_analysis_prompt(product, evidence)
         return await self.structured_client.generate_json(prompt, ProviderAnalysisResult)
+
+    async def extract_client_analysis(
+        self,
+        product: str | ProductUnderstanding,
+        evidence: ProviderEvidence,
+        cost_config: CostConfig,
+        quantity_scenarios: list[int],
+    ) -> PrototypeAnalysisDraft:
+        prompt = _build_client_analysis_prompt(product, evidence, cost_config, quantity_scenarios)
+        return await self.structured_client.generate_json(prompt, PrototypeAnalysisDraft)
 
 
 def _coerce_model_response(response, response_model: type[T]) -> T:
@@ -359,6 +370,57 @@ def _build_analysis_prompt(product: str | ProductUnderstanding, evidence: Provid
         "product_match.\n\n"
         f"Product understanding:\n{_format_product_for_prompt(product)}\n"
         f"Provider: {evidence.provider_id}\n\n"
+        "Evidence:\n"
+        f"{chr(10).join(source_lines)}"
+    )
+
+
+def _build_client_analysis_prompt(
+    product: str | ProductUnderstanding,
+    evidence: ProviderEvidence,
+    cost_config: CostConfig,
+    quantity_scenarios: list[int],
+) -> str:
+    source_lines = []
+    for index, source in enumerate(evidence.sources, start=1):
+        source_lines.append(
+            "\n".join(
+                [
+                    f"Source {index}:",
+                    f"Title: {source.title}",
+                    f"URL: {source.url}",
+                    f"Region hint: {source.region_hint}",
+                    f"Source type: {source.source_type}",
+                    f"Snippet: {source.snippet}",
+                    f"Content: {source.content or ''}",
+                    f"Image URLs: {', '.join(source.image_urls)}",
+                ]
+            )
+        )
+    return (
+        "Produce a client-facing VORA business analysis as strict JSON. Use only the "
+        "evidence supplied below. Do not invent sources, prices, MOQ, seller names, "
+        "stock, ratings, availability, product images, or profit claims. Profitability "
+        "must be labeled as an assumption-based estimate, never a guarantee.\n\n"
+        "The evidence is grouped into china_sourcing, tunisia_sourcing, and "
+        "tunisia_retail. China sourcing means wholesale/manufacturer/B2B product "
+        "offers from China with product-level price evidence. Tunisia sourcing means "
+        "Tunisian wholesale/importer/distributor/manufacturer/B2B product offers only. "
+        "Tunisia retail means end-seller competitor prices and seller density. Do not "
+        "use Tunisia retail prices as Tunisia wholesale prices. Do not use Algerian, "
+        "Moroccan, French, or unrelated sites as Tunisian sourcing. If Tunisia "
+        "wholesale sourcing is not found, say that clearly.\n\n"
+        "Return product_description, product_image_url only if the image URL appears "
+        "in source-backed image evidence, china_sourcing_offers, "
+        "tunisia_sourcing_offers, tunisia_retail_market, sourcing summary, retail "
+        "market summary, profitability estimate, recommendation, "
+        "recommendation_reason, warnings, assumptions, and risks. The sourcing offer "
+        "arrays must contain product offer URLs, not generic vendor homepages, so the "
+        "GO reveal can show product-level wholesale links. If evidence is weak, "
+        "recommendation should be investigate_more or no_go, not go.\n\n"
+        f"Product understanding:\n{_format_product_for_prompt(product)}\n\n"
+        f"Cost assumptions: {cost_config.model_dump()}\n"
+        f"Quantity scenarios: {quantity_scenarios}\n\n"
         "Evidence:\n"
         f"{chr(10).join(source_lines)}"
     )

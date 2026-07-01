@@ -50,3 +50,25 @@ class FrontendTests(unittest.TestCase):
             "No reliable Tunisian wholesale sourcing offer was found for this product.",
             self.html,
         )
+
+    def test_client_prototype_flow_uses_prototype_endpoints(self) -> None:
+        self.assertIn('fetch("/prototype/analyze"', self.html)
+        self.assertIn('/prototype/runs/${currentRunId}/reveal', self.html)
+        self.assertIn("GO", self.html)
+        self.assertIn("NO GO", self.html)
+        self.assertIn("No reliable product image found.", self.html)
+        self.assertIn("links are hidden until GO", self.html)
+        self.assertIn("Export PDF", self.html)
+        self.assertIn("window.print()", self.html)
+        self.assertIn("Client Analysis", self.html)
+        self.assertIn("Analytics", self.html)
+
+    def test_analytics_ui_is_present(self) -> None:
+        self.assertIn("/api/analytics/runs", self.html)
+        self.assertIn("/api/analytics/cost-config", self.html)
+        self.assertIn("/api/sourcing-agents", self.html)
+        self.assertIn("Estimated research cost", self.html)
+        self.assertIn("Firecrawl cost per call", self.html)
+        self.assertIn("Tavily cost per call", self.html)
+        self.assertIn("Delete", self.html)
+        self.assertIn("agentsPage", self.html)

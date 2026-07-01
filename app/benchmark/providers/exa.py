@@ -90,3 +90,65 @@ class ExaAdapter(SearchProviderAdapter):
             raw_queries_count=api_calls,
             provider_api_calls=api_calls,
         )
+
+    async def search_group(self, product: str, group: str) -> ProviderEvidence:
+        from app.benchmark.query_strategy import build_regional_queries
+
+        self._raise_if_not_configured()
+        query_groups = build_regional_queries(product, self.settings.effective_search_queries_per_group)
+        query_list = getattr(query_groups, group)
+        sources: list[ProviderRawSource] = []
+        api_calls = 0
+        try:
+            async with self._client_factory() as client:
+                for query in query_list:
+                    response = await client.post(
+                        "https://api.exa.ai/search",
+                        headers={
+                            "x-api-key": self.settings.exa_api_key,
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "query": query,
+                            "numResults": self.settings.search_results_per_query,
+                            "contents": {"text": True},
+                        },
+                    )
+                    api_calls += 1
+                    response.raise_for_status()
+                    for item in response.json().get("results", []):
+                        text = item.get("text", "") or ""
+                        sources.append(
+                            ProviderRawSource(
+                                title=item.get("title", ""),
+                                url=item.get("url", ""),
+                                snippet=item.get("summary", "") or text[:300],
+                                content=text or None,
+                                image_urls=_extract_exa_images(item),
+                                region_hint=group,
+                                source_type="search_result",
+                            )
+                        )
+                    if len(sources) >= self.settings.max_raw_sources_per_provider:
+                        break
+        except httpx.HTTPError as error:
+            raise ProviderAdapterError(f"{self.provider_name} request failed.") from error
+        except (KeyError, ValueError, TypeError) as error:
+            raise ProviderAdapterError(
+                f"{self.provider_name} returned an unexpected response shape."
+            ) from error
+
+        return ProviderEvidence(
+            provider_id=self.provider_id,
+            sources=cap_sources_balanced(
+                sources,
+                self.settings.max_raw_sources_per_provider,
+            ),
+            raw_queries_count=api_calls,
+            provider_api_calls=api_calls,
+        )
+
+
+def _extract_exa_images(item: dict) -> list[str]:
+    image = item.get("image") or item.get("imageUrl")
+    return [image] if isinstance(image, str) else []

@@ -21,6 +21,7 @@ class Settings:
     brave_search_api_key: str = ""
     exa_api_key: str = ""
     firecrawl_api_key: str = ""
+    tavily_api_key: str = ""
     perplexity_api_key: str = ""
     searxng_base_url: str = ""
     scavio_api_key: str = ""
@@ -33,6 +34,7 @@ class Settings:
     search_queries_per_region: int = 4
     search_queries_per_group: int = 4
     max_raw_sources_per_provider: int = 20
+    admin_dashboard_password: str = ""
 
     @property
     def effective_search_queries_per_group(self) -> int:
@@ -60,6 +62,7 @@ class Settings:
             brave_search_api_key=_read_str("BRAVE_SEARCH_API_KEY"),
             exa_api_key=_read_str("EXA_API_KEY"),
             firecrawl_api_key=_read_str("FIRECRAWL_API_KEY"),
+            tavily_api_key=_read_str("TAVILY_API_KEY"),
             perplexity_api_key=_read_str("PERPLEXITY_API_KEY"),
             searxng_base_url=_read_str("SEARXNG_BASE_URL"),
             scavio_api_key=_read_str("SCAVIO_API_KEY"),
@@ -100,6 +103,7 @@ class Settings:
                 default=20,
                 minimum=1,
             ),
+            admin_dashboard_password=_read_str("ADMIN_DASHBOARD_PASSWORD"),
         )
 
 

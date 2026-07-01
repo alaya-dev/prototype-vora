@@ -11,6 +11,14 @@ from app.benchmark.schemas import (
     ProvidersResponse,
 )
 from app.config import Settings
+from app.prototype.schemas import (
+    CostConfig,
+    PrototypeAnalyzeResponse,
+    PrototypeRevealResponse,
+    PrototypeSourcingLink,
+    RetailMarketSummary,
+    SourcingSummary,
+)
 from app.schemas import IntentResult, ProductAnalysisResponse
 
 
@@ -43,6 +51,46 @@ class StubLegacyPipeline:
             is_valid_product=False,
             intent_reason="Compatibility route.",
             market_summary="",
+        )
+
+
+class StubPrototypeOrchestrator:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def analyze(self, request):
+        self.calls.append(request)
+        return PrototypeAnalyzeResponse(
+            run_id="run_1",
+            product_understanding={},
+            product_image_url=None,
+            product_description="Source-backed analysis.",
+            sourcing_summary=SourcingSummary(
+                china_price_range="US$2-3",
+                tunisia_wholesale_summary="No reliable Tunisian wholesale sourcing offer was found for this product.",
+                tunisia_wholesale_found=False,
+            ),
+            retail_market_summary=RetailMarketSummary(
+                retail_price_range_tnd="35-42 TND",
+                retail_min_tnd=35,
+                retail_max_tnd=42,
+                retail_avg_tnd=38.5,
+                seller_density="low",
+            ),
+            recommendation="investigate_more",
+            recommendation_reason="Tunisia wholesale evidence is missing.",
+            go_reveal_available=True,
+            links_hidden=True,
+        )
+
+    def reveal(self, run_id: str):
+        return PrototypeRevealResponse(
+            run_id=run_id,
+            china_sourcing_links=[
+                PrototypeSourcingLink(title="CN", url="https://cn.example/t9", price="US$2")
+            ],
+            tunisia_sourcing_links=[],
+            sourcing_agents=[],
         )
 
 
@@ -127,6 +175,53 @@ class ApiTests(unittest.TestCase):
         self.assertIn("cost_notes", run)
         self.assertIn("production_risk", run)
 
+    def test_prototype_analyze_and_reveal_routes(self) -> None:
+        server_module = importlib.import_module("server")
+        prototype = StubPrototypeOrchestrator()
+        app = server_module.create_app(
+            settings=_settings(),
+            benchmark_pipeline=_benchmark_pipeline(),
+            provider_infos=ProvidersResponse(providers=[]),
+            prototype_orchestrator=prototype,
+        )
+
+        analyze_response = TestClient(app).post(
+            "/prototype/analyze",
+            json={"product": "Vintage T9 hair trimmer", "quantity_scenarios": [100, 1000]},
+        )
+        reveal_response = TestClient(app).get("/prototype/runs/run_1/reveal")
+
+        self.assertEqual(analyze_response.status_code, 200)
+        self.assertTrue(analyze_response.json()["links_hidden"])
+        self.assertNotIn("china_sourcing_links", analyze_response.text)
+        self.assertEqual(reveal_response.status_code, 200)
+        self.assertEqual(reveal_response.json()["china_sourcing_links"][0]["url"], "https://cn.example/t9")
+
+    def test_analytics_and_agent_routes_do_not_expose_keys(self) -> None:
+        server_module = importlib.import_module("server")
+        app = server_module.create_app(
+            settings=_settings(tavily_api_key="secret-tvly"),
+            benchmark_pipeline=_benchmark_pipeline(),
+            provider_infos=ProvidersResponse(providers=[]),
+        )
+        client = TestClient(app)
+
+        cost_response = client.post(
+            "/api/analytics/cost-config",
+            json=CostConfig(firecrawl_cost_per_call=0.1).model_dump(),
+        )
+        agent_response = client.post(
+            "/api/sourcing-agents",
+            json={"name": "Amina", "email": "amina@example.com", "active": True},
+        )
+        summary_response = client.get("/api/analytics/summary")
+
+        self.assertEqual(cost_response.status_code, 200)
+        self.assertEqual(agent_response.status_code, 200)
+        self.assertEqual(summary_response.status_code, 200)
+        combined = cost_response.text + agent_response.text + summary_response.text
+        self.assertNotIn("secret-tvly", combined)
+
 
 def _benchmark_pipeline() -> StubBenchmarkPipeline:
     return StubBenchmarkPipeline(
@@ -153,8 +248,8 @@ def _benchmark_pipeline() -> StubBenchmarkPipeline:
     )
 
 
-def _settings() -> Settings:
-    return Settings(
+def _settings(**overrides) -> Settings:
+    values = dict(
         gemini_intent_api_key="intent-key",
         gemini_intent_model="gemini-3.1-flash-lite",
         gemini_analysis_api_key="analysis-key",
@@ -167,4 +262,8 @@ def _settings() -> Settings:
         search_results_per_query=10,
         search_queries_per_region=4,
         max_raw_sources_per_provider=20,
+    )
+    values.update(overrides)
+    return Settings(
+        **values
     )

@@ -35,6 +35,7 @@ class ProviderRawSource(StrictModel):
     url: str = ""
     snippet: str = ""
     content: str | None = None
+    image_urls: list[str] = Field(default_factory=list)
     region_hint: RegionHint = "unknown"
     source_type: RawSourceType = "unknown"
 
