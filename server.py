@@ -117,6 +117,7 @@ def create_app(
         request: PrototypeAnalyzeRequest,
     ) -> PrototypeAnalyzeResponse:
         try:
+            resolved_prototype_orchestrator.cost_config = resolved_store.get_cost_config()
             return await resolved_prototype_orchestrator.analyze(request)
         except RuntimeError as error:
             message = str(error)
@@ -127,7 +128,7 @@ def create_app(
     @app.get("/prototype/runs/{run_id}/reveal", response_model=PrototypeRevealResponse)
     async def prototype_reveal(run_id: str) -> PrototypeRevealResponse:
         try:
-            return resolved_prototype_orchestrator.reveal(run_id)
+            return await resolved_prototype_orchestrator.reveal(run_id)
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Prototype run not found.") from error
 
@@ -152,7 +153,9 @@ def create_app(
 
     @app.post("/api/analytics/cost-config", response_model=CostConfig)
     async def save_cost_config(config: CostConfig) -> CostConfig:
-        return resolved_store.save_cost_config(config)
+        saved = resolved_store.save_cost_config(config)
+        resolved_prototype_orchestrator.cost_config = saved
+        return saved
 
     @app.get("/api/sourcing-agents", response_model=list[SourcingAgent])
     async def list_sourcing_agents(active_only: bool = False) -> list[SourcingAgent]:

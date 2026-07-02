@@ -63,6 +63,9 @@ class TunisiaBenchmarkSupplier(StrictModel):
     price_range_tnd: str | None = None
     price_min_tnd_numeric: float | None = None
     price_max_tnd_numeric: float | None = None
+    original_price_text: str | None = None
+    normalized_price_numeric: float | None = None
+    price_normalization_notes: str = ""
     source_url: str = ""
     evidence_level: EvidenceLevel = "weak"
     price_evidence: EvidenceField = "not_found"
@@ -80,6 +83,9 @@ class TunisiaSourcingOffer(StrictModel):
     price_range_tnd: str | None = None
     price_min_tnd_numeric: float | None = None
     price_max_tnd_numeric: float | None = None
+    original_price_text: str | None = None
+    normalized_price_numeric: float | None = None
+    price_normalization_notes: str = ""
     source_url: str = ""
     evidence_level: EvidenceLevel = "weak"
     price_evidence: EvidenceField = "not_found"
@@ -121,6 +127,9 @@ class TunisiaRetailOffer(StrictModel):
     price_range_tnd: str | None = None
     price_min_tnd_numeric: float | None = None
     price_max_tnd_numeric: float | None = None
+    original_price_text: str | None = None
+    normalized_price_numeric: float | None = None
+    price_normalization_notes: str = ""
     source_url: str = ""
     evidence_level: EvidenceLevel = "weak"
     price_evidence: EvidenceField = "not_found"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TypeVar
 from urllib.parse import parse_qsl, urlencode, urlparse
 
@@ -22,6 +23,9 @@ EVIDENCE_STRENGTH = {"weak": 0, "indirect": 1, "direct": 2}
 CONFIDENCE_STRENGTH = {"low": 0, "medium": 1, "high": 2}
 PRODUCT_MATCH_GROUP = {"exact": 0, "close": 0, "broad": 1, "weak": 1}
 PRODUCT_MATCH_ORDER = {"exact": 0, "close": 1, "broad": 2, "weak": 3}
+TND_DECIMAL_RE = re.compile(r"(?<!\d)(\d{1,3}),(\d{3})(?![\d.])")
+INTERNATIONAL_DECIMAL_RE = re.compile(r"(?<!\d)(\d{1,3}(?:,\d{3})+)\.(\d{1,2})(?!\d)")
+SPACED_THOUSANDS_RE = re.compile(r"(?<!\d)(\d{1,3}(?:[ \u00a0]\d{3})+)(?!\d)")
 
 
 def validate_provider_result(
@@ -85,6 +89,8 @@ def validate_provider_result(
         warnings.append("Fewer than 3 validated China price-backed supplier/source results were found.")
     if sum(1 for offer in retail_market.retail_offers if offer.price_min_tnd_numeric is not None) == 0:
         warnings.append("No validated Tunisia retail market price-backed offers were found.")
+    elif retail_market.unique_sellers_count < 3:
+        warnings.append("Retail market coverage may be incomplete.")
 
     missing_data = analysis.missing_data.model_copy()
     if not tunisia_sourcing:
@@ -128,8 +134,9 @@ def _validate_tunisia_supplier(
     raw_source_types: dict[str | None, str],
 ) -> TunisiaBenchmarkSupplier:
     update: dict[str, str | float | None] = {}
+    update.update(_normalize_tnd_price_update(supplier.price_range_tnd, supplier.price_min_tnd_numeric, supplier.price_max_tnd_numeric))
     normalized_url = _normalize_url(supplier.source_url)
-    if supplier.price_min_tnd_numeric is None:
+    if update.get("price_min_tnd_numeric", supplier.price_min_tnd_numeric) is None:
         update["price_evidence"] = "not_found"
         update["price_range_tnd"] = supplier.price_range_tnd
     update.update(
@@ -192,6 +199,7 @@ def _validate_tunisia_sourcing_offer(
     raw_sources_by_url: dict[str | None, ProviderRawSource],
 ) -> TunisiaSourcingOffer | None:
     update: dict[str, str | float | None] = {}
+    update.update(_normalize_tnd_price_update(offer.price_range_tnd, offer.price_min_tnd_numeric, offer.price_max_tnd_numeric))
     normalized_url = _normalize_url(offer.source_url)
     raw_source = raw_sources_by_url.get(normalized_url)
     if _is_non_tunisian_maghrib_or_foreign_source(offer.source_url, raw_source):
@@ -200,7 +208,7 @@ def _validate_tunisia_sourcing_offer(
         return None
     if not has_tunisia_sourcing_signal(offer, raw_source):
         return None
-    if offer.price_min_tnd_numeric is None:
+    if update.get("price_min_tnd_numeric", offer.price_min_tnd_numeric) is None:
         update["price_evidence"] = "not_found"
         update["price_range_tnd"] = offer.price_range_tnd
     if _is_generic_tunisia_sourcing_without_price(offer, raw_source_types.get(normalized_url)):
@@ -233,8 +241,9 @@ def _validate_tunisia_retail_offer(
     raw_source_types: dict[str | None, str],
 ) -> TunisiaRetailOffer:
     update: dict[str, str | float | None] = {}
+    update.update(_normalize_tnd_price_update(offer.price_range_tnd, offer.price_min_tnd_numeric, offer.price_max_tnd_numeric))
     normalized_url = _normalize_url(offer.source_url)
-    if offer.price_min_tnd_numeric is None:
+    if update.get("price_min_tnd_numeric", offer.price_min_tnd_numeric) is None:
         update["price_evidence"] = "not_found"
         update["price_range_tnd"] = offer.price_range_tnd
     update.update(
@@ -583,10 +592,84 @@ def _seller_density(unique_sellers: int) -> str:
     if unique_sellers <= 0:
         return "unknown"
     if unique_sellers <= 2:
-        return "low"
+        return "unknown"
     if unique_sellers <= 5:
         return "medium"
     return "high"
+
+
+def _normalize_tnd_price_update(
+    price_text: str | None,
+    price_min: float | None,
+    price_max: float | None,
+) -> dict[str, str | float | None]:
+    if not price_text:
+        return {}
+    lowered = price_text.lower()
+    if "tnd" not in lowered and "dt" not in lowered and "د.ت" not in lowered:
+        return {}
+
+    parsed = _parse_tnd_price_text(price_text)
+    if parsed is None:
+        return {"original_price_text": price_text}
+
+    parsed_min, parsed_max, note = parsed
+    current_min = price_min
+    current_max = price_max
+    should_replace_min = current_min is None or _looks_unrealistic_tnd(current_min, parsed_min)
+    should_replace_max = current_max is None or _looks_unrealistic_tnd(current_max, parsed_max)
+    if not should_replace_min and not should_replace_max:
+        return {"original_price_text": price_text}
+
+    normalized_min = parsed_min if should_replace_min else current_min
+    normalized_max = parsed_max if should_replace_max else current_max
+    if normalized_max == normalized_min:
+        normalized_max = normalized_min
+    return {
+        "original_price_text": price_text,
+        "normalized_price_numeric": normalized_min,
+        "price_min_tnd_numeric": normalized_min,
+        "price_max_tnd_numeric": normalized_max,
+        "price_range_tnd": _format_tnd_range(normalized_min, normalized_max),
+        "price_normalization_notes": note,
+    }
+
+
+def _parse_tnd_price_text(price_text: str) -> tuple[float, float, str] | None:
+    text = price_text.replace("\u00a0", " ")
+    if match := INTERNATIONAL_DECIMAL_RE.search(text):
+        value = float(match.group(1).replace(",", "") + "." + match.group(2))
+        return value, value, "Parsed international decimal TND price format."
+    if match := TND_DECIMAL_RE.search(text):
+        whole = match.group(1)
+        decimals = match.group(2).rstrip("0")
+        value = float(f"{whole}.{decimals}") if decimals else float(whole)
+        return value, value, "Tunisian comma decimal format normalized."
+    if match := SPACED_THOUSANDS_RE.search(text):
+        value = float(match.group(1).replace(" ", ""))
+        return value, value, "TND spaced thousands format normalized."
+
+    numeric_match = re.search(r"(?<!\d)(\d+(?:[.]\d{1,2})?)(?!\d)", text)
+    if numeric_match:
+        value = float(numeric_match.group(1))
+        return value, value, "TND numeric price parsed from text."
+    return None
+
+
+def _looks_unrealistic_tnd(current: float, parsed: float) -> bool:
+    if current == parsed:
+        return False
+    if current >= 1000 and parsed < 1000:
+        return True
+    return current is None
+
+
+def _format_tnd_range(price_min: float | None, price_max: float | None) -> str | None:
+    if price_min is None:
+        return None
+    if price_max is None or price_max == price_min:
+        return f"{price_min:g} TND"
+    return f"{price_min:g} to {price_max:g} TND"
 
 
 def _is_tracking_query_param(key: str) -> bool:

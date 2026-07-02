@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -11,6 +12,8 @@ from app.prototype.schemas import (
     AnalyticsRunDetail,
     AnalyticsRunSummary,
     AnalyticsSummary,
+    ContactEnrichmentMetrics,
+    ContactSellerCard,
     CostConfig,
     PrototypeRevealResponse,
     PrototypeSourcingLink,
@@ -53,7 +56,8 @@ class PrototypeStore:
                     errors_json TEXT NOT NULL,
                     product_understanding_json TEXT NOT NULL,
                     response_json TEXT NOT NULL,
-                    hidden_links_json TEXT NOT NULL
+                    hidden_links_json TEXT NOT NULL,
+                    contact_metrics_json TEXT NOT NULL DEFAULT '{}'
                 );
                 CREATE TABLE IF NOT EXISTS provider_attempts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,6 +93,7 @@ class PrototypeStore:
                 );
                 """
             )
+            _ensure_column(connection, "prototype_runs", "contact_metrics_json", "TEXT NOT NULL DEFAULT '{}'")
 
     def save_cost_config(self, config: CostConfig) -> CostConfig:
         with self._connection() as connection:
@@ -176,6 +181,24 @@ class PrototypeStore:
                 ),
             )
 
+    def update_hidden_links(self, run_id: str, hidden_links: dict) -> None:
+        with self._connection() as connection:
+            connection.execute(
+                "UPDATE prototype_runs SET hidden_links_json = ? WHERE run_id = ?",
+                (json.dumps(hidden_links), run_id),
+            )
+
+    def update_contact_enrichment_metrics(
+        self,
+        run_id: str,
+        metrics: ContactEnrichmentMetrics,
+    ) -> None:
+        with self._connection() as connection:
+            connection.execute(
+                "UPDATE prototype_runs SET contact_metrics_json = ? WHERE run_id = ?",
+                (json.dumps(metrics.model_dump()), run_id),
+            )
+
     def log_provider_attempt(
         self,
         run_id: str,
@@ -237,6 +260,7 @@ class PrototypeStore:
             summary_data = detail.model_dump()
             summary_data.pop("provider_attempts", None)
             summary_data.pop("api_usage_events", None)
+            summary_data.pop("hidden_links", None)
             summaries.append(AnalyticsRunSummary.model_validate(summary_data))
         return summaries
 
@@ -259,6 +283,9 @@ class PrototypeStore:
         agent = SourcingAgent.model_validate({"id": agent_id or 0, **payload})
         with self._connection() as connection:
             if agent_id is None:
+                duplicate_id = _find_duplicate_agent_id(connection, agent)
+                if duplicate_id is not None:
+                    return duplicate_id
                 cursor = connection.execute(
                     """
                     INSERT INTO sourcing_agents
@@ -287,7 +314,7 @@ class PrototypeStore:
         query += " ORDER BY id"
         with self._connection() as connection:
             rows = connection.execute(query, params).fetchall()
-        return [_agent_from_row(row) for row in rows]
+        return _dedupe_agents([_agent_from_row(row) for row in rows])
 
     def delete_sourcing_agent(self, agent_id: int) -> None:
         with self._connection() as connection:
@@ -301,27 +328,57 @@ class PrototypeStore:
         hidden = json.loads(run["hidden_links_json"] or "{}")
         return PrototypeRevealResponse(
             run_id=run_id,
-            china_sourcing_links=[
-                PrototypeSourcingLink.model_validate(link)
-                for link in hidden.get("china_sourcing_links", [])
-            ],
+            china_sourcing_links=[],
             tunisia_sourcing_links=[
                 PrototypeSourcingLink.model_validate(link)
                 for link in hidden.get("tunisia_sourcing_links", [])
             ],
+            seller_contacts=[
+                ContactSellerCard.model_validate(contact)
+                for contact in hidden.get("seller_contacts", [])
+                if _has_usable_contact_dict(contact)
+            ],
             sourcing_agents=self.list_sourcing_agents(active_only=True),
         )
+
+    def get_hidden_links(self, run_id: str) -> dict:
+        with self._connection() as connection:
+            run = connection.execute("SELECT hidden_links_json FROM prototype_runs WHERE run_id = ?", (run_id,)).fetchone()
+        if run is None:
+            raise KeyError(run_id)
+        return json.loads(run["hidden_links_json"] or "{}")
 
     def _build_run_detail(self, run, attempts, usage) -> AnalyticsRunDetail:
         warnings = json.loads(run["warnings_json"] or "[]")
         errors = json.loads(run["errors_json"] or "[]")
         attempts_list = [dict(row) for row in attempts]
         usage_list = [dict(row) for row in usage]
+        response = json.loads(run["response_json"] or "{}")
+        hidden_links = json.loads(run["hidden_links_json"] or "{}")
+        contact_metrics = json.loads(run["contact_metrics_json"] or "{}")
+        retail_debug = hidden_links.get("retail_evidence_debug") or {}
+        image_debug = hidden_links.get("product_image_debug") or {}
         provider_ids = [attempt["provider_id"] for attempt in attempts_list]
         raw_sources = sum(int(attempt["raw_sources_count"]) for attempt in attempts_list)
         provider_calls = sum(int(attempt["api_calls"]) for attempt in attempts_list)
         gemini_intent_calls = sum(event["calls"] for event in usage_list if event["service"] == "gemini_intent")
         gemini_analysis_calls = sum(event["calls"] for event in usage_list if event["service"] == "gemini_analysis")
+        contact_attempts = [attempt for attempt in attempts_list if attempt["evidence_group"] == "contact_enrichment"]
+        contact_search_api_calls = sum(int(attempt["api_calls"]) for attempt in contact_attempts)
+        contact_cost = _estimate_cost(contact_attempts, [], self.get_cost_config())
+        profit = response.get("profitability_estimate") or {}
+        sourcing_summary = response.get("sourcing_summary") or {}
+        china_links = hidden_links.get("china_sourcing_links", []) or []
+        tunisia_links = hidden_links.get("tunisia_sourcing_links", []) or []
+        source_unit_price = profit.get("source_unit_price_tnd")
+        if source_unit_price is None:
+            source_unit_price = sourcing_summary.get("china_price_min_tnd_estimate")
+        landed_cost = profit.get("estimated_landed_cost_per_unit_tnd")
+        if landed_cost is None:
+            landed_cost = profit.get("estimated_source_cost_tnd")
+        landed_notes = profit.get("landed_cost_breakdown_notes", "")
+        if landed_cost is not None and not landed_notes:
+            landed_notes = "Legacy run did not store a landed cost breakdown."
         return AnalyticsRunDetail(
             run_id=run["run_id"],
             timestamp=run["timestamp"],
@@ -341,8 +398,39 @@ class PrototypeStore:
             warnings=warnings,
             errors=errors,
             estimated_research_cost_usd=_estimate_cost(attempts_list, usage_list, self.get_cost_config()),
+            contact_enrichment_called=bool(contact_attempts or contact_metrics),
+            contact_provider_attempts=len(contact_attempts),
+            contact_search_api_calls=contact_search_api_calls,
+            contacts_found_count=contact_metrics.get("contacts_found_count", 0),
+            contacts_with_email_count=contact_metrics.get("contacts_with_email_count", 0),
+            contacts_with_whatsapp_count=contact_metrics.get("contacts_with_whatsapp_count", 0),
+            contact_enrichment_latency=contact_metrics.get("contact_enrichment_latency", 0),
+            contact_enrichment_estimated_cost=contact_cost,
+            contact_enrichment_status=contact_metrics.get("contact_enrichment_status", "not_found"),
+            contact_enrichment_reason=contact_metrics.get("contact_enrichment_reason", ""),
+            contact_cards_rejected_count=contact_metrics.get("contact_cards_rejected_count", 0),
+            contact_rejection_reasons=contact_metrics.get("contact_rejection_reasons", []),
+            usable_contacts_found_count=contact_metrics.get("usable_contacts_found_count", contact_metrics.get("contacts_found_count", 0)),
+            was_product_image_found=bool(response.get("product_image_url")),
+            product_image_source_url=response.get("product_image_source_url"),
+            product_image_candidates_count=image_debug.get("product_image_candidates_count", 0),
+            product_image_selected_source=image_debug.get("product_image_selected_source"),
+            product_image_rejection_reasons=image_debug.get("product_image_rejection_reasons", []),
+            source_unit_price_tnd=source_unit_price,
+            estimated_landed_cost_per_unit_tnd=landed_cost,
+            landed_cost_breakdown_notes=landed_notes,
+            estimated_meta_campaign_budget_tnd=profit.get("estimated_meta_campaign_budget_tnd"),
+            expected_units_sold_from_campaign=profit.get("expected_units_sold_from_campaign"),
+            estimated_ad_cost_per_sold_unit_tnd=profit.get("estimated_ad_cost_per_sold_unit_tnd"),
+            hidden_sourcing_urls_count=len([link for link in [*china_links, *tunisia_links] if link.get("url")]),
+            selected_sourcing_offers_count=len(china_links) + len(tunisia_links),
+            retail_candidate_sources_before_cap=retail_debug.get("retail_candidate_sources_before_cap", 0),
+            retail_candidate_sources_after_cap=retail_debug.get("retail_candidate_sources_after_cap", 0),
+            dropped_retail_sources=retail_debug.get("dropped_retail_sources", 0),
+            known_tunisian_retail_domains_found=retail_debug.get("known_tunisian_retail_domains_found", []),
             provider_attempts=attempts_list,
             api_usage_events=usage_list,
+            hidden_links=hidden_links,
         )
 
 
@@ -399,8 +487,66 @@ def _agent_from_row(row) -> SourcingAgent:
     )
 
 
+def _find_duplicate_agent_id(connection: sqlite3.Connection, agent: SourcingAgent) -> int | None:
+    key = _agent_dedupe_key(agent)
+    if key is None:
+        return None
+    rows = connection.execute("SELECT * FROM sourcing_agents ORDER BY id").fetchall()
+    for row in rows:
+        existing = _agent_from_row(row)
+        if _agent_dedupe_key(existing) == key:
+            return existing.id
+    return None
+
+
+def _dedupe_agents(agents: list[SourcingAgent]) -> list[SourcingAgent]:
+    seen: set[str] = set()
+    deduped: list[SourcingAgent] = []
+    for agent in agents:
+        key = _agent_dedupe_key(agent) or f"id:{agent.id}"
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(agent)
+    return deduped
+
+
+def _agent_dedupe_key(agent: SourcingAgent) -> str | None:
+    email = agent.email.strip().lower()
+    if email:
+        return f"email:{email}"
+    phone = _normalize_phone(agent.phone or agent.whatsapp)
+    name = re.sub(r"\s+", " ", agent.name.strip().lower())
+    if name and phone:
+        return f"name_phone:{name}:{phone}"
+    return None
+
+
+def _normalize_phone(value: str) -> str:
+    digits = re.sub(r"\D", "", value or "")
+    if digits.startswith("00"):
+        digits = digits[2:]
+    return digits
+
+
+def _has_usable_contact_dict(contact: dict) -> bool:
+    return bool(
+        contact.get("email")
+        or contact.get("phone")
+        or contact.get("whatsapp")
+        or contact.get("contact_page_url")
+        or contact.get("website")
+    )
+
+
 def _group_rows(rows, key: str) -> dict[str, list]:
     grouped: dict[str, list] = {}
     for row in rows:
         grouped.setdefault(row[key], []).append(row)
     return grouped
+
+
+def _ensure_column(connection: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")

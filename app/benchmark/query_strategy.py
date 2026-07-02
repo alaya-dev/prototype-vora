@@ -49,17 +49,16 @@ def build_regional_queries(product: str | ProductUnderstanding, max_queries_per_
     limit = max(1, max_queries_per_region)
     intent = infer_product_intent(product)
     china_sourcing_templates = [
-        "{product} wholesale unit price China",
-        "{product} factory price MOQ",
-        "{product} manufacturer price MOQ",
-        "{product} bulk price MOQ",
-        "{product} OEM ODM wholesale price",
-        "{product} Alibaba product wholesale price MOQ",
-        "{product} Made-in-China product price MOQ",
+        "{product} cheapest wholesale unit price China",
+        "{product} lowest factory price MOQ",
+        "{product} cheapest bulk price MOQ",
+        "{product} Alibaba lowest price MOQ",
+        "{product} Made-in-China lowest price MOQ",
         "{product} Global Sources product price MOQ",
-        "{product} supplier product price MOQ",
-        "{product} manufacturer wholesale unit price",
+        "{product} manufacturer price per piece",
+        "{product} OEM ODM factory price MOQ",
         "{product} wholesale price per piece",
+        "{product} supplier product price MOQ",
     ]
     tunisia_sourcing_templates = [
         "{product} grossiste Tunisie prix",
@@ -77,30 +76,52 @@ def build_regional_queries(product: str | ProductUnderstanding, max_queries_per_
     ]
     tunisia_retail_templates = [
         "{product} prix Tunisie",
+        "{original_product} prix Tunisie",
+        "{product} site:mytek.tn",
+        "{original_product} site:mytek.tn",
         "{product} achat Tunisie",
         "{product} vente Tunisie",
         "{product} boutique Tunisie",
         "{product} site:.tn",
-        "{product} site:.com.tn",
-        "{product} Jumia Tunisie prix",
-        "{product} Tayara Tunisie prix",
+        "{product} Jumia Tunisie",
         "{product} boutique en ligne Tunisie",
         "{product} magasin Tunisie",
+        "{product} site:.com.tn",
+        "{product} site:jumia.com.tn",
+        "{product} site:tunisianet.com.tn",
+        "{product} site:spacenet.tn",
+        "{product} site:wikishop.tn",
+        "{product} site:shopiwell.tn",
+        "{product} site:keyshop-tn.com",
+        "{product} site:tayara.tn",
+        "{product} site:affariyet.com",
+        "{product} Tayara Tunisie",
     ]
     return RegionalQueries(
-        china_sourcing=[
-            template.format(product=intent.china_search_name)
-            for template in china_sourcing_templates[:limit]
-        ],
-        tunisia_sourcing=[
-            template.format(product=intent.tunisia_search_name)
-            for template in tunisia_sourcing_templates[:limit]
-        ],
-        tunisia_retail=[
-            template.format(product=intent.tunisia_search_name)
-            for template in tunisia_retail_templates[:limit]
-        ],
+        china_sourcing=_format_queries(china_sourcing_templates, intent.china_search_name, intent.original_product, limit),
+        tunisia_sourcing=_format_queries(tunisia_sourcing_templates, intent.tunisia_search_name, intent.original_product, limit),
+        tunisia_retail=_format_queries(tunisia_retail_templates, intent.tunisia_search_name, intent.original_product, limit),
     )
+
+
+def _format_queries(
+    templates: list[str],
+    product_name: str,
+    original_product: str,
+    limit: int,
+) -> list[str]:
+    queries: list[str] = []
+    seen: set[str] = set()
+    for template in templates:
+        query = template.format(product=product_name, original_product=original_product).strip()
+        key = query.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        queries.append(query)
+        if len(queries) >= limit:
+            break
+    return queries
 
 
 def infer_product_intent(product: str | ProductUnderstanding) -> ProductIntent:

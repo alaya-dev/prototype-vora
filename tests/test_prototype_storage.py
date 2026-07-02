@@ -57,6 +57,19 @@ class PrototypeStorageTests(unittest.TestCase):
         self.assertEqual([agent.name for agent in active_agents], ["Active"])
         self.assertEqual([agent.id for agent in store.list_sourcing_agents(active_only=False)], [active_id])
 
+    def test_sourcing_agents_are_deduplicated_by_email_or_name_phone(self) -> None:
+        store = PrototypeStore(_temp_db())
+        first_id = store.upsert_sourcing_agent({"name": "Amina", "email": "Amina@Example.com", "active": True})
+        duplicate_email_id = store.upsert_sourcing_agent({"name": "Amina Duplicate", "email": "amina@example.com", "active": True})
+        first_phone_id = store.upsert_sourcing_agent({"name": "Youssef", "phone": "+216 11 111 111", "active": True})
+        duplicate_phone_id = store.upsert_sourcing_agent({"name": " youssef ", "phone": "21611111111", "active": True})
+
+        agents = store.list_sourcing_agents(active_only=True)
+
+        self.assertEqual(first_id, duplicate_email_id)
+        self.assertEqual(first_phone_id, duplicate_phone_id)
+        self.assertEqual([agent.name for agent in agents], ["Amina", "Youssef"])
+
 
 def _temp_db() -> Path:
     handle = tempfile.NamedTemporaryFile(suffix=".db", delete=False)

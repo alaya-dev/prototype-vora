@@ -21,7 +21,7 @@ class QueryStrategyTests(unittest.TestCase):
         self.assertEqual(len(queries.tunisia_sourcing), 2)
         self.assertEqual(len(queries.tunisia_retail), 2)
         self.assertEqual(queries.total_count, 6)
-        self.assertIn("T9 vintage hair trimmer wholesale unit price China", queries.china_sourcing)
+        self.assertIn("T9 vintage hair trimmer cheapest wholesale unit price China", queries.china_sourcing)
         self.assertIn("tondeuse cheveux T9 vintage grossiste Tunisie prix", queries.tunisia_sourcing)
         self.assertIn("tondeuse cheveux T9 vintage prix Tunisie", queries.tunisia_retail)
 
@@ -36,12 +36,13 @@ class QueryStrategyTests(unittest.TestCase):
         queries = build_regional_queries("wireless earbuds hoco", max_queries_per_region=10)
         joined = " ".join(queries.china_sourcing).lower()
 
-        self.assertIn("hoco wireless earbuds wholesale unit price china", joined)
+        self.assertIn("hoco wireless earbuds cheapest wholesale unit price china", joined)
+        self.assertIn("lowest factory price moq", joined)
+        self.assertIn("cheapest bulk price moq", joined)
+        self.assertIn("alibaba lowest price moq", joined)
+        self.assertIn("made-in-china lowest price moq", joined)
         self.assertIn("factory price moq", joined)
-        self.assertIn("manufacturer price moq", joined)
-        self.assertIn("bulk price moq", joined)
-        self.assertIn("oem odm wholesale price", joined)
-        self.assertIn("alibaba product wholesale price moq", joined)
+        self.assertIn("manufacturer price per piece", joined)
         self.assertNotIn("wholesale company", joined)
         self.assertNotIn("suppliers list", joined)
 
@@ -73,6 +74,21 @@ class QueryStrategyTests(unittest.TestCase):
         self.assertIn("site:.tn", joined)
         self.assertIn("jumia tunisie", joined)
         self.assertIn("boutique en ligne tunisie", joined)
+
+    def test_tunisia_retail_queries_prioritize_known_retail_domains_under_small_caps(self) -> None:
+        product = ProductUnderstanding(
+            original_product="Vintage T9",
+            normalized_product="T9 vintage hair trimmer",
+            english_search_name="T9 vintage hair trimmer",
+            french_search_name="tondeuse cheveux T9 vintage",
+        )
+        queries = build_regional_queries(product, max_queries_per_region=4)
+        joined = " ".join(queries.tunisia_retail).lower()
+
+        self.assertIn("tondeuse cheveux t9 vintage prix tunisie", joined)
+        self.assertIn("vintage t9 prix tunisie", joined)
+        self.assertIn("site:mytek.tn", joined)
+        self.assertIn("vintage t9 site:mytek.tn", joined)
 
     def test_product_intent_keeps_brand_model_and_category_terms(self) -> None:
         hoco = build_regional_queries("wireless earbuds hoco", max_queries_per_region=1)

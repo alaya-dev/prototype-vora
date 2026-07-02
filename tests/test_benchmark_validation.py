@@ -424,3 +424,25 @@ class BenchmarkValidationTests(unittest.TestCase):
 
         self.assertEqual(len(validated.tunisia_sourcing_offers), 1)
         self.assertEqual(validated.tunisia_sourcing_offers[0].confidence, "medium")
+
+    def test_tunisian_decimal_price_formats_are_normalized(self) -> None:
+        analysis = ProviderAnalysisResult(
+            tunisia_retail_market=TunisiaRetailMarket(
+                retail_offers=[
+                    TunisiaRetailOffer(seller_name="Mytek", price_range_tnd="14,900 TND", price_min_tnd_numeric=14900, source_url="https://mytek.tn/t9", price_evidence="direct", evidence_level="direct", confidence="high", product_match="exact"),
+                    TunisiaRetailOffer(seller_name="Keyshop", price_range_tnd="35,000 TND", price_min_tnd_numeric=35000, source_url="https://keyshop-tn.com/t9", price_evidence="direct", evidence_level="direct", confidence="high", product_match="exact"),
+                    TunisiaRetailOffer(seller_name="Shopiwell", price_range_tnd="43,600 TND", price_min_tnd_numeric=43600, source_url="https://shopiwell.tn/t9", price_evidence="direct", evidence_level="direct", confidence="high", product_match="exact"),
+                    TunisiaRetailOffer(seller_name="Expensive", price_range_tnd="1 200 TND", price_min_tnd_numeric=1200, source_url="https://expensive.tn/t9", price_evidence="direct", evidence_level="direct", confidence="high", product_match="exact"),
+                ]
+            )
+        )
+
+        validated = validate_provider_result(analysis, raw_sources=[])
+        offers = {offer.seller_name: offer for offer in validated.tunisia_retail_market.retail_offers}
+
+        self.assertEqual(offers["Mytek"].price_min_tnd_numeric, 14.9)
+        self.assertEqual(offers["Mytek"].price_range_tnd, "14.9 TND")
+        self.assertEqual(offers["Mytek"].original_price_text, "14,900 TND")
+        self.assertEqual(offers["Keyshop"].price_min_tnd_numeric, 35.0)
+        self.assertEqual(offers["Shopiwell"].price_min_tnd_numeric, 43.6)
+        self.assertEqual(offers["Expensive"].price_min_tnd_numeric, 1200)

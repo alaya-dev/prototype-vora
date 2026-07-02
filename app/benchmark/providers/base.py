@@ -75,6 +75,19 @@ class SearchProviderAdapter:
             )
 
 
+KNOWN_TUNISIAN_RETAIL_DOMAINS = {
+    "mytek.tn",
+    "jumia.com.tn",
+    "tunisianet.com.tn",
+    "spacenet.tn",
+    "wikishop.tn",
+    "shopiwell.tn",
+    "keyshop-tn.com",
+    "tayara.tn",
+    "affariyet.com",
+}
+
+
 def analysis_requirement(settings: Settings) -> ProviderConfigRequirement:
     return ProviderConfigRequirement(
         "GEMINI_ANALYSIS_API_KEY",
@@ -106,6 +119,10 @@ def can_stop_after_source_cap(
         return False
     if settings.max_raw_sources_per_provider <= 1:
         return True
+    if any(source.region_hint in {"tunisia_retail", "tunisia"} for source in sources) and not any(
+        _is_known_tunisian_retail_source(source) for source in sources
+    ):
+        return False
 
     required_groups = ["china_sourcing", "tunisia_sourcing", "tunisia_retail"][
         : min(settings.max_raw_sources_per_provider, 3)
@@ -128,6 +145,21 @@ def cap_sources_balanced(
     if maximum <= 0 or len(sources) <= maximum:
         return sources[: max(0, maximum)]
 
+    selected: list[ProviderRawSource] = []
+    seen_urls: set[str] = set()
+    priority_retail_sources = [
+        source for source in sources
+        if _is_known_tunisian_retail_source(source)
+    ]
+    for source in priority_retail_sources:
+        if len(selected) >= maximum:
+            break
+        key = source.url.lower()
+        if key in seen_urls:
+            continue
+        selected.append(source)
+        seen_urls.add(key)
+
     buckets = {
         "china_sourcing": [],
         "china": [],
@@ -137,9 +169,10 @@ def cap_sources_balanced(
         "unknown": [],
     }
     for source in sources:
+        if source.url.lower() in seen_urls:
+            continue
         buckets.setdefault(source.region_hint, []).append(source)
 
-    selected: list[ProviderRawSource] = []
     while len(selected) < maximum:
         progressed = False
         for region in ("china_sourcing", "china", "tunisia_sourcing", "tunisia_retail", "tunisia", "unknown"):
@@ -151,3 +184,10 @@ def cap_sources_balanced(
         if not progressed:
             break
     return selected
+
+
+def _is_known_tunisian_retail_source(source: ProviderRawSource) -> bool:
+    lowered_url = source.url.lower()
+    return source.region_hint in {"tunisia_retail", "tunisia"} and any(
+        domain in lowered_url for domain in KNOWN_TUNISIAN_RETAIL_DOMAINS
+    )

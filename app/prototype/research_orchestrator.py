@@ -13,6 +13,7 @@ from app.benchmark.schemas import (
 )
 from app.benchmark.validation import validate_provider_result
 from app.prototype.schemas import (
+    ContactEnrichmentMetrics,
     CostConfig,
     ExampleRetailPrice,
     HiddenSourcingLinks,
@@ -24,6 +25,7 @@ from app.prototype.schemas import (
     RetailMarketSummary,
     SourcingSummary,
 )
+from app.prototype.contact_enrichment import ContactEnrichmentAgent, _has_usable_contact
 from app.prototype.storage import PrototypeStore
 from app.schemas import IntentResult, ProductUnderstanding
 
@@ -40,10 +42,12 @@ class PrototypeResearchOrchestrator:
         providers: list[object],
         store: PrototypeStore,
         cost_config: CostConfig | None = None,
+        contact_providers: list[object] | None = None,
     ) -> None:
         self.intent_client = intent_client
         self.analysis_client = analysis_client
         self.providers = providers
+        self.contact_enricher = ContactEnrichmentAgent(contact_providers or providers)
         self.store = store
         self.cost_config = cost_config or self.store.get_cost_config()
 
@@ -98,7 +102,7 @@ class PrototypeResearchOrchestrator:
             draft=analysis_result,
             validated=validated,
             evidence=evidence,
-            cost_config=self.store.get_cost_config(),
+            cost_config=self.cost_config,
             quantity_scenarios=request.quantity_scenarios,
             warnings=list(dict.fromkeys(intent.warnings + warnings + validated.warnings)),
         )
@@ -113,7 +117,46 @@ class PrototypeResearchOrchestrator:
         )
         return response
 
-    def reveal(self, run_id: str):
+    async def reveal(self, run_id: str):
+        reveal = self.store.get_reveal(run_id)
+        if reveal.seller_contacts:
+            return reveal
+        hidden = self.store.get_hidden_links(run_id)
+        china_links = [
+            PrototypeSourcingLink.model_validate(link)
+            for link in hidden.get("china_sourcing_links", [])
+        ]
+        started = time.perf_counter()
+        enrichment = await self.contact_enricher.enrich(china_links)
+        for attempt in enrichment.provider_attempts:
+            self.store.log_provider_attempt(
+                run_id,
+                attempt.provider_id,
+                "contact_enrichment",
+                attempt.status,
+                attempt.api_calls,
+                attempt.raw_sources_count,
+                attempt.latency_ms,
+            )
+        if enrichment.provider_api_calls:
+            self.store.log_api_usage(run_id, "contact_enrichment", 1)
+        usable_contacts = [contact for contact in enrichment.contacts if _has_usable_contact(contact)]
+        hidden["seller_contacts"] = [contact.model_dump() for contact in usable_contacts]
+        self.store.update_hidden_links(run_id, hidden)
+        self.store.update_contact_enrichment_metrics(
+            run_id,
+            ContactEnrichmentMetrics(
+                contacts_found_count=len(usable_contacts),
+                contacts_with_email_count=sum(1 for contact in usable_contacts if contact.email),
+                contacts_with_whatsapp_count=sum(1 for contact in usable_contacts if contact.whatsapp),
+                contact_enrichment_latency=enrichment.latency_ms or _elapsed_ms(started),
+                contact_enrichment_status=enrichment.status,
+                contact_enrichment_reason="Contact enrichment was triggered by the GO reveal endpoint.",
+                contact_cards_rejected_count=enrichment.rejected_count,
+                contact_rejection_reasons=enrichment.rejection_reasons,
+                usable_contacts_found_count=len(usable_contacts),
+            ),
+        )
         return self.store.get_reveal(run_id)
 
     async def _collect_evidence(
@@ -184,7 +227,7 @@ class PrototypeResearchOrchestrator:
             return await self.analysis_client.extract_client_analysis(
                 product,
                 evidence,
-                self.store.get_cost_config(),
+                self.cost_config,
                 quantity_scenarios,
             )
         return await self.analysis_client.extract(product, evidence)
@@ -274,19 +317,18 @@ def _to_client_response(
     warnings: list[str],
 ) -> PrototypeAnalyzeResponse:
     if isinstance(draft, PrototypeAnalysisDraft):
+        computed = _response_from_validated(run_id, product, validated, evidence, cost_config, quantity_scenarios, warnings)
         draft_retail = _retail_summary_from_validated(validated)
-        base = PrototypeAnalyzeResponse(
-            run_id=run_id,
-            product_understanding=product,
-            product_image_url=_valid_image_or_none(draft.product_image_url, evidence),
-            product_description=draft.product_description,
-            sourcing_summary=draft.sourcing_summary,
-            retail_market_summary=draft_retail if validated.tunisia_retail_market.retail_offers else draft.retail_market_summary,
-            profitability_estimate=draft.profitability_estimate,
-            recommendation=draft.recommendation,
-            recommendation_reason=draft.recommendation_reason,
-            warnings=list(dict.fromkeys(warnings + draft.warnings)),
-            links_hidden=True,
+        base = computed.model_copy(
+            update={
+                **_image_payload(_valid_image_or_none(draft.product_image_url, evidence), evidence, product),
+                "product_description": draft.product_description or computed.product_description,
+                "retail_market_summary": draft_retail if validated.tunisia_retail_market.retail_offers else draft.retail_market_summary,
+                "recommendation": draft.recommendation,
+                "recommendation_reason": draft.recommendation_reason,
+                "warnings": list(dict.fromkeys(warnings + draft.warnings)),
+                "links_hidden": True,
+            }
         )
     else:
         base = _response_from_validated(run_id, product, validated, evidence, cost_config, quantity_scenarios, warnings)
@@ -302,6 +344,8 @@ def _to_client_response(
             for offer in validated.tunisia_sourcing_offers
             if offer.source_url
         ],
+        retail_evidence_debug=_retail_evidence_debug(evidence, validated),
+        product_image_debug=_product_image_debug(evidence, base),
     )
     sourcing_summary = base.sourcing_summary
     if not validated.tunisia_sourcing_offers:
@@ -333,19 +377,14 @@ def _response_from_validated(
     china_prices = [offer.price_min_usd_numeric for offer in validated.china_sourcing_offers if offer.price_min_usd_numeric is not None]
     china_tnd = [round(price * cost_config.usd_to_tnd_rate, 2) for price in china_prices]
     tunisia_prices = [offer.price_min_tnd_numeric for offer in validated.tunisia_sourcing_offers if offer.price_min_tnd_numeric is not None]
-    source_cost = min(tunisia_prices or china_tnd) if (tunisia_prices or china_tnd) else None
+    source_unit_price = min(china_tnd or tunisia_prices) if (china_tnd or tunisia_prices) else None
+    landed_cost, landed_notes, landed_parts = _landed_cost_breakdown(source_unit_price, cost_config)
+    ad_allocation, ad_notes = _ad_allocation(cost_config)
     retail = validated.tunisia_retail_market
     selling_price = retail.price_avg_tnd or retail.price_min_tnd
     profit = None
-    if source_cost is not None and selling_price is not None:
-        profit = round(
-            selling_price
-            - source_cost
-            - cost_config.default_meta_ads_cost_per_sale_tnd
-            - cost_config.default_shipping_per_unit_tnd
-            - cost_config.default_misc_cost_per_unit_tnd,
-            2,
-        )
+    if landed_cost is not None and selling_price is not None:
+        profit = round(selling_price - landed_cost, 2)
     recommendation = "investigate_more"
     if profit is not None and profit > 0 and validated.china_sourcing_offers and retail.retail_offers:
         recommendation = "go" if profit >= 5 else "investigate_more"
@@ -355,7 +394,7 @@ def _response_from_validated(
     return PrototypeAnalyzeResponse(
         run_id=run_id,
         product_understanding=product,
-        product_image_url=_first_source_image(evidence),
+        **_image_payload(_first_source_image(evidence), evidence, product),
         product_description=validated.market_summary or product.normalized_product,
         sourcing_summary=SourcingSummary(
             china_price_range=_range_text("US$", china_prices),
@@ -368,16 +407,29 @@ def _response_from_validated(
         ),
         retail_market_summary=_retail_summary_from_validated(validated),
         profitability_estimate=ProfitabilityEstimate(
-            estimated_source_cost_tnd=source_cost,
+            source_unit_price_tnd=source_unit_price,
+            estimated_shipping_per_unit_tnd=landed_parts["shipping"],
+            estimated_customs_per_unit_tnd=landed_parts["customs"],
+            estimated_handling_per_unit_tnd=landed_parts["handling"],
+            estimated_misc_per_unit_tnd=landed_parts["misc"],
+            estimated_landed_cost_per_unit_tnd=landed_cost,
+            landed_cost_breakdown_notes=landed_notes,
+            estimated_meta_campaign_budget_tnd=cost_config.default_meta_campaign_budget_tnd,
+            expected_units_sold_from_campaign=cost_config.default_expected_units_sold_from_campaign,
+            estimated_ad_cost_per_sold_unit_tnd=ad_allocation,
+            ad_cost_notes=ad_notes,
+            estimated_source_cost_tnd=landed_cost,
             estimated_selling_price_tnd=selling_price,
-            estimated_meta_ads_cost_per_sale_tnd=cost_config.default_meta_ads_cost_per_sale_tnd,
+            estimated_meta_ads_cost_per_sale_tnd=ad_allocation,
+            estimated_margin_per_unit_tnd=profit,
             estimated_profit_per_unit_tnd=profit,
             estimated_profit_for_100_units_tnd=_scenario_profit(profit, 100),
             estimated_profit_for_1000_units_tnd=_scenario_profit(profit, 1000),
             assumptions=[
                 "Profitability is an estimate, not a guarantee.",
                 f"USD to TND rate assumed at {cost_config.usd_to_tnd_rate}.",
-                f"Meta ads cost per sale assumed at {cost_config.default_meta_ads_cost_per_sale_tnd} TND.",
+                landed_notes,
+                ad_notes,
             ],
             risks=list(dict.fromkeys(warnings)),
         ),
@@ -420,12 +472,129 @@ def _valid_image_or_none(url: str | None, evidence: ProviderEvidence) -> str | N
     return url if any(url in source.image_urls for source in evidence.sources) else None
 
 
+def _image_payload(url: str | None, evidence: ProviderEvidence, product: ProductUnderstanding) -> dict:
+    if url:
+        source = _source_for_image(url, evidence)
+        return {
+            "product_image_url": url,
+            "product_image_source_url": source.url if source else None,
+            "product_image_confidence": _image_confidence(source, product),
+            "product_image_notes": "Source-backed image selected from provider evidence.",
+        }
+    selected = _best_source_image(evidence, product)
+    if selected:
+        source, image_url = selected
+        return {
+            "product_image_url": image_url,
+            "product_image_source_url": source.url,
+            "product_image_confidence": _image_confidence(source, product),
+            "product_image_notes": "Source-backed image selected from provider evidence.",
+        }
+    return {
+        "product_image_url": None,
+        "product_image_source_url": None,
+        "product_image_confidence": "fallback",
+        "product_image_notes": "No reliable source-backed product image was found.",
+    }
+
+
+def _landed_cost_breakdown(source_unit_price: float | None, cost_config: CostConfig) -> tuple[float | None, str, dict[str, float | None]]:
+    parts: dict[str, float | None] = {
+        "shipping": None,
+        "customs": None,
+        "handling": None,
+        "misc": None,
+    }
+    if source_unit_price is None:
+        return None, "Estimated landed cost requires a source-backed unit price.", parts
+
+    shipping = float(cost_config.default_shipping_per_unit_tnd or 0)
+    customs = round(source_unit_price * float(cost_config.default_customs_or_import_rate_percent or 0) / 100, 2)
+    handling = float(cost_config.default_handling_per_unit_tnd or 0)
+    misc = float(cost_config.default_misc_cost_per_unit_tnd or 0)
+    parts.update(
+        {
+            "shipping": shipping,
+            "customs": customs,
+            "handling": handling,
+            "misc": misc,
+        }
+    )
+    if shipping == 0 and customs == 0 and handling == 0 and misc == 0:
+        return (
+            None,
+            "Estimated landed cost requires shipping/import/handling assumptions.",
+            parts,
+        )
+    landed = round(source_unit_price + shipping + customs + handling + misc, 2)
+    note = (
+        f"Source unit price {source_unit_price:g} TND + shipping {shipping:g} TND "
+        f"+ customs/import {customs:g} TND + handling {handling:g} TND "
+        f"+ misc {misc:g} TND = estimated landed cost {landed:g} TND/unit. "
+        "Shipping, customs, handling, and misc values are admin assumptions unless source-backed."
+    )
+    return landed, note, parts
+
+
+def _ad_allocation(cost_config: CostConfig) -> tuple[float | None, str]:
+    budget = cost_config.default_meta_campaign_budget_tnd
+    expected_units = cost_config.default_expected_units_sold_from_campaign
+    if budget is None or expected_units is None or expected_units <= 0:
+        if budget is not None:
+            return None, f"Meta campaign budget assumed at {budget:g} TND. Per-unit ad allocation is not calculated in this simplified report."
+        return None, "Meta ads campaign estimate requires an admin campaign budget assumption."
+    allocation = round(float(budget) / float(expected_units), 2)
+    return (
+        allocation,
+        f"Meta campaign allocation: {budget:g} TND / {expected_units:g} expected units sold = {allocation:g} TND per sold unit. This is an assumption, not a guarantee.",
+    )
+
+
 def _first_source_image(evidence: ProviderEvidence) -> str | None:
-    for source in evidence.sources:
+    selected = _best_source_image(evidence, ProductUnderstanding())
+    return selected[1] if selected else None
+
+
+def _best_source_image(evidence: ProviderEvidence, product: ProductUnderstanding) -> tuple[ProviderRawSource, str] | None:
+    sorted_sources = sorted(evidence.sources, key=lambda source: _image_source_score(source, product), reverse=True)
+    for source in sorted_sources:
         for image_url in source.image_urls:
             if image_url.startswith(("http://", "https://")):
-                return image_url
+                return source, image_url
     return None
+
+
+def _source_for_image(url: str, evidence: ProviderEvidence) -> ProviderRawSource | None:
+    for source in evidence.sources:
+        if url in source.image_urls:
+            return source
+    return None
+
+
+def _image_source_score(source: ProviderRawSource, product: ProductUnderstanding) -> int:
+    text = _source_text(source)
+    score = 0
+    if source.source_type == "product_page":
+        score += 4
+    if source.region_hint in {"china_sourcing", "tunisia_sourcing", "tunisia_retail"}:
+        score += 2
+    for term in product.must_include_terms:
+        if term.lower() in text:
+            score += 2
+    if product.brand_or_model and product.brand_or_model.lower() in text:
+        score += 3
+    return score
+
+
+def _image_confidence(source: ProviderRawSource | None, product: ProductUnderstanding) -> str:
+    if source is None:
+        return "low"
+    score = _image_source_score(source, product)
+    if score >= 6:
+        return "high"
+    if score >= 2:
+        return "medium"
+    return "low"
 
 
 def _range_text(prefix: str, values: list[float | None], suffix: str = "") -> str:
@@ -492,6 +661,52 @@ def _recommendation_reason(recommendation: str, profit: float | None, validated:
     if not validated.tunisia_sourcing_offers:
         return "China sourcing and Tunisia retail evidence may be useful, but Tunisian wholesale sourcing was not found."
     return "Evidence is incomplete or margin confidence is not strong enough for a clear GO."
+
+
+def _retail_evidence_debug(evidence: ProviderEvidence, validated: ProviderAnalysisResult) -> dict:
+    retail_sources = [
+        source for source in evidence.sources
+        if source.region_hint in {"tunisia_retail", "tunisia"}
+    ]
+    known_domains = sorted(
+        {
+            domain
+            for source in retail_sources
+            for domain in (
+                "mytek.tn",
+                "jumia.com.tn",
+                "tunisianet.com.tn",
+                "spacenet.tn",
+                "wikishop.tn",
+                "shopiwell.tn",
+                "keyshop-tn.com",
+                "tayara.tn",
+                "affariyet.com",
+            )
+            if domain in source.url.lower()
+        }
+    )
+    after_cap = len(validated.tunisia_retail_market.retail_offers)
+    return {
+        "retail_candidate_sources_before_cap": len(retail_sources),
+        "retail_candidate_sources_after_cap": after_cap,
+        "dropped_retail_sources": max(0, len(retail_sources) - after_cap),
+        "known_tunisian_retail_domains_found": known_domains,
+    }
+
+
+def _product_image_debug(evidence: ProviderEvidence, response: PrototypeAnalyzeResponse) -> dict:
+    candidates = [
+        image_url
+        for source in evidence.sources
+        for image_url in source.image_urls
+        if image_url.startswith(("http://", "https://"))
+    ]
+    return {
+        "product_image_candidates_count": len(candidates),
+        "product_image_selected_source": response.product_image_source_url,
+        "product_image_rejection_reasons": [] if candidates else ["No source-backed image URLs were present in provider evidence."],
+    }
 
 
 def _product_dump(intent: IntentResult) -> dict:

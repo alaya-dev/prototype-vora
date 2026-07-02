@@ -12,10 +12,10 @@ from app.benchmark.schemas import (
 )
 from app.config import Settings
 from app.prototype.schemas import (
+    ContactSellerCard,
     CostConfig,
     PrototypeAnalyzeResponse,
     PrototypeRevealResponse,
-    PrototypeSourcingLink,
     RetailMarketSummary,
     SourcingSummary,
 )
@@ -83,11 +83,16 @@ class StubPrototypeOrchestrator:
             links_hidden=True,
         )
 
-    def reveal(self, run_id: str):
+    async def reveal(self, run_id: str):
         return PrototypeRevealResponse(
             run_id=run_id,
-            china_sourcing_links=[
-                PrototypeSourcingLink(title="CN", url="https://cn.example/t9", price="US$2")
+            seller_contacts=[
+                ContactSellerCard(
+                    seller_name="CN",
+                    company_name="CN Factory",
+                    email="sales@example.com",
+                    contact_confidence="medium",
+                )
             ],
             tunisia_sourcing_links=[],
             sourcing_agents=[],
@@ -194,8 +199,11 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(analyze_response.status_code, 200)
         self.assertTrue(analyze_response.json()["links_hidden"])
         self.assertNotIn("china_sourcing_links", analyze_response.text)
+        self.assertNotIn("cn.example", analyze_response.text.lower())
         self.assertEqual(reveal_response.status_code, 200)
-        self.assertEqual(reveal_response.json()["china_sourcing_links"][0]["url"], "https://cn.example/t9")
+        self.assertEqual(reveal_response.json()["china_sourcing_links"], [])
+        self.assertEqual(reveal_response.json()["seller_contacts"][0]["email"], "sales@example.com")
+        self.assertNotIn("cn.example", reveal_response.text.lower())
 
     def test_analytics_and_agent_routes_do_not_expose_keys(self) -> None:
         server_module = importlib.import_module("server")

@@ -101,7 +101,7 @@
   .analysis-hero {
     padding: 18px;
     display: grid;
-    grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    grid-template-columns: 1fr;
     gap: 18px;
     align-items: stretch;
   }
@@ -201,7 +201,7 @@
 
   .result-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 14px;
   }
 
@@ -217,7 +217,7 @@
 
   .metric-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 10px;
   }
 
@@ -307,13 +307,13 @@
     width: min(1360px, calc(100% - 28px));
     margin: 18px auto 48px;
     display: grid;
-    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-columns: 1fr;
     gap: 16px;
     align-items: start;
   }
 
   .sidebar {
-    position: sticky;
+    position: static;
     top: 18px;
     border: 1px solid var(--line);
     background: rgba(255, 250, 242, 0.94);
@@ -395,6 +395,66 @@
     gap: 10px;
     align-items: center;
     flex-wrap: wrap;
+  }
+
+  .product-card,
+  .summary-card {
+    min-width: 0;
+  }
+
+  .decision-bar {
+    position: sticky;
+    bottom: 10px;
+    z-index: 5;
+    background: rgba(255, 250, 242, 0.96);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 10px;
+  }
+
+  .decision-bar button {
+    flex: 1 1 140px;
+    min-height: 52px;
+  }
+
+  .contact-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .contact-actions a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    font-weight: 800;
+  }
+
+  @media (min-width: 760px) {
+    .analysis-hero {
+      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    }
+
+    .result-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .metric-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .app-layout {
+      grid-template-columns: 220px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      position: sticky;
+    }
   }
 
   .benchmark-compat {
@@ -516,6 +576,7 @@
         <section id="analyticsPanel" class="analytics-grid">
           <section>
             <h2>Analytics</h2>
+            <h3>Contact enrichment</h3>
             <div id="analyticsSummary" class="metric-grid"></div>
             <div class="list" id="analyticsRuns"></div>
           </section>
@@ -528,9 +589,11 @@
               <label class="field">Gemini intent cost per call<input data-cost="gemini_intent_cost_per_call" type="number" step="0.0001"></label>
               <label class="field">Gemini analysis cost per call<input data-cost="gemini_analysis_cost_per_call" type="number" step="0.0001"></label>
               <label class="field">USD to TND rate<input data-cost="usd_to_tnd_rate" type="number" step="0.0001"></label>
-              <label class="field">Default Meta ads cost per sale TND<input data-cost="default_meta_ads_cost_per_sale_tnd" type="number" step="0.01"></label>
+              <label class="field">Default Meta campaign budget TND<input data-cost="default_meta_campaign_budget_tnd" type="number" step="0.01"></label>
+              <label class="field">Legacy Meta ads cost per sale TND<input data-cost="default_meta_ads_cost_per_sale_tnd" type="number" step="0.01"></label>
               <label class="field">Default shipping per unit TND<input data-cost="default_shipping_per_unit_tnd" type="number" step="0.01"></label>
               <label class="field">Default customs/import rate percent<input data-cost="default_customs_or_import_rate_percent" type="number" step="0.01"></label>
+              <label class="field">Default handling per unit TND<input data-cost="default_handling_per_unit_tnd" type="number" step="0.01"></label>
               <label class="field">Default misc cost per unit TND<input data-cost="default_misc_cost_per_unit_tnd" type="number" step="0.01"></label>
             </div>
             <button id="saveCostButton" class="button-secondary" type="button">Save cost config</button>
@@ -654,7 +717,7 @@ async function analyzePrototype() {
 function renderPrototypeResult(data) {
   productPhoto.innerHTML = data.product_image_url
     ? `<img src="${escapeAttribute(data.product_image_url)}" alt="${escapeAttribute(data.product_understanding?.normalized_product || "Product")}">`
-    : `<div class="placeholder">No reliable product image found.</div>`;
+    : `<div class="placeholder"><img src="${fallbackProductImage()}" alt="Illustrative product image unavailable from sources."><p>No reliable source-backed product image was found.</p></div>`;
   const retail = data.retail_market_summary || {};
   const profit = data.profitability_estimate || {};
   const chinaTndRange = priceRangeTnd(
@@ -662,27 +725,29 @@ function renderPrototypeResult(data) {
     data.sourcing_summary?.china_price_max_tnd_estimate
   );
   prototypeResult.innerHTML = `
-    <section class="result-band wide">
+    <section class="result-band product-card wide">
       <div class="eyebrow">Product</div>
       <h2>${escapeHtml(data.product_understanding?.normalized_product || "Product analysis")}</h2>
       <p>${escapeHtml(data.product_description || "No source-backed product description was available.")}</p>
+      <p class="hidden-note">Image confidence: ${escapeHtml(data.product_image_confidence || "fallback")}. ${escapeHtml(data.product_image_notes || "")}</p>
       <div class="metric-grid">
         ${metric("Category", data.product_understanding?.product_category || "Not detected")}
         ${metric("English search name", data.product_understanding?.english_search_name || "")}
         ${metric("French search name", data.product_understanding?.french_search_name || "")}
       </div>
     </section>
-    <section class="result-band">
+    <section class="result-band summary-card">
       <h2>Sourcing price section</h2>
       <p>${escapeHtml(sourcingSentence(data.sourcing_summary))}</p>
       <div class="metric-grid">
-        ${metric("China wholesale estimate", chinaTndRange)}
+        ${metric("China product unit price", tnd(profit.source_unit_price_tnd) || chinaTndRange)}
+        ${metric("Estimated landed cost per unit", tnd(profit.estimated_landed_cost_per_unit_tnd))}
         ${metric("China MOQ", data.sourcing_summary?.china_moq_summary || "Not found")}
         ${metric("Tunisia wholesale", data.sourcing_summary?.tunisia_wholesale_summary || "Not found")}
       </div>
       <p class="hidden-note">Wholesale product offer links are hidden until GO.</p>
     </section>
-    <section class="result-band">
+    <section class="result-band summary-card">
       <h2>Tunisia retail market section</h2>
       <p>${escapeHtml(retail.retail_price_range_tnd || "Retail price range was not found.")}</p>
       <div class="metric-grid">
@@ -705,10 +770,11 @@ function renderPrototypeResult(data) {
       <table class="report-table">
         <thead><tr><th>Metric</th><th>Estimated value</th><th>Unit</th></tr></thead>
         <tbody>
-          ${reportRow("Estimated source cost", tnd(profit.estimated_source_cost_tnd))}
+          ${reportRow("China product unit price", tnd(profit.source_unit_price_tnd))}
           ${reportRow("Estimated retail selling price", tnd(profit.estimated_selling_price_tnd))}
-          ${reportRow("Estimated Meta ads cost per sale", tnd(profit.estimated_meta_ads_cost_per_sale_tnd))}
-          ${reportRow("Estimated profit per unit", tnd(profit.estimated_profit_per_unit_tnd))}
+          ${reportRow("Estimated Meta campaign budget", tnd(profit.estimated_meta_campaign_budget_tnd))}
+          ${reportRow("Estimated landed cost per unit", tnd(profit.estimated_landed_cost_per_unit_tnd))}
+          ${reportRow("Estimated margin per unit", tnd(profit.estimated_margin_per_unit_tnd ?? profit.estimated_profit_per_unit_tnd))}
           ${reportRow("Estimated profit for 100 units", tnd(profit.estimated_profit_for_100_units_tnd))}
           ${reportRow("Estimated profit for 1000 units", tnd(profit.estimated_profit_for_1000_units_tnd))}
         </tbody>
@@ -719,7 +785,7 @@ function renderPrototypeResult(data) {
     <section class="result-band wide">
       <h2>GO / NO GO decision section</h2>
       <p><strong>${escapeHtml(data.recommendation || "investigate_more")}</strong>: ${escapeHtml(data.recommendation_reason || "")}</p>
-      <div class="action-row">
+      <div class="action-row decision-bar">
         <button class="button-go" onclick="revealGo()">GO</button>
         <button class="button-nogo" onclick="showNoGo('${escapeAttribute(data.recommendation_reason || "")}')">NO GO</button>
       </div>
@@ -743,7 +809,7 @@ async function revealGo() {
   const response = await fetch(`/prototype/runs/${currentRunId}/reveal`);
   const data = await readJson(response);
   document.getElementById("decisionReveal").innerHTML = `
-    <div class="item"><strong>China wholesale/manufacturer product offer links</strong>${renderLinks(data.china_sourcing_links || [])}</div>
+    <div class="item"><strong>China seller contacts</strong>${renderSellerContacts(data.seller_contacts || [])}</div>
     <div class="item"><strong>Tunisia wholesale/importer/distributor product offer links</strong>${renderLinks(data.tunisia_sourcing_links || [])}</div>
     <div class="item"><strong>Sourcing agents</strong>${renderAgents(data.sourcing_agents || [])}<p>Contact sourcing agents for logistics, purchasing, and supplier verification.</p></div>
   `;
@@ -780,6 +846,15 @@ async function loadAnalytics() {
       <div class="item">
         <strong>${escapeHtml(run.product_input)}</strong>
         <span>${escapeHtml(run.run_id)} - ${escapeHtml(run.status)} - ${escapeHtml((run.provider_fallback_path || []).join(" > "))}</span>
+        <span>Was product image found? ${escapeHtml(run.was_product_image_found ? "yes" : "no")} - product_image_source_url ${escapeHtml(run.product_image_source_url || "none")}</span>
+        <span>source_unit_price_tnd ${escapeHtml(run.source_unit_price_tnd ?? "none")} - estimated_landed_cost_per_unit_tnd ${escapeHtml(run.estimated_landed_cost_per_unit_tnd ?? "none")}</span>
+        <span>${escapeHtml(run.landed_cost_breakdown_notes || "")}</span>
+        <span>estimated_meta_campaign_budget_tnd ${escapeHtml(run.estimated_meta_campaign_budget_tnd ?? "none")}</span>
+        <span>Retail candidates before cap ${escapeHtml(run.retail_candidate_sources_before_cap ?? 0)} - after cap ${escapeHtml(run.retail_candidate_sources_after_cap ?? 0)} - dropped ${escapeHtml(run.dropped_retail_sources ?? 0)} - known domains ${(run.known_tunisian_retail_domains_found || []).map(escapeHtml).join(", ") || "none"}</span>
+        <span>Image candidates ${escapeHtml(run.product_image_candidates_count ?? 0)} - selected ${escapeHtml(run.product_image_selected_source || "none")}</span>
+        <span>Contact enrichment: ${escapeHtml(run.contact_enrichment_called ? "yes" : "no")} - status ${escapeHtml(run.contact_enrichment_status || "not_found")} - contacts_found_count ${escapeHtml(run.contacts_found_count ?? 0)} - usable_contacts_found_count ${escapeHtml(run.usable_contacts_found_count ?? 0)} - rejected ${escapeHtml(run.contact_cards_rejected_count ?? 0)} - contacts_with_email_count ${escapeHtml(run.contacts_with_email_count ?? 0)} - contact_enrichment_estimated_cost ${escapeHtml(run.contact_enrichment_estimated_cost ?? 0)}</span>
+        <span>${escapeHtml(run.contact_enrichment_reason || "")}</span>
+        <span>hidden sourcing URLs ${escapeHtml(run.hidden_sourcing_urls_count ?? 0)} - selected sourcing offers ${escapeHtml(run.selected_sourcing_offers_count ?? 0)}</span>
       </div>
     `).join("") || `<div class="item">No prototype runs yet.</div>`;
     document.querySelectorAll("[data-cost]").forEach((input) => {
@@ -864,9 +939,31 @@ function renderLinks(links) {
   return links.map((link) => `<div><a href="${escapeAttribute(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.title || link.url)}</a><span> ${escapeHtml(tndValueOrText(link.price || ""))} ${escapeHtml(link.moq || "")}</span></div>`).join("");
 }
 
+function renderSellerContacts(contacts) {
+  const usableContacts = (contacts || []).filter(hasUsableContact);
+  if (!usableContacts.length) {
+    return `<p>Direct seller contact was not found from public sources. Please contact one of our sourcing agents for supplier verification and purchasing support.</p>`;
+  }
+  return usableContacts.map((contact) => `
+    <div class="item">
+      <strong>${escapeHtml(contact.company_name || contact.seller_name || "Seller")}</strong>
+      <span>${escapeHtml(contact.country || "")} ${escapeHtml(contact.platform || "")} Confidence: ${escapeHtml(contact.contact_confidence || "low")}</span>
+      <p>${escapeHtml(contact.contact_notes || "Contact extracted from public supplier evidence.")}</p>
+      <div class="contact-actions">
+        ${contact.email ? `<a href="mailto:${escapeAttribute(contact.email)}">Email seller</a>` : ""}
+        ${(contact.whatsapp || contact.phone) ? `<a href="https://wa.me/${escapeAttribute(normalizePhone(contact.whatsapp || contact.phone))}" target="_blank" rel="noopener noreferrer">WhatsApp seller</a>` : ""}
+        ${contact.phone ? `<a href="tel:${escapeAttribute(contact.phone)}">Call seller</a>` : ""}
+        ${contact.contact_page_url ? `<a href="${escapeAttribute(contact.contact_page_url)}" target="_blank" rel="noopener noreferrer">Contact page</a>` : ""}
+        ${contact.website ? `<a href="${escapeAttribute(contact.website)}" target="_blank" rel="noopener noreferrer">Website</a>` : ""}
+      </div>
+    </div>
+  `).join("");
+}
+
 function renderAgents(agents) {
-  if (!agents.length) return `<p>No active sourcing agents configured.</p>`;
-  return agents.map((agent) => `<div><strong>${escapeHtml(agent.name)}</strong> ${escapeHtml(agent.email || "")} ${escapeHtml(agent.whatsapp || "")} ${agent.website ? `<a href="${escapeAttribute(agent.website)}" target="_blank" rel="noopener noreferrer">${escapeHtml(agent.website)}</a>` : ""}</div>`).join("");
+  const uniqueAgents = dedupeAgents(agents || []);
+  if (!uniqueAgents.length) return `<p>No active sourcing agents configured.</p>`;
+  return uniqueAgents.map((agent) => `<div><strong>${escapeHtml(agent.name)}</strong> ${escapeHtml(agent.email || "")} ${escapeHtml(agent.whatsapp || "")} ${agent.website ? `<a href="${escapeAttribute(agent.website)}" target="_blank" rel="noopener noreferrer">${escapeHtml(agent.website)}</a>` : ""}</div>`).join("");
 }
 
 function renderList(title, items) {
@@ -879,18 +976,22 @@ function metric(label, value) {
 }
 
 function reportRow(label, value) {
-  return `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td><td>TND</td></tr>`;
+  return `<tr class="report-row"><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td><td>TND</td></tr>`;
 }
 
 function tnd(value) {
   if (value === null || value === undefined || value === "") return "Not found";
-  return `${value} TND`;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return `${formatNumber(numeric)} TND`;
+  return normalizeTndDisplayText(String(value));
 }
 
 function tndValueOrText(value) {
   if (value === null || value === undefined || value === "") return "Price not found";
   const text = String(value);
-  return text.toLowerCase().includes("tnd") ? text : `${text} TND`;
+  return text.toLowerCase().includes("tnd") || text.toLowerCase().includes("dt")
+    ? normalizeTndDisplayText(text)
+    : Number.isFinite(Number(text)) ? `${formatNumber(Number(text))} TND` : text;
 }
 
 function priceRangeTnd(minValue, maxValue) {
@@ -898,7 +999,53 @@ function priceRangeTnd(minValue, maxValue) {
   if (maxValue === null || maxValue === undefined || maxValue === "" || Number(maxValue) === Number(minValue)) {
     return tnd(minValue);
   }
-  return `${minValue} TND to ${maxValue} TND`;
+  return `${formatNumber(Number(minValue))} TND to ${formatNumber(Number(maxValue))} TND`;
+}
+
+function normalizePhone(value) {
+  return String(value || "").replace(/[^0-9]/g, "");
+}
+
+function hasUsableContact(contact) {
+  return Boolean(contact?.email || contact?.phone || contact?.whatsapp || contact?.contact_page_url || contact?.website);
+}
+
+function dedupeAgents(agents) {
+  const seen = new Set();
+  return agents.filter((agent) => {
+    const email = String(agent.email || "").trim().toLowerCase();
+    const phone = normalizePhone(agent.phone || agent.whatsapp || "");
+    const name = String(agent.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const key = email ? `email:${email}` : `${name}:${phone}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function formatNumber(value) {
+  if (!Number.isFinite(value)) return "Not found";
+  return value.toFixed(value % 1 === 0 ? 0 : 2).replace(/\.?0+$/, "");
+}
+
+function normalizeTndDisplayText(text) {
+  return String(text)
+    .replace(/(\d{1,3}),(\d{3})\s*(TND|DT)/gi, (_, whole, decimals, currency) => {
+      const decimalPart = decimals.replace(/0+$/, "");
+      return `${decimalPart ? `${whole}.${decimalPart}` : whole} ${currency.toUpperCase() === "DT" ? "TND" : currency.toUpperCase()}`;
+    })
+    .replace(/\bDT\b/gi, "TND");
+}
+
+function fallbackProductImage() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="520" viewBox="0 0 720 520">
+    <rect width="720" height="520" fill="#fffdf8"/>
+    <rect x="80" y="70" width="560" height="380" rx="22" fill="#d5ece9" stroke="#0d5c63" stroke-width="3"/>
+    <path d="M245 322c56-78 95-125 143-125 44 0 79 38 119 98" fill="none" stroke="#083d42" stroke-width="18" stroke-linecap="round"/>
+    <circle cx="281" cy="184" r="34" fill="#b86a1b"/>
+    <text x="360" y="405" text-anchor="middle" font-family="Segoe UI, Arial" font-size="28" fill="#1d2430">Illustrative image unavailable</text>
+  </svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 async function readJson(response) {
