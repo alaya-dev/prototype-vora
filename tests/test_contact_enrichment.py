@@ -1,10 +1,35 @@
 import unittest
 
 from app.benchmark.schemas import ProviderRawSource
-from app.prototype.contact_enrichment import _contacts_from_sources, _has_usable_contact
+from app.prototype.contact_enrichment import ContactEnrichmentAgent, _contacts_from_sources, _has_usable_contact
+from app.prototype.schemas import PrototypeSourcingLink
 
 
-class ContactEnrichmentTests(unittest.TestCase):
+class ContactEnrichmentTests(unittest.IsolatedAsyncioTestCase):
+    async def test_enrich_uses_saved_listing_evidence_before_contact_search(self) -> None:
+        agent = ContactEnrichmentAgent(providers=[])
+        link = PrototypeSourcingLink(
+            title="MarketUnion T9 listing",
+            url="https://marketunion.example/t9",
+            evidence_sources=[
+                {
+                    "title": "MarketUnion T9 wholesale listing",
+                    "url": "https://marketunion.example/t9",
+                    "snippet": "Contact supplier sales@marketunion.example WhatsApp +86 138 0013 8000",
+                    "region_hint": "china_sourcing",
+                    "source_type": "search_result",
+                }
+            ],
+        )
+
+        result = await agent.enrich([link])
+
+        self.assertEqual(result.status, "success")
+        self.assertEqual(result.provider_attempts, [])
+        self.assertEqual(result.provider_api_calls, 0)
+        self.assertEqual(result.contacts[0].email, "sales@marketunion.example")
+        self.assertEqual(result.contacts[0].whatsapp, "+86 138 0013 8000")
+
     def test_price_ranges_are_not_treated_as_phone_numbers(self) -> None:
         contacts = _contacts_from_sources(
             "Vintage T9 Trimmer",

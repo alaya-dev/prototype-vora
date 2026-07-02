@@ -23,6 +23,7 @@ class PrototypeSourcingLink(StrictModel):
     price: str | None = None
     moq: str | None = None
     confidence: str = "low"
+    evidence_sources: list[dict] = Field(default_factory=list)
 
 
 class ContactSellerCard(StrictModel):

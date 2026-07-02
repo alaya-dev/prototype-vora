@@ -5,6 +5,8 @@ import time
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
+from pydantic import ValidationError
+
 from app.benchmark.providers.base import ProviderAdapterError, ProviderNotConfiguredError
 from app.benchmark.schemas import ProviderEvidence, ProviderRawSource
 from app.prototype.schemas import ContactSellerCard, PrototypeSourcingLink
@@ -48,6 +50,11 @@ class ContactEnrichmentAgent:
         rejection_reasons: list[str] = []
 
         for link in links:
+            saved_contacts = _contacts_from_sources(link.title, _sources_from_link_evidence(link))
+            if saved_contacts:
+                contacts.extend(saved_contacts)
+                continue
+
             contact = _contact_from_text(link.title, link.title, "")
             if _has_usable_contact(contact):
                 contacts.append(contact)
@@ -148,6 +155,16 @@ def _contacts_from_sources(supplier_name: str, sources: list[ProviderRawSource])
         if _has_usable_contact(contact):
             contacts.append(contact)
     return contacts
+
+
+def _sources_from_link_evidence(link: PrototypeSourcingLink) -> list[ProviderRawSource]:
+    sources: list[ProviderRawSource] = []
+    for source in link.evidence_sources:
+        try:
+            sources.append(ProviderRawSource.model_validate(source))
+        except ValidationError:
+            continue
+    return sources
 
 
 def _contact_from_text(seller_name: str, title: str, text: str) -> ContactSellerCard:

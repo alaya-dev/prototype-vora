@@ -278,6 +278,53 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(detail.contacts_with_email_count, 1)
         self.assertEqual(detail.contacts_with_whatsapp_count, 1)
 
+    async def test_reveal_mines_saved_china_listing_evidence_before_contact_search(self) -> None:
+        store = PrototypeStore(_temp_db())
+        firecrawl = FakeProvider(
+            "firecrawl",
+            {
+                "china_sourcing": [
+                    _source(
+                        "MarketUnion T9 listing",
+                        "https://marketunion.example/t9",
+                        "US$2 factory price MOQ 100. Contact sales@marketunion.example WhatsApp +8613800138000",
+                        "china_sourcing",
+                    )
+                ],
+                "tunisia_sourcing": [],
+                "tunisia_retail": [
+                    _source("Retail 1", "https://shop1.tn/t9", "35 TND boutique", "tunisia_retail"),
+                    _source("Retail 2", "https://shop2.tn/t9", "42 TND boutique", "tunisia_retail"),
+                ],
+            },
+        )
+        contact_provider = FakeProvider("firecrawl", {})
+        analysis = _analysis()
+        analysis.china_sourcing_offers[0] = analysis.china_sourcing_offers[0].model_copy(
+            update={
+                "name": "MarketUnion",
+                "product_title": "MarketUnion T9 listing",
+                "source_url": "https://marketunion.example/t9",
+            }
+        )
+        result = await _orchestrator(
+            firecrawl=firecrawl,
+            store=store,
+            contact_providers=[contact_provider],
+            analysis=analysis,
+        ).analyze(PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer"))
+
+        reveal = await _orchestrator(store=store, contact_providers=[contact_provider]).reveal(result.run_id)
+
+        self.assertEqual(contact_provider.calls, [])
+        self.assertEqual(reveal.china_sourcing_links, [])
+        self.assertEqual(reveal.seller_contacts[0].email, "sales@marketunion.example")
+        self.assertEqual(reveal.seller_contacts[0].whatsapp, "+8613800138000")
+        detail = store.get_run_detail(result.run_id)
+        self.assertEqual(detail.contact_provider_attempts, 0)
+        self.assertEqual(detail.contact_search_api_calls, 0)
+        self.assertEqual(detail.contacts_found_count, 1)
+
     async def test_reveal_hides_empty_contact_cards_and_keeps_agents(self) -> None:
         store = PrototypeStore(_temp_db())
         store.upsert_sourcing_agent({"name": "Amina", "email": "amina@example.com", "active": True})

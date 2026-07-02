@@ -335,7 +335,7 @@ def _to_client_response(
 
     hidden_links = HiddenSourcingLinks(
         china_sourcing_links=[
-            _china_link(offer, cost_config)
+            _china_link(offer, cost_config, evidence)
             for offer in validated.china_sourcing_offers
             if offer.source_url
         ],
@@ -460,7 +460,7 @@ def _response_from_validated(
     )
 
 
-def _china_link(offer: ChinaSourcingOffer, cost_config: CostConfig) -> PrototypeSourcingLink:
+def _china_link(offer: ChinaSourcingOffer, cost_config: CostConfig, evidence: ProviderEvidence) -> PrototypeSourcingLink:
     price = offer.price_range_usd
     if offer.price_min_usd_numeric is not None:
         min_tnd = offer.price_min_usd_numeric * cost_config.usd_to_tnd_rate
@@ -475,6 +475,7 @@ def _china_link(offer: ChinaSourcingOffer, cost_config: CostConfig) -> Prototype
         price=price,
         moq=offer.moq,
         confidence=offer.confidence,
+        evidence_sources=[source.model_dump() for source in _sources_for_offer(offer.source_url, evidence)],
     )
 
 
@@ -708,6 +709,24 @@ def _has_equivalent_or_weak_china_sourcing(validated: ProviderAnalysisResult) ->
         or "oem" in offer.match_notes.lower()
         for offer in validated.china_sourcing_offers
     )
+
+
+def _sources_for_offer(url: str, evidence: ProviderEvidence) -> list[ProviderRawSource]:
+    exact_matches = [source for source in evidence.sources if source.url == url]
+    if exact_matches:
+        return exact_matches[:3]
+    host = _hostname(url)
+    if not host:
+        return []
+    return [
+        source
+        for source in evidence.sources
+        if source.region_hint == "china_sourcing" and _hostname(source.url) == host
+    ][:3]
+
+
+def _hostname(url: str) -> str:
+    return url.split("//", 1)[-1].split("/", 1)[0].lower()
 
 
 def _evidence_risks(validated: ProviderAnalysisResult) -> list[str]:
