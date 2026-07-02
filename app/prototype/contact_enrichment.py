@@ -140,14 +140,23 @@ async def _provider_contact_search(provider: object, query: str) -> ProviderEvid
 def _contacts_from_sources(supplier_name: str, sources: list[ProviderRawSource]) -> list[ContactSellerCard]:
     contacts: list[ContactSellerCard] = []
     for source in sources:
-        contact = _contact_from_text(supplier_name, source.title, " ".join([source.snippet, source.content or ""]))
+        source_host = _source_host(source.url)
+        contact = _contact_from_text(
+            supplier_name,
+            source.title,
+            " ".join([source.snippet, source.content or ""]),
+            source_host=source_host,
+            source_url=source.url,
+        )
         if not _has_usable_contact(contact) and _looks_like_contact_page(source):
             parsed = urlparse(source.url)
             website = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else None
             contact = contact.model_copy(
                 update={
                     "website": website,
+                    "website_source": source_host,
                     "contact_page_url": source.url,
+                    "contact_page_source": source_host,
                     "contact_confidence": "medium",
                     "contact_notes": "Official contact page found from public search evidence.",
                 }
@@ -167,7 +176,14 @@ def _sources_from_link_evidence(link: PrototypeSourcingLink) -> list[ProviderRaw
     return sources
 
 
-def _contact_from_text(seller_name: str, title: str, text: str) -> ContactSellerCard:
+def _contact_from_text(
+    seller_name: str,
+    title: str,
+    text: str,
+    *,
+    source_host: str | None = None,
+    source_url: str | None = None,
+) -> ContactSellerCard:
     haystack = " ".join([title, text])
     email = _first_match(EMAIL_RE, haystack)
     phones = [
@@ -180,12 +196,22 @@ def _contact_from_text(seller_name: str, title: str, text: str) -> ContactSeller
     lowered = haystack.lower()
     if "whatsapp" in lowered and phone:
         whatsapp = phone
+    website = None
+    if source_url and (email or phone or whatsapp):
+        parsed = urlparse(source_url)
+        if parsed.scheme and parsed.netloc:
+            website = f"{parsed.scheme}://{parsed.netloc}"
     return ContactSellerCard(
         seller_name=seller_name,
         company_name=seller_name,
         email=email,
+        email_source=source_host if email else None,
         phone=phone,
+        phone_source=source_host if phone else None,
         whatsapp=whatsapp,
+        whatsapp_source=source_host if whatsapp else None,
+        website=website,
+        website_source=source_host if website else None,
         contact_confidence="medium" if email or whatsapp else "low",
         contact_notes="Contact extracted from public supplier/product evidence." if email or phone else "",
     )
@@ -208,6 +234,14 @@ def _has_usable_contact(contact: ContactSellerCard) -> bool:
 def _first_match(pattern: re.Pattern[str], text: str) -> str | None:
     match = pattern.search(text)
     return match.group(0) if match else None
+
+
+def _source_host(url: str | None) -> str | None:
+    if not url:
+        return None
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    return host or None
 
 
 def _looks_like_public_phone(candidate: str, text: str, start: int, end: int) -> bool:

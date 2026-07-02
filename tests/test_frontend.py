@@ -67,6 +67,7 @@ class FrontendTests(unittest.TestCase):
 
     def test_analytics_ui_is_present(self) -> None:
         self.assertIn("/api/analytics/runs", self.html)
+        self.assertIn("/api/analytics/runs/${run.run_id}", self.html)
         self.assertIn("/api/analytics/cost-config", self.html)
         self.assertIn("/api/sourcing-agents", self.html)
         self.assertIn("Estimated research cost", self.html)
@@ -83,6 +84,9 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("estimated_landed_cost_per_unit_tnd", self.html)
         self.assertIn("estimated_meta_campaign_budget_tnd", self.html)
         self.assertIn("hidden sourcing URLs", self.html)
+        self.assertIn("Contact sources", self.html)
+        self.assertIn("Email from", self.html)
+        self.assertIn("Website from", self.html)
 
     def test_client_ui_is_mobile_first_and_uses_contact_cards(self) -> None:
         self.assertIn("@media (min-width: 760px)", self.html)

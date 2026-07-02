@@ -29,6 +29,8 @@ class ContactEnrichmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.provider_api_calls, 0)
         self.assertEqual(result.contacts[0].email, "sales@marketunion.example")
         self.assertEqual(result.contacts[0].whatsapp, "+86 138 0013 8000")
+        self.assertEqual(result.contacts[0].email_source, "marketunion.example")
+        self.assertEqual(result.contacts[0].whatsapp_source, "marketunion.example")
 
     def test_price_ranges_are_not_treated_as_phone_numbers(self) -> None:
         contacts = _contacts_from_sources(
@@ -61,6 +63,8 @@ class ContactEnrichmentTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(contacts[0].email, "sales@cnfactory.com")
         self.assertEqual(contacts[0].whatsapp, "+86 138 0013 8000")
+        self.assertEqual(contacts[0].email_source, "example.com")
+        self.assertEqual(contacts[0].whatsapp_source, "example.com")
 
     def test_empty_placeholder_is_not_a_usable_contact(self) -> None:
         contacts = _contacts_from_sources(
@@ -92,3 +96,4 @@ class ContactEnrichmentTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(_has_usable_contact(contacts[0]))
         self.assertEqual(contacts[0].contact_page_url, "https://cnfactory.example/contact")
+        self.assertEqual(contacts[0].contact_page_source, "cnfactory.example")

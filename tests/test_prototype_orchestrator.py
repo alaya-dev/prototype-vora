@@ -101,10 +101,38 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
             PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
         )
 
-        self.assertIsNone(result.product_image_url)
-        self.assertIsNone(result.product_image_source_url)
+        self.assertTrue((result.product_image_url or "").startswith("https://"))
+        self.assertIsNotNone(result.product_image_source_url)
         self.assertEqual(result.product_image_confidence, "fallback")
-        self.assertIn("No reliable source-backed product image was found", result.product_image_notes)
+        self.assertIn("source-domain visual", result.product_image_notes)
+
+    async def test_markdown_image_is_used_when_provider_content_contains_product_image(self) -> None:
+        firecrawl = FakeProvider(
+            "firecrawl",
+            {
+                "china_sourcing": [
+                    _source(
+                        "T9 listing",
+                        "https://cn.example/t9",
+                        "US$2 factory price MOQ 100",
+                        "china_sourcing",
+                        content="![Product](https://cdn.example/from-markdown.jpg)",
+                    )
+                ],
+                "tunisia_sourcing": [],
+                "tunisia_retail": [
+                    _source("Retail 1", "https://shop1.tn/t9", "35 TND boutique", "tunisia_retail"),
+                    _source("Retail 2", "https://shop2.tn/t9", "42 TND boutique", "tunisia_retail"),
+                ],
+            },
+        )
+
+        result = await _orchestrator(firecrawl=firecrawl).analyze(
+            PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
+        )
+
+        self.assertEqual(result.product_image_url, "https://cdn.example/from-markdown.jpg")
+        self.assertEqual(result.product_image_source_url, "https://cn.example/t9")
 
     async def test_source_unit_price_landed_cost_and_total_campaign_profit_are_separate(self) -> None:
         result = await _orchestrator(cost_config=CostConfig(
@@ -268,6 +296,8 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reveal.china_sourcing_links, [])
         self.assertEqual(reveal.seller_contacts[0].email, "sales@cnfactory.com")
         self.assertEqual(reveal.seller_contacts[0].whatsapp, "+8613800138000")
+        self.assertEqual(reveal.seller_contacts[0].email_source, "contact.example")
+        self.assertEqual(reveal.seller_contacts[0].whatsapp_source, "contact.example")
         self.assertEqual(reveal.sourcing_agents[0].name, "Amina")
         detail = store.get_run_detail(result.run_id)
         self.assertIn("china_sourcing_links", detail.hidden_links)
@@ -320,6 +350,8 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reveal.china_sourcing_links, [])
         self.assertEqual(reveal.seller_contacts[0].email, "sales@marketunion.example")
         self.assertEqual(reveal.seller_contacts[0].whatsapp, "+8613800138000")
+        self.assertEqual(reveal.seller_contacts[0].email_source, "marketunion.example")
+        self.assertEqual(reveal.seller_contacts[0].whatsapp_source, "marketunion.example")
         detail = store.get_run_detail(result.run_id)
         self.assertEqual(detail.contact_provider_attempts, 0)
         self.assertEqual(detail.contact_search_api_calls, 0)
@@ -464,11 +496,19 @@ def _analysis(include_tunisia_sourcing: bool = True) -> ProviderAnalysisResult:
     )
 
 
-def _source(title: str, url: str, snippet: str, group: str, image_urls: list[str] | None = None) -> ProviderRawSource:
+def _source(
+    title: str,
+    url: str,
+    snippet: str,
+    group: str,
+    image_urls: list[str] | None = None,
+    content: str | None = None,
+) -> ProviderRawSource:
     return ProviderRawSource(
         title=title,
         url=url,
         snippet=snippet,
+        content=content,
         region_hint=group,
         source_type="search_result",
         image_urls=image_urls or [],

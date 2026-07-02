@@ -297,6 +297,66 @@
     gap: 14px;
   }
 
+  .analytics-shell {
+    display: grid;
+    gap: 14px;
+  }
+
+  .run-list {
+    align-content: start;
+  }
+
+  .run-button {
+    width: 100%;
+    text-align: left;
+    background: var(--panel-strong);
+    border: 1px solid rgba(31, 41, 55, 0.08);
+  }
+
+  .run-button.selected {
+    border-color: rgba(13, 92, 99, 0.38);
+    box-shadow: 0 0 0 2px rgba(13, 92, 99, 0.08);
+  }
+
+  .detail-columns {
+    display: grid;
+    gap: 12px;
+  }
+
+  .detail-section {
+    border: 1px solid rgba(31, 41, 55, 0.08);
+    border-radius: var(--radius);
+    background: var(--panel-strong);
+    padding: 12px;
+    display: grid;
+    gap: 8px;
+  }
+
+  .detail-section h3 {
+    margin: 0;
+    font-size: 15px;
+  }
+
+  .detail-pairs {
+    display: grid;
+    gap: 8px;
+  }
+
+  .detail-pair {
+    display: grid;
+    gap: 3px;
+  }
+
+  .detail-pair strong {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .source-note {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
   .form-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -448,6 +508,15 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
+    .analytics-shell {
+      grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .detail-columns {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .app-layout {
       grid-template-columns: 220px minmax(0, 1fr);
     }
@@ -578,7 +647,12 @@
             <h2>Analytics</h2>
             <h3>Contact enrichment</h3>
             <div id="analyticsSummary" class="metric-grid"></div>
-            <div class="list" id="analyticsRuns"></div>
+            <div class="analytics-shell">
+              <div class="list run-list" id="analyticsRuns"></div>
+              <div id="analyticsRunDetail" class="panel run-detail">
+                <div class="item">Select a run to inspect detail.</div>
+              </div>
+            </div>
           </section>
           <section>
             <h2>Cost assumptions</h2>
@@ -647,6 +721,7 @@ const productPhoto = document.getElementById("productPhoto");
 const analyticsRefreshButton = document.getElementById("analyticsRefreshButton");
 const analyticsSummary = document.getElementById("analyticsSummary");
 const analyticsRuns = document.getElementById("analyticsRuns");
+const analyticsRunDetail = document.getElementById("analyticsRunDetail");
 const saveCostButton = document.getElementById("saveCostButton");
 const saveAgentButton = document.getElementById("saveAgentButton");
 const agentsList = document.getElementById("agentsList");
@@ -658,6 +733,8 @@ let currentRunId = null;
 let currentAgents = [];
 let agentsPage = 1;
 const agentsPageSize = 5;
+let analyticsRunsCache = [];
+let selectedAnalyticsRunId = null;
 
 prototypeAnalyzeButton.addEventListener("click", analyzePrototype);
 prototypeProductInput.addEventListener("keydown", (event) => {
@@ -716,7 +793,7 @@ async function analyzePrototype() {
 
 function renderPrototypeResult(data) {
   productPhoto.innerHTML = data.product_image_url
-    ? `<img src="${escapeAttribute(data.product_image_url)}" alt="${escapeAttribute(data.product_understanding?.normalized_product || "Product")}">`
+    ? `<img src="${escapeAttribute(data.product_image_url)}" alt="${escapeAttribute(data.product_understanding?.normalized_product || "Product")}" onerror="handleProductImageError(this)">`
     : `<div class="placeholder"><img src="${fallbackProductImage()}" alt="Illustrative product image unavailable from sources."><p>No reliable source-backed product image was found.</p></div>`;
   const retail = data.retail_market_summary || {};
   const profit = data.profitability_estimate || {};
@@ -842,21 +919,17 @@ async function loadAnalytics() {
       ${metric("Estimated research cost", `${summary.total_estimated_research_cost_usd ?? 0} USD`)}
       ${metric("Average latency", `${summary.average_latency_ms ?? 0} ms`)}
     `;
-    analyticsRuns.innerHTML = (runs || []).map((run) => `
-      <div class="item">
-        <strong>${escapeHtml(run.product_input)}</strong>
-        <span>${escapeHtml(run.run_id)} - ${escapeHtml(run.status)} - ${escapeHtml((run.provider_fallback_path || []).join(" > "))}</span>
-        <span>Was product image found? ${escapeHtml(run.was_product_image_found ? "yes" : "no")} - product_image_source_url ${escapeHtml(run.product_image_source_url || "none")}</span>
-        <span>source_unit_price_tnd ${escapeHtml(run.source_unit_price_tnd ?? "none")} - estimated_landed_cost_per_unit_tnd ${escapeHtml(run.estimated_landed_cost_per_unit_tnd ?? "none")}</span>
-        <span>${escapeHtml(run.landed_cost_breakdown_notes || "")}</span>
-        <span>estimated_meta_campaign_budget_tnd ${escapeHtml(run.estimated_meta_campaign_budget_tnd ?? "none")}</span>
-        <span>Retail candidates before cap ${escapeHtml(run.retail_candidate_sources_before_cap ?? 0)} - after cap ${escapeHtml(run.retail_candidate_sources_after_cap ?? 0)} - dropped ${escapeHtml(run.dropped_retail_sources ?? 0)} - known domains ${(run.known_tunisian_retail_domains_found || []).map(escapeHtml).join(", ") || "none"}</span>
-        <span>Image candidates ${escapeHtml(run.product_image_candidates_count ?? 0)} - selected ${escapeHtml(run.product_image_selected_source || "none")}</span>
-        <span>Contact enrichment: ${escapeHtml(run.contact_enrichment_called ? "yes" : "no")} - status ${escapeHtml(run.contact_enrichment_status || "not_found")} - contacts_found_count ${escapeHtml(run.contacts_found_count ?? 0)} - usable_contacts_found_count ${escapeHtml(run.usable_contacts_found_count ?? 0)} - rejected ${escapeHtml(run.contact_cards_rejected_count ?? 0)} - contacts_with_email_count ${escapeHtml(run.contacts_with_email_count ?? 0)} - contact_enrichment_estimated_cost ${escapeHtml(run.contact_enrichment_estimated_cost ?? 0)}</span>
-        <span>${escapeHtml(run.contact_enrichment_reason || "")}</span>
-        <span>hidden sourcing URLs ${escapeHtml(run.hidden_sourcing_urls_count ?? 0)} - selected sourcing offers ${escapeHtml(run.selected_sourcing_offers_count ?? 0)}</span>
-      </div>
-    `).join("") || `<div class="item">No prototype runs yet.</div>`;
+    analyticsRunsCache = runs || [];
+    if (selectedAnalyticsRunId && !analyticsRunsCache.some((run) => run.run_id === selectedAnalyticsRunId)) {
+      selectedAnalyticsRunId = null;
+    }
+    renderAnalyticsRunList(analyticsRunsCache);
+    const nextRunId = selectedAnalyticsRunId || analyticsRunsCache[0]?.run_id || null;
+    if (nextRunId) {
+      await loadAnalyticsRunDetail(nextRunId);
+    } else {
+      analyticsRunDetail.innerHTML = `<div class="item">No prototype runs yet.</div>`;
+    }
     document.querySelectorAll("[data-cost]").forEach((input) => {
       input.value = cost[input.dataset.cost] ?? "";
     });
@@ -866,8 +939,104 @@ async function loadAnalytics() {
   } catch (error) {
     analyticsSummary.innerHTML = metric("Analytics error", error.message);
     analyticsRuns.innerHTML = `<div class="item">Unable to load analytics. ${escapeHtml(error.message)}</div>`;
+    analyticsRunDetail.innerHTML = `<div class="item">Unable to load analytics detail. ${escapeHtml(error.message)}</div>`;
     agentsList.innerHTML = `<div class="item">Unable to load sourcing agents.</div>`;
   }
+}
+
+function renderAnalyticsRunList(runs) {
+  if (!runs.length) {
+    analyticsRuns.innerHTML = `<div class="item">No prototype runs yet.</div>`;
+    return;
+  }
+  analyticsRuns.innerHTML = runs.map((run) => {
+    const detailUrl = `/api/analytics/runs/${run.run_id}`;
+    const selected = run.run_id === selectedAnalyticsRunId;
+    return `
+      <button class="item run-button ${selected ? "selected" : ""}" type="button" data-run-id="${escapeAttribute(run.run_id)}" data-detail-url="${escapeAttribute(detailUrl)}">
+        <strong>${escapeHtml(run.product_input)}</strong>
+        <span>${escapeHtml(run.run_id)}</span>
+        <span>${escapeHtml(run.status)} | ${escapeHtml((run.provider_fallback_path || []).join(" > ") || "no providers")}</span>
+        <span>Latency ${escapeHtml(run.latency_ms ?? 0)} ms</span>
+        <span>Was product image found? ${escapeHtml(run.was_product_image_found ? "yes" : "no")} | contacts_found_count ${escapeHtml(run.contacts_found_count ?? 0)}</span>
+      </button>
+    `;
+  }).join("");
+  analyticsRuns.querySelectorAll("[data-run-id]").forEach((button) => {
+    button.addEventListener("click", () => loadAnalyticsRunDetail(button.dataset.runId));
+  });
+}
+
+async function loadAnalyticsRunDetail(runId) {
+  selectedAnalyticsRunId = runId;
+  renderAnalyticsRunList(analyticsRunsCache);
+  analyticsRunDetail.innerHTML = `<div class="item"><div class="skeleton"></div><div class="skeleton"></div></div>`;
+  const response = await fetch(`/api/analytics/runs/${runId}`);
+  const detail = await readJson(response);
+  const providerAttempts = (detail.provider_attempts || []).map((attempt) => `
+    <div class="item">
+      <strong>${escapeHtml(attempt.provider_id || "provider")}</strong>
+      <span>Status: ${escapeHtml(attempt.status || "unknown")}</span>
+      <span>Group: ${escapeHtml(attempt.evidence_group || "research")}</span>
+      <span>API calls: ${escapeHtml(attempt.api_calls ?? 0)} | raw sources: ${escapeHtml(attempt.raw_sources_count ?? 0)} | latency: ${escapeHtml(attempt.latency_ms ?? 0)} ms</span>
+    </div>
+  `).join("") || `<div class="item">No provider attempts recorded.</div>`;
+  analyticsRunDetail.innerHTML = `
+    <div class="detail-columns">
+      <section class="detail-section">
+        <h3>Run overview</h3>
+        <div class="detail-pairs">
+          ${detailPair("Product", detail.product_input)}
+          ${detailPair("Normalized", detail.normalized_product || "Not set")}
+          ${detailPair("Fallback path", (detail.provider_fallback_path || []).join(" > ") || "No providers")}
+          ${detailPair("Estimated research cost", `${detail.estimated_research_cost_usd ?? 0} USD`)}
+          ${detailPair("Warnings", (detail.warnings || []).join(" | ") || "None")}
+        </div>
+      </section>
+      <section class="detail-section">
+        <h3>Image and pricing</h3>
+        <div class="detail-pairs">
+          ${detailPair("Was product image found?", detail.was_product_image_found ? "yes" : "no")}
+          ${detailPair("product_image_source_url", detail.product_image_source_url || "none")}
+          ${detailPair("Image candidates", detail.product_image_candidates_count ?? 0)}
+          ${detailPair("source_unit_price_tnd", detail.source_unit_price_tnd ?? "none")}
+          ${detailPair("estimated_landed_cost_per_unit_tnd", detail.estimated_landed_cost_per_unit_tnd ?? "none")}
+          ${detailPair("estimated_meta_campaign_budget_tnd", detail.estimated_meta_campaign_budget_tnd ?? "none")}
+          ${detailPair("landed_cost_breakdown_notes", detail.landed_cost_breakdown_notes || "None")}
+        </div>
+      </section>
+      <section class="detail-section">
+        <h3>Retail coverage</h3>
+        <div class="detail-pairs">
+          ${detailPair("Retail candidates before cap", detail.retail_candidate_sources_before_cap ?? 0)}
+          ${detailPair("Retail candidates after cap", detail.retail_candidate_sources_after_cap ?? 0)}
+          ${detailPair("Dropped retail sources", detail.dropped_retail_sources ?? 0)}
+          ${detailPair("Known Tunisian retail domains found", (detail.known_tunisian_retail_domains_found || []).join(", ") || "none")}
+        </div>
+      </section>
+      <section class="detail-section">
+        <h3>Contact enrichment</h3>
+        <div class="detail-pairs">
+          ${detailPair("Contact enrichment", detail.contact_enrichment_called ? "yes" : "no")}
+          ${detailPair("contacts_found_count", detail.contacts_found_count ?? 0)}
+          ${detailPair("contacts_with_email_count", detail.contacts_with_email_count ?? 0)}
+          ${detailPair("contacts_with_whatsapp_count", detail.contacts_with_whatsapp_count ?? 0)}
+          ${detailPair("contact_enrichment_estimated_cost", detail.contact_enrichment_estimated_cost ?? 0)}
+          ${detailPair("hidden sourcing URLs", detail.hidden_sourcing_urls_count ?? 0)}
+          ${detailPair("selected sourcing offers", detail.selected_sourcing_offers_count ?? 0)}
+          ${detailPair("Reason", detail.contact_enrichment_reason || "None")}
+        </div>
+      </section>
+      <section class="detail-section wide">
+        <h3>Contact sources</h3>
+        ${renderAnalyticsContactSources(detail.seller_contacts || [])}
+      </section>
+      <section class="detail-section wide">
+        <h3>Provider attempts</h3>
+        <div class="list">${providerAttempts}</div>
+      </section>
+    </div>
+  `;
 }
 
 async function saveCostConfig() {
@@ -950,11 +1119,11 @@ function renderSellerContacts(contacts) {
       <span>${escapeHtml(contact.country || "")} ${escapeHtml(contact.platform || "")} Confidence: ${escapeHtml(contact.contact_confidence || "low")}</span>
       <p>${escapeHtml(contact.contact_notes || "Contact extracted from public supplier evidence.")}</p>
       <div class="list">
-        ${contact.email ? `<span>Email: ${escapeHtml(contact.email)}</span>` : ""}
-        ${contact.phone ? `<span>Phone: ${escapeHtml(contact.phone)}</span>` : ""}
-        ${contact.whatsapp ? `<span>WhatsApp: ${escapeHtml(contact.whatsapp)}</span>` : ""}
-        ${contact.website ? `<span>Website: ${escapeHtml(contact.website)}</span>` : ""}
-        ${contact.contact_page_url ? `<span>Contact page: ${escapeHtml(contact.contact_page_url)}</span>` : ""}
+        ${contact.email ? `<span>Email: ${escapeHtml(contact.email)}</span>${contact.email_source ? `<span class="source-note">Email from ${escapeHtml(contact.email_source)}</span>` : ""}` : ""}
+        ${contact.phone ? `<span>Phone: ${escapeHtml(contact.phone)}</span>${contact.phone_source ? `<span class="source-note">Phone from ${escapeHtml(contact.phone_source)}</span>` : ""}` : ""}
+        ${contact.whatsapp ? `<span>WhatsApp: ${escapeHtml(contact.whatsapp)}</span>${contact.whatsapp_source ? `<span class="source-note">WhatsApp from ${escapeHtml(contact.whatsapp_source)}</span>` : ""}` : ""}
+        ${contact.website ? `<span>Website: ${escapeHtml(contact.website)}</span>${contact.website_source ? `<span class="source-note">Website from ${escapeHtml(contact.website_source)}</span>` : ""}` : ""}
+        ${contact.contact_page_url ? `<span>Contact page: ${escapeHtml(contact.contact_page_url)}</span>${contact.contact_page_source ? `<span class="source-note">Contact page from ${escapeHtml(contact.contact_page_source)}</span>` : ""}` : ""}
       </div>
       <div class="contact-actions">
         ${contact.email ? `<a href="mailto:${escapeAttribute(contact.email)}">Email seller</a>` : ""}
@@ -973,6 +1142,28 @@ function renderAgents(agents) {
   return uniqueAgents.map((agent) => `<div><strong>${escapeHtml(agent.name)}</strong> ${escapeHtml(agent.email || "")} ${escapeHtml(agent.whatsapp || "")} ${agent.website ? `<a href="${escapeAttribute(agent.website)}" target="_blank" rel="noopener noreferrer">${escapeHtml(agent.website)}</a>` : ""}</div>`).join("");
 }
 
+function renderAnalyticsContactSources(contacts) {
+  const usableContacts = (contacts || []).filter(hasUsableContact);
+  if (!usableContacts.length) {
+    return `<div class="item">No usable contact provenance was recorded for this run.</div>`;
+  }
+  return `<div class="list">${usableContacts.map((contact) => `
+    <div class="item">
+      <strong>${escapeHtml(contact.company_name || contact.seller_name || "Seller")}</strong>
+      ${contact.email ? `<span>Email: ${escapeHtml(contact.email)}</span>` : ""}
+      ${contact.email_source ? `<span class="source-note">Email from ${escapeHtml(contact.email_source)}</span>` : ""}
+      ${contact.phone ? `<span>Phone: ${escapeHtml(contact.phone)}</span>` : ""}
+      ${contact.phone_source ? `<span class="source-note">Phone from ${escapeHtml(contact.phone_source)}</span>` : ""}
+      ${contact.whatsapp ? `<span>WhatsApp: ${escapeHtml(contact.whatsapp)}</span>` : ""}
+      ${contact.whatsapp_source ? `<span class="source-note">WhatsApp from ${escapeHtml(contact.whatsapp_source)}</span>` : ""}
+      ${contact.website ? `<span>Website: ${escapeHtml(contact.website)}</span>` : ""}
+      ${contact.website_source ? `<span class="source-note">Website from ${escapeHtml(contact.website_source)}</span>` : ""}
+      ${contact.contact_page_url ? `<span>Contact page: ${escapeHtml(contact.contact_page_url)}</span>` : ""}
+      ${contact.contact_page_source ? `<span class="source-note">Contact page from ${escapeHtml(contact.contact_page_source)}</span>` : ""}
+    </div>
+  `).join("")}</div>`;
+}
+
 function renderList(title, items) {
   if (!items.length) return "";
   return `<div class="list"><strong>${escapeHtml(title)}</strong>${items.map((item) => `<div class="item">${escapeHtml(item)}</div>`).join("")}</div>`;
@@ -980,6 +1171,10 @@ function renderList(title, items) {
 
 function metric(label, value) {
   return `<div class="metric"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(value)}</span></div>`;
+}
+
+function detailPair(label, value) {
+  return `<div class="detail-pair"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(String(value))}</span></div>`;
 }
 
 function reportRow(label, value) {
@@ -1053,6 +1248,12 @@ function fallbackProductImage() {
     <text x="360" y="405" text-anchor="middle" font-family="Segoe UI, Arial" font-size="28" fill="#1d2430">Illustrative image unavailable</text>
   </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function handleProductImageError(image) {
+  image.onerror = null;
+  image.src = fallbackProductImage();
+  image.alt = "Illustrative product image unavailable from sources.";
 }
 
 async function readJson(response) {

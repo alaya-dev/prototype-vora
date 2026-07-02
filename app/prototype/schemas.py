@@ -31,11 +31,16 @@ class ContactSellerCard(StrictModel):
     company_name: str = ""
     country: str = ""
     email: str | None = None
+    email_source: str | None = None
     phone: str | None = None
+    phone_source: str | None = None
     whatsapp: str | None = None
+    whatsapp_source: str | None = None
     website: str | None = None
+    website_source: str | None = None
     platform: str | None = None
     contact_page_url: str | None = None
+    contact_page_source: str | None = None
     contact_confidence: Literal["high", "medium", "low"] = "low"
     contact_notes: str = ""
 
@@ -227,6 +232,7 @@ class AnalyticsRunDetail(AnalyticsRunSummary):
     provider_attempts: list[dict] = Field(default_factory=list)
     api_usage_events: list[dict] = Field(default_factory=list)
     hidden_links: dict = Field(default_factory=dict)
+    seller_contacts: list[ContactSellerCard] = Field(default_factory=list)
 
 
 class AnalyticsSummary(StrictModel):

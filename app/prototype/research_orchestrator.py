@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 import time
 from typing import Iterable
+from urllib.parse import urlparse
 
 from app.benchmark.providers.base import ProviderAdapterError, ProviderNotConfiguredError
 from app.benchmark.schemas import (
@@ -32,6 +34,10 @@ from app.schemas import IntentResult, ProductUnderstanding
 
 EVIDENCE_GROUPS = ("china_sourcing", "tunisia_sourcing", "tunisia_retail")
 TUNISIA_WHOLESALE_NOT_FOUND = "No reliable Tunisian wholesale sourcing offer was found for this product."
+IMAGE_MARKDOWN_RE = re.compile(r"!\[[^\]]*\]\((https?://[^)\s]+)\)", re.IGNORECASE)
+IMAGE_HTML_RE = re.compile(r"""<img[^>]+src=["'](https?://[^"']+)["']""", re.IGNORECASE)
+META_IMAGE_RE = re.compile(r"""(?:og:image|twitter:image)[^"'=:\n\r>]*[:=]\s*["']?(https?://[^"'\s>]+)""", re.IGNORECASE)
+IMAGE_URL_RE = re.compile(r"""https?://[^\s"'()<>]+\.(?:png|jpe?g|webp|gif|svg)(?:\?[^\s"'()<>]*)?""", re.IGNORECASE)
 
 
 class PrototypeResearchOrchestrator:
@@ -491,7 +497,7 @@ def _tunisia_link(offer: TunisiaSourcingOffer) -> PrototypeSourcingLink:
 def _valid_image_or_none(url: str | None, evidence: ProviderEvidence) -> str | None:
     if not url:
         return _first_source_image(evidence)
-    return url if any(url in source.image_urls for source in evidence.sources) else None
+    return url if url.startswith(("http://", "https://")) else _first_source_image(evidence)
 
 
 def _image_payload(url: str | None, evidence: ProviderEvidence, product: ProductUnderstanding) -> dict:
@@ -500,8 +506,12 @@ def _image_payload(url: str | None, evidence: ProviderEvidence, product: Product
         return {
             "product_image_url": url,
             "product_image_source_url": source.url if source else None,
-            "product_image_confidence": _image_confidence(source, product),
-            "product_image_notes": "Source-backed image selected from provider evidence.",
+            "product_image_confidence": _image_confidence(source, product) if source else "low",
+            "product_image_notes": (
+                "Source-backed image selected from provider evidence."
+                if source
+                else "Image URL returned by analysis output."
+            ),
         }
     selected = _best_source_image(evidence, product)
     if selected:
@@ -511,6 +521,15 @@ def _image_payload(url: str | None, evidence: ProviderEvidence, product: Product
             "product_image_source_url": source.url,
             "product_image_confidence": _image_confidence(source, product),
             "product_image_notes": "Source-backed image selected from provider evidence.",
+        }
+    domain_visual = _source_domain_visual(evidence, product)
+    if domain_visual:
+        source, image_url = domain_visual
+        return {
+            "product_image_url": image_url,
+            "product_image_source_url": source.url,
+            "product_image_confidence": "fallback",
+            "product_image_notes": "No direct product image was captured; using source-domain visual from provider evidence.",
         }
     return {
         "product_image_url": None,
@@ -580,7 +599,7 @@ def _first_source_image(evidence: ProviderEvidence) -> str | None:
 def _best_source_image(evidence: ProviderEvidence, product: ProductUnderstanding) -> tuple[ProviderRawSource, str] | None:
     sorted_sources = sorted(evidence.sources, key=lambda source: _image_source_score(source, product), reverse=True)
     for source in sorted_sources:
-        for image_url in source.image_urls:
+        for image_url in _source_image_candidates(source):
             if image_url.startswith(("http://", "https://")):
                 return source, image_url
     return None
@@ -588,9 +607,44 @@ def _best_source_image(evidence: ProviderEvidence, product: ProductUnderstanding
 
 def _source_for_image(url: str, evidence: ProviderEvidence) -> ProviderRawSource | None:
     for source in evidence.sources:
-        if url in source.image_urls:
+        if url in _source_image_candidates(source) or url == _source_domain_visual_for_source(source):
             return source
     return None
+
+
+def _source_image_candidates(source: ProviderRawSource) -> list[str]:
+    candidates: list[str] = []
+    candidates.extend(source.image_urls)
+    for text in (source.snippet, source.content or ""):
+        candidates.extend(IMAGE_MARKDOWN_RE.findall(text))
+        candidates.extend(IMAGE_HTML_RE.findall(text))
+        candidates.extend(META_IMAGE_RE.findall(text))
+        candidates.extend(IMAGE_URL_RE.findall(text))
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        cleaned = candidate.strip().rstrip(").,;\"'")
+        if not cleaned.startswith(("http://", "https://")) or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        deduped.append(cleaned)
+    return deduped
+
+
+def _source_domain_visual(evidence: ProviderEvidence, product: ProductUnderstanding) -> tuple[ProviderRawSource, str] | None:
+    sorted_sources = sorted(evidence.sources, key=lambda source: _image_source_score(source, product), reverse=True)
+    for source in sorted_sources:
+        image_url = _source_domain_visual_for_source(source)
+        if image_url:
+            return source, image_url
+    return None
+
+
+def _source_domain_visual_for_source(source: ProviderRawSource) -> str | None:
+    parsed = urlparse(source.url)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}/favicon.ico"
 
 
 def _image_source_score(source: ProviderRawSource, product: ProductUnderstanding) -> int:
@@ -779,7 +833,7 @@ def _product_image_debug(evidence: ProviderEvidence, response: PrototypeAnalyzeR
     candidates = [
         image_url
         for source in evidence.sources
-        for image_url in source.image_urls
+        for image_url in _source_image_candidates(source)
         if image_url.startswith(("http://", "https://"))
     ]
     return {

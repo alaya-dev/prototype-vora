@@ -261,6 +261,7 @@ class PrototypeStore:
             summary_data.pop("provider_attempts", None)
             summary_data.pop("api_usage_events", None)
             summary_data.pop("hidden_links", None)
+            summary_data.pop("seller_contacts", None)
             summaries.append(AnalyticsRunSummary.model_validate(summary_data))
         return summaries
 
@@ -370,6 +371,11 @@ class PrototypeStore:
         sourcing_summary = response.get("sourcing_summary") or {}
         china_links = hidden_links.get("china_sourcing_links", []) or []
         tunisia_links = hidden_links.get("tunisia_sourcing_links", []) or []
+        seller_contacts = [
+            ContactSellerCard.model_validate(contact)
+            for contact in hidden_links.get("seller_contacts", [])
+            if _has_usable_contact_dict(contact)
+        ]
         source_unit_price = profit.get("source_unit_price_tnd")
         if source_unit_price is None:
             source_unit_price = sourcing_summary.get("china_price_min_tnd_estimate")
@@ -431,6 +437,7 @@ class PrototypeStore:
             provider_attempts=attempts_list,
             api_usage_events=usage_list,
             hidden_links=hidden_links,
+            seller_contacts=seller_contacts,
         )
 
 

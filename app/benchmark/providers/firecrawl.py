@@ -196,4 +196,36 @@ def _extract_firecrawl_images(item: dict) -> list[str]:
             urls.append(value)
         elif isinstance(value, dict) and value.get("url"):
             urls.append(value["url"])
+    urls.extend(_collect_nested_image_urls(item))
+    return _dedupe_urls(urls)
+
+
+def _collect_nested_image_urls(value) -> list[str]:
+    urls: list[str] = []
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            lowered = str(key).lower()
+            if lowered in {"image", "imageurl", "og:image", "twitter:image", "thumbnail", "thumbnailurl"}:
+                if isinstance(nested, str) and nested.startswith(("http://", "https://")):
+                    urls.append(nested)
+                elif isinstance(nested, list):
+                    urls.extend(_collect_nested_image_urls(nested))
+                elif isinstance(nested, dict):
+                    urls.extend(_collect_nested_image_urls(nested))
+            elif isinstance(nested, (dict, list)):
+                urls.extend(_collect_nested_image_urls(nested))
+    elif isinstance(value, list):
+        for nested in value:
+            urls.extend(_collect_nested_image_urls(nested))
     return urls
+
+
+def _dedupe_urls(urls: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for url in urls:
+        if not isinstance(url, str) or not url.startswith(("http://", "https://")) or url in seen:
+            continue
+        seen.add(url)
+        deduped.append(url)
+    return deduped
