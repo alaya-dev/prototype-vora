@@ -98,3 +98,12 @@ class QueryStrategyTests(unittest.TestCase):
         self.assertIn("écouteurs sans fil HOCO", hoco.tunisia_sourcing[0])
         self.assertIn("portable blender", blender.china_sourcing[0])
         self.assertIn("mixeur portable", blender.tunisia_retail[0])
+
+    def test_regional_brand_queries_include_exact_then_oem_equivalent_terms(self) -> None:
+        queries = build_regional_queries("COALA RS2000W-IR 1500W Fan Heater", max_queries_per_region=10)
+        joined = " ".join(queries.china_sourcing).lower()
+
+        self.assertIn("coala rs2000w-ir 1500w fan heater", joined)
+        self.assertIn("1500w 2000w ptc ceramic portable fan heater oem factory price moq", joined)
+        self.assertIn("portable ptc ceramic fan heater 1500w manufacturer price", joined)
+        self.assertIn("electric room heater 1500w 2000w factory wholesale moq", joined)

@@ -106,7 +106,7 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.product_image_confidence, "fallback")
         self.assertIn("No reliable source-backed product image was found", result.product_image_notes)
 
-    async def test_source_unit_price_landed_cost_and_ad_allocation_are_separate(self) -> None:
+    async def test_source_unit_price_landed_cost_and_total_campaign_profit_are_separate(self) -> None:
         result = await _orchestrator(cost_config=CostConfig(
             usd_to_tnd_rate=3.1,
             default_shipping_per_unit_tnd=4,
@@ -130,6 +130,25 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(profit.expected_units_sold_from_campaign, 100)
         self.assertEqual(profit.estimated_ad_cost_per_sold_unit_tnd, 5)
         self.assertIn("500 TND / 100", profit.ad_cost_notes)
+        self.assertEqual(profit.estimated_margin_per_unit_tnd, 24.68)
+        self.assertIsNone(profit.estimated_profit_for_100_units_tnd)
+        self.assertEqual(profit.estimated_profit_for_1000_units_tnd, 24180)
+
+    async def test_recommendation_is_conservative_for_equivalent_oem_or_weak_evidence(self) -> None:
+        analysis = _analysis()
+        analysis.china_sourcing_offers[0] = analysis.china_sourcing_offers[0].model_copy(
+            update={
+                "product_match": "broad",
+                "match_notes": "Equivalent OEM fan heater, not exact branded product.",
+            }
+        )
+
+        result = await _orchestrator(analysis=analysis).analyze(
+            PrototypeAnalyzeRequest(product="COALA RS2000W-IR 1500W Fan Heater")
+        )
+
+        self.assertEqual(result.recommendation, "investigate_more")
+        self.assertTrue(any("Equivalent OEM" in risk for risk in result.profitability_estimate.risks))
 
     async def test_zero_landed_assumptions_do_not_create_confident_landed_cost(self) -> None:
         result = await _orchestrator(

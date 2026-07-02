@@ -232,5 +232,7 @@ class GeminiRoleWrapperTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("No retail fallback for Tunisia sourcing", prompt)
         self.assertIn("No Algerian, Moroccan, or French substitutions for Tunisia sourcing", prompt)
         self.assertIn("empty tunisia_sourcing_offers is acceptable", prompt)
+        self.assertIn("regional or local brand", prompt)
+        self.assertIn("equivalent OEM", prompt)
         self.assertIn("Content: Portable blender available now", prompt)
         self.assertIs(response_model, ProviderAnalysisResult)

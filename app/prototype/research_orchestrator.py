@@ -355,9 +355,19 @@ def _to_client_response(
                 "tunisia_wholesale_summary": TUNISIA_WHOLESALE_NOT_FOUND,
             }
         )
+    profitability = _profitability_with_evidence_risks(base.profitability_estimate, validated)
+    recommendation, recommendation_reason = _conservative_recommendation(
+        base.recommendation,
+        profitability.gross_margin_per_unit_before_marketing_tnd,
+        validated,
+        profitability,
+    )
     return base.model_copy(
         update={
             "sourcing_summary": sourcing_summary,
+            "profitability_estimate": profitability,
+            "recommendation": recommendation,
+            "recommendation_reason": recommendation_reason,
             "hidden_sourcing_links": hidden_links,
             "links_hidden": True,
             "go_reveal_available": True,
@@ -382,14 +392,22 @@ def _response_from_validated(
     ad_allocation, ad_notes = _ad_allocation(cost_config)
     retail = validated.tunisia_retail_market
     selling_price = retail.price_avg_tnd or retail.price_min_tnd
-    profit = None
+    gross_margin = None
     if landed_cost is not None and selling_price is not None:
-        profit = round(selling_price - landed_cost, 2)
-    recommendation = "investigate_more"
-    if profit is not None and profit > 0 and validated.china_sourcing_offers and retail.retail_offers:
-        recommendation = "go" if profit >= 5 else "investigate_more"
-    if profit is not None and profit <= 0:
-        recommendation = "no_go"
+        gross_margin = round(selling_price - landed_cost, 2)
+    gross_profit_1000 = round(gross_margin * 1000, 2) if gross_margin is not None else None
+    campaign_budget = cost_config.default_meta_campaign_budget_tnd
+    net_profit_1000 = (
+        round(gross_profit_1000 - float(campaign_budget), 2)
+        if gross_profit_1000 is not None and campaign_budget is not None
+        else None
+    )
+    recommendation, recommendation_reason = _conservative_recommendation(
+        "investigate_more",
+        gross_margin,
+        validated,
+        None,
+    )
 
     return PrototypeAnalyzeResponse(
         run_id=run_id,
@@ -421,20 +439,23 @@ def _response_from_validated(
             estimated_source_cost_tnd=landed_cost,
             estimated_selling_price_tnd=selling_price,
             estimated_meta_ads_cost_per_sale_tnd=ad_allocation,
-            estimated_margin_per_unit_tnd=profit,
-            estimated_profit_per_unit_tnd=profit,
-            estimated_profit_for_100_units_tnd=_scenario_profit(profit, 100),
-            estimated_profit_for_1000_units_tnd=_scenario_profit(profit, 1000),
+            gross_margin_per_unit_before_marketing_tnd=gross_margin,
+            gross_profit_for_1000_before_marketing_tnd=gross_profit_1000,
+            net_profit_for_1000_after_marketing_tnd=net_profit_1000,
+            estimated_margin_per_unit_tnd=gross_margin,
+            estimated_profit_per_unit_tnd=gross_margin,
+            estimated_profit_for_100_units_tnd=None,
+            estimated_profit_for_1000_units_tnd=net_profit_1000,
             assumptions=[
                 "Profitability is an estimate, not a guarantee.",
                 f"USD to TND rate assumed at {cost_config.usd_to_tnd_rate}.",
                 landed_notes,
                 ad_notes,
             ],
-            risks=list(dict.fromkeys(warnings)),
+            risks=list(dict.fromkeys(warnings + _evidence_risks(validated))),
         ),
         recommendation=recommendation,
-        recommendation_reason=_recommendation_reason(recommendation, profit, validated),
+        recommendation_reason=recommendation_reason,
         warnings=warnings,
     )
 
@@ -649,18 +670,58 @@ def _overall_confidence(validated: ProviderAnalysisResult) -> str:
     return "low"
 
 
-def _scenario_profit(profit: float | None, quantity: int) -> float | None:
-    return round(profit * quantity, 2) if profit is not None else None
-
-
-def _recommendation_reason(recommendation: str, profit: float | None, validated: ProviderAnalysisResult) -> str:
-    if recommendation == "go":
-        return "Evidence suggests positive unit margin, but logistics and ad performance still need confirmation."
-    if recommendation == "no_go":
-        return "Estimated margin is weak or negative based on available source and retail evidence."
+def _conservative_recommendation(
+    current: str,
+    gross_margin: float | None,
+    validated: ProviderAnalysisResult,
+    profitability: ProfitabilityEstimate | None,
+) -> tuple[str, str]:
+    if gross_margin is not None and gross_margin <= 0:
+        return "no_go", "Estimated gross margin is weak or negative based on available source and retail evidence."
+    if profitability and profitability.estimated_landed_cost_per_unit_tnd is None:
+        return "investigate_more", "Landed cost assumptions are missing, so VORA cannot produce a confident GO recommendation."
+    if not validated.tunisia_retail_market.retail_offers:
+        return "investigate_more", "Tunisia retail evidence is missing, so the selling-price assumption needs more validation."
+    if _has_equivalent_or_weak_china_sourcing(validated):
+        return "investigate_more", "China sourcing appears to rely on equivalent OEM or weak evidence, not a fully verified exact product match."
+    if gross_margin is None:
+        return "investigate_more", "Evidence is incomplete or margin confidence is not strong enough for a clear GO."
+    if current == "go" or gross_margin >= 5:
+        return "go", "Evidence suggests positive gross margin before marketing, but logistics and ad performance still need confirmation."
     if not validated.tunisia_sourcing_offers:
-        return "China sourcing and Tunisia retail evidence may be useful, but Tunisian wholesale sourcing was not found."
-    return "Evidence is incomplete or margin confidence is not strong enough for a clear GO."
+        return "investigate_more", "China sourcing and Tunisia retail evidence may be useful, but Tunisian wholesale sourcing was not found."
+    return "investigate_more", "Evidence is incomplete or margin confidence is not strong enough for a clear GO."
+
+
+def _profitability_with_evidence_risks(
+    profitability: ProfitabilityEstimate,
+    validated: ProviderAnalysisResult,
+) -> ProfitabilityEstimate:
+    risks = list(dict.fromkeys(profitability.risks + _evidence_risks(validated)))
+    return profitability.model_copy(update={"risks": risks})
+
+
+def _has_equivalent_or_weak_china_sourcing(validated: ProviderAnalysisResult) -> bool:
+    return any(
+        offer.product_match in {"broad", "weak"}
+        or "equivalent" in offer.match_notes.lower()
+        or "oem" in offer.match_notes.lower()
+        for offer in validated.china_sourcing_offers
+    )
+
+
+def _evidence_risks(validated: ProviderAnalysisResult) -> list[str]:
+    risks: list[str] = []
+    for offer in validated.china_sourcing_offers:
+        notes = offer.match_notes.strip()
+        if offer.product_match in {"broad", "weak"} or "equivalent" in notes.lower() or "oem" in notes.lower():
+            risks.append(
+                notes
+                or "Equivalent OEM or weak China sourcing evidence may not match the exact branded product."
+            )
+    if _overall_confidence(validated) == "low":
+        risks.append("Evidence confidence is low.")
+    return risks
 
 
 def _retail_evidence_debug(evidence: ProviderEvidence, validated: ProviderAnalysisResult) -> dict:

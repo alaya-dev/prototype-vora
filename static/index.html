@@ -774,9 +774,9 @@ function renderPrototypeResult(data) {
           ${reportRow("Estimated retail selling price", tnd(profit.estimated_selling_price_tnd))}
           ${reportRow("Estimated Meta campaign budget", tnd(profit.estimated_meta_campaign_budget_tnd))}
           ${reportRow("Estimated landed cost per unit", tnd(profit.estimated_landed_cost_per_unit_tnd))}
-          ${reportRow("Estimated margin per unit", tnd(profit.estimated_margin_per_unit_tnd ?? profit.estimated_profit_per_unit_tnd))}
-          ${reportRow("Estimated profit for 100 units", tnd(profit.estimated_profit_for_100_units_tnd))}
-          ${reportRow("Estimated profit for 1000 units", tnd(profit.estimated_profit_for_1000_units_tnd))}
+          ${reportRow("Gross margin per unit before marketing", tnd(profit.gross_margin_per_unit_before_marketing_tnd ?? profit.estimated_margin_per_unit_tnd ?? profit.estimated_profit_per_unit_tnd))}
+          ${reportRow("Gross profit for 1000 before marketing", tnd(profit.gross_profit_for_1000_before_marketing_tnd))}
+          ${reportRow("Net profit for 1000 units after campaign", tnd(profit.net_profit_for_1000_after_marketing_tnd ?? profit.estimated_profit_for_1000_units_tnd))}
         </tbody>
       </table>
       ${renderList("Assumptions", profit.assumptions || [])}
@@ -949,6 +949,13 @@ function renderSellerContacts(contacts) {
       <strong>${escapeHtml(contact.company_name || contact.seller_name || "Seller")}</strong>
       <span>${escapeHtml(contact.country || "")} ${escapeHtml(contact.platform || "")} Confidence: ${escapeHtml(contact.contact_confidence || "low")}</span>
       <p>${escapeHtml(contact.contact_notes || "Contact extracted from public supplier evidence.")}</p>
+      <div class="list">
+        ${contact.email ? `<span>Email: ${escapeHtml(contact.email)}</span>` : ""}
+        ${contact.phone ? `<span>Phone: ${escapeHtml(contact.phone)}</span>` : ""}
+        ${contact.whatsapp ? `<span>WhatsApp: ${escapeHtml(contact.whatsapp)}</span>` : ""}
+        ${contact.website ? `<span>Website: ${escapeHtml(contact.website)}</span>` : ""}
+        ${contact.contact_page_url ? `<span>Contact page: ${escapeHtml(contact.contact_page_url)}</span>` : ""}
+      </div>
       <div class="contact-actions">
         ${contact.email ? `<a href="mailto:${escapeAttribute(contact.email)}">Email seller</a>` : ""}
         ${(contact.whatsapp || contact.phone) ? `<a href="https://wa.me/${escapeAttribute(normalizePhone(contact.whatsapp || contact.phone))}" target="_blank" rel="noopener noreferrer">WhatsApp seller</a>` : ""}

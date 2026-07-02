@@ -67,6 +67,9 @@ class ProductUnderstanding(StrictModel):
     must_include_terms: list[str] = Field(default_factory=list)
     optional_terms: list[str] = Field(default_factory=list)
     excluded_terms: list[str] = Field(default_factory=list)
+    technical_specs: list[str] = Field(default_factory=list)
+    brand_scope: Literal["global", "regional", "local", "unknown"] = "unknown"
+    china_equivalent_search_name: str = ""
     needs_more_specification: bool = False
     specification_questions: list[str] = Field(default_factory=list)
 

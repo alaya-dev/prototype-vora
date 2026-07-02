@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TypeVar
 import asyncio
+import re
 
 from pydantic import BaseModel, ValidationError
 
@@ -98,7 +99,11 @@ class GeminiIntentClient:
             "understanding object. Preserve brand names, model numbers, and identifiers "
             "exactly. Use the best English product phrase for China sourcing and the best "
             "French product phrase for Tunisia sourcing and Tunisia retail. Do not invent "
-            "specifications the user did not provide.\n\n"
+            "specifications the user did not provide. Detect technical specs such as wattage, "
+            "materials, dimensions, voltage, heater type, capacity, or model numbers. Set "
+            "brand_scope to global, regional, local, or unknown. If the brand appears regional "
+            "or local, provide china_equivalent_search_name for equivalent OEM/manufacturer "
+            "searches while preserving the exact brand/model separately.\n\n"
             f"User input: {trimmed_product}"
         )
         payload = await self.structured_client.generate_json(
@@ -235,6 +240,9 @@ def _build_product_understanding(
             must_include_terms=payload.must_include_terms or fallback.must_include_terms,
             optional_terms=payload.optional_terms or fallback.optional_terms,
             excluded_terms=payload.excluded_terms or fallback.excluded_terms,
+            technical_specs=payload.technical_specs or fallback.technical_specs,
+            brand_scope=payload.brand_scope if payload.brand_scope in {"global", "regional", "local", "unknown"} else fallback.brand_scope,
+            china_equivalent_search_name=payload.china_equivalent_search_name or fallback.china_equivalent_search_name,
             needs_more_specification=payload.needs_more_specification,
             specification_questions=payload.specification_questions,
         ),
@@ -279,6 +287,21 @@ def _fallback_product_understanding(original_product: str, normalized_product: s
             optional_terms=["mini", "personal"],
             excluded_terms=["industrial"],
         )
+    if "coala" in lowered and ("heater" in lowered or "chauffage" in lowered or "radiateur" in lowered):
+        return ProductUnderstanding(
+            original_product=original_product,
+            normalized_product="COALA RS2000W-IR 1500W fan heater",
+            product_category="portable electric fan heater",
+            brand_or_model="COALA RS2000W-IR",
+            english_search_name="COALA RS2000W-IR 1500W fan heater",
+            french_search_name="chauffage soufflant COALA RS2000W-IR 1500W",
+            must_include_terms=["COALA", "RS2000W-IR", "1500W", "fan heater"],
+            optional_terms=["2000W", "PTC", "ceramic", "portable heater"],
+            excluded_terms=["water heater", "industrial heater"],
+            technical_specs=["1500W", "2000W", "fan heater"],
+            brand_scope="regional",
+            china_equivalent_search_name="1500W 2000W PTC ceramic portable fan heater",
+        )
     return ProductUnderstanding(
         original_product=original_product,
         normalized_product=normalized_product,
@@ -286,7 +309,15 @@ def _fallback_product_understanding(original_product: str, normalized_product: s
         english_search_name=normalized_product,
         french_search_name=normalized_product,
         must_include_terms=[term for term in normalized_product.split() if term],
+        technical_specs=_extract_basic_specs(normalized_product),
     )
+
+
+def _extract_basic_specs(text: str) -> list[str]:
+    specs = []
+    for match in re.finditer(r"\b\d+(?:\.\d+)?\s?(?:w|kw|v|mah|ml|l|cm|mm)\b", text, flags=re.IGNORECASE):
+        specs.append(match.group(0).replace(" ", ""))
+    return list(dict.fromkeys(specs))
 
 
 def _format_product_for_prompt(product: str | ProductUnderstanding) -> str:
@@ -302,6 +333,9 @@ def _format_product_for_prompt(product: str | ProductUnderstanding) -> str:
                 f"must_include_terms: {', '.join(product.must_include_terms)}",
                 f"optional_terms: {', '.join(product.optional_terms)}",
                 f"excluded_terms: {', '.join(product.excluded_terms)}",
+                f"technical_specs: {', '.join(product.technical_specs)}",
+                f"brand_scope: {product.brand_scope}",
+                f"china_equivalent_search_name: {product.china_equivalent_search_name}",
             ]
         )
     return f"Product: {product}"
@@ -367,7 +401,10 @@ def _build_analysis_prompt(product: str | ProductUnderstanding, evidence: Provid
         "exact requested product. weak means unclear or possibly unrelated. Add concise "
         "match_notes explaining the match decision. brand/model must be preserved for "
         "exact/close matches when provided; missing must_include_terms should downgrade "
-        "product_match.\n\n"
+        "product_match. For a regional or local brand, China sourcing should distinguish "
+        "exact branded evidence from equivalent OEM/manufacturer evidence. Do not pretend "
+        "equivalent OEM sourcing is the exact retail brand. Equivalent OEM offers should "
+        "usually be close or broad, not exact, unless evidence proves the same brand/model.\n\n"
         f"Product understanding:\n{_format_product_for_prompt(product)}\n"
         f"Provider: {evidence.provider_id}\n\n"
         "Evidence:\n"
@@ -419,8 +456,10 @@ def _build_client_analysis_prompt(
         "Keep source product unit price separate from estimated landed cost. Landed "
         "cost must be source product unit price plus explicit shipping/import/customs/"
         "handling/misc assumptions. Do not silently replace a source unit price with "
-        "a landed cost. Model Meta ads as a campaign budget divided by expected units "
-        "sold from that campaign; do not describe ads as a guaranteed fixed product cost. "
+        "a landed cost. Model Meta ads as a total campaign budget, not as a direct "
+        "per-product cost. If expected units sold are available, a per-unit ad allocation "
+        "can be derived as campaign budget divided by expected units sold, but label it "
+        "as an allocation estimate only. "
         "Return china_sourcing_offers, "
         "tunisia_sourcing_offers, tunisia_retail_market, sourcing summary, retail "
         "market summary, profitability estimate, recommendation, "

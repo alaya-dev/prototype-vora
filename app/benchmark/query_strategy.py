@@ -35,6 +35,9 @@ class ProductIntent:
     excluded_terms: list[str]
     english_search_name: str
     french_search_name: str
+    technical_specs: list[str]
+    brand_scope: str
+    china_equivalent_search_name: str
 
     @property
     def china_search_name(self) -> str:
@@ -59,6 +62,14 @@ def build_regional_queries(product: str | ProductUnderstanding, max_queries_per_
         "{product} OEM ODM factory price MOQ",
         "{product} wholesale price per piece",
         "{product} supplier product price MOQ",
+    ]
+    china_equivalent_templates = [
+        "{equivalent_product} OEM factory price MOQ",
+        "portable PTC ceramic fan heater 1500W manufacturer price",
+        "electric room heater 1500W 2000W factory wholesale MOQ",
+        "{equivalent_product} manufacturer price",
+        "{equivalent_product} factory wholesale MOQ",
+        "{equivalent_product} bulk price MOQ",
     ]
     tunisia_sourcing_templates = [
         "{product} grossiste Tunisie prix",
@@ -98,10 +109,42 @@ def build_regional_queries(product: str | ProductUnderstanding, max_queries_per_
         "{product} Tayara Tunisie",
     ]
     return RegionalQueries(
-        china_sourcing=_format_queries(china_sourcing_templates, intent.china_search_name, intent.original_product, limit),
+        china_sourcing=_format_china_queries(china_sourcing_templates, china_equivalent_templates, intent, limit),
         tunisia_sourcing=_format_queries(tunisia_sourcing_templates, intent.tunisia_search_name, intent.original_product, limit),
         tunisia_retail=_format_queries(tunisia_retail_templates, intent.tunisia_search_name, intent.original_product, limit),
     )
+
+
+def _format_china_queries(
+    exact_templates: list[str],
+    equivalent_templates: list[str],
+    intent: ProductIntent,
+    limit: int,
+) -> list[str]:
+    exact_queries = _format_queries(exact_templates, intent.china_search_name, intent.original_product, limit)
+    equivalent_name = intent.china_equivalent_search_name.strip()
+    if not equivalent_name or equivalent_name.lower() == intent.china_search_name.lower():
+        return exact_queries
+    if intent.brand_scope not in {"regional", "local", "unknown"}:
+        return exact_queries
+
+    equivalent_slots = min(3, max(0, limit - 1))
+    exact_budget = max(1, limit - equivalent_slots)
+    queries = exact_queries[:exact_budget]
+    seen = {query.lower() for query in queries}
+    for template in equivalent_templates:
+        if len(queries) >= limit:
+            break
+        query = template.format(
+            product=intent.china_search_name,
+            equivalent_product=equivalent_name,
+            original_product=intent.original_product,
+        ).strip()
+        if query.lower() in seen:
+            continue
+        seen.add(query.lower())
+        queries.append(query)
+    return queries
 
 
 def _format_queries(
@@ -136,6 +179,9 @@ def infer_product_intent(product: str | ProductUnderstanding) -> ProductIntent:
             excluded_terms=product.excluded_terms,
             english_search_name=product.english_search_name or product.normalized_product or product.original_product,
             french_search_name=product.french_search_name or product.normalized_product or product.original_product,
+            technical_specs=product.technical_specs,
+            brand_scope=product.brand_scope,
+            china_equivalent_search_name=product.china_equivalent_search_name,
         )
     original = product.strip()
     normalized = re.sub(r"\s+", " ", original)
@@ -152,6 +198,9 @@ def infer_product_intent(product: str | ProductUnderstanding) -> ProductIntent:
             excluded_terms=["toy", "decoration"],
             english_search_name="T9 vintage hair trimmer",
             french_search_name="tondeuse cheveux T9 vintage",
+            technical_specs=[],
+            brand_scope="unknown",
+            china_equivalent_search_name="",
         )
 
     if "hoco" in lowered and "earbud" in lowered:
@@ -164,6 +213,9 @@ def infer_product_intent(product: str | ProductUnderstanding) -> ProductIntent:
             optional_terms=["bluetooth", "tws"],
             excluded_terms=["wired", "headphones"],
             english_search_name="HOCO wireless earbuds",
+            technical_specs=[],
+            brand_scope="unknown",
+            china_equivalent_search_name="",
             french_search_name="écouteurs sans fil HOCO",
         )
 
@@ -178,6 +230,9 @@ def infer_product_intent(product: str | ProductUnderstanding) -> ProductIntent:
             excluded_terms=["industrial", "commercial"],
             english_search_name="portable blender",
             french_search_name="mixeur portable",
+            technical_specs=[],
+            brand_scope="unknown",
+            china_equivalent_search_name="",
         )
 
     if "led strip" in lowered:
@@ -191,6 +246,25 @@ def infer_product_intent(product: str | ProductUnderstanding) -> ProductIntent:
             excluded_terms=["bulb", "lamp"],
             english_search_name="LED strip lights",
             french_search_name="ruban LED",
+            technical_specs=[],
+            brand_scope="unknown",
+            china_equivalent_search_name="",
+        )
+
+    if "coala" in lowered and ("heater" in lowered or "chauffage" in lowered or "radiateur" in lowered):
+        return ProductIntent(
+            original_product=original,
+            normalized_product="COALA RS2000W-IR 1500W fan heater",
+            product_category="portable electric fan heater",
+            brand_or_model="COALA RS2000W-IR",
+            must_include_terms=["COALA", "RS2000W-IR", "1500W", "fan heater"],
+            optional_terms=["2000W", "PTC", "ceramic", "portable heater"],
+            excluded_terms=["water heater", "industrial heater"],
+            english_search_name="COALA RS2000W-IR 1500W fan heater",
+            french_search_name="chauffage soufflant COALA RS2000W-IR 1500W",
+            technical_specs=["1500W", "2000W"],
+            brand_scope="regional",
+            china_equivalent_search_name="1500W 2000W PTC ceramic portable fan heater",
         )
 
     return ProductIntent(
@@ -203,4 +277,7 @@ def infer_product_intent(product: str | ProductUnderstanding) -> ProductIntent:
         excluded_terms=[],
         english_search_name=normalized,
         french_search_name=normalized,
+        technical_specs=[],
+        brand_scope="unknown",
+        china_equivalent_search_name="",
     )

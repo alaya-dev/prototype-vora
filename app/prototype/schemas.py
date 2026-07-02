@@ -96,6 +96,9 @@ class ProfitabilityEstimate(StrictModel):
     estimated_source_cost_tnd: float | None = None
     estimated_selling_price_tnd: float | None = None
     estimated_meta_ads_cost_per_sale_tnd: float | None = None
+    gross_margin_per_unit_before_marketing_tnd: float | None = None
+    gross_profit_for_1000_before_marketing_tnd: float | None = None
+    net_profit_for_1000_after_marketing_tnd: float | None = None
     estimated_margin_per_unit_tnd: float | None = None
     estimated_profit_per_unit_tnd: float | None = None
     estimated_profit_for_100_units_tnd: float | None = None
