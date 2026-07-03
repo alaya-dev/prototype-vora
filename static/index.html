@@ -416,23 +416,38 @@
   }
 
   .language-toggle {
-    display: grid;
+    position: relative;
+    display: inline-grid;
     grid-template-columns: 1fr 1fr;
     gap: 6px;
     min-width: 190px;
+    padding: 4px;
+    border: 1px solid rgba(31, 41, 55, 0.12);
+    border-radius: 999px;
+    background: rgba(255, 253, 248, 0.78);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 28px rgba(31,41,55,0.08);
   }
 
   .language-toggle button {
-    padding: 10px;
-    border: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.72);
+    position: relative;
+    z-index: 1;
+    min-height: 36px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 0;
+    background: transparent;
     color: var(--text);
+    box-shadow: none;
+    font-size: 13px;
   }
 
   .language-toggle button.active {
     background: var(--accent-strong);
     color: #fffdf8;
+    box-shadow: 0 8px 18px rgba(8, 61, 66, 0.18);
   }
+
+  .language-toggle button:hover { box-shadow: none; }
 
   .page {
     display: none;
@@ -633,41 +648,41 @@
           <div class="brand">
             <div class="brand-mark">V</div>
             <div>
-              <div class="eyebrow">Client Analysis</div>
-              <h2>VORA product opportunity report</h2>
-              <p>Production-style sourcing, Tunisia retail market, and profitability estimate.</p>
+              <div class="eyebrow" data-i18n="clientEyebrow">Client Analysis</div>
+              <h2 data-i18n="clientTitle">VORA product opportunity report</h2>
+              <p data-i18n="clientSubtitle">Production-style sourcing, Tunisia retail market, and profitability estimate.</p>
             </div>
           </div>
           <div class="topbar-actions">
-            <div id="languageToggle" class="language-toggle" aria-label="Language">
-              <button id="languageEnButton" class="active" type="button" onclick='setLanguage("en")'>English</button>
-              <button id="languageFrButton" type="button" onclick='setLanguage("fr")'>Français</button>
+            <div id="languageToggle" class="language-toggle language-segment" aria-label="Language">
+              <button id="languageEnButton" class="language-option active" type="button" aria-pressed="true" aria-label="English" title="English" onclick='setLanguage("en")'>EN</button>
+              <button id="languageFrButton" class="language-option" type="button" aria-pressed="false" aria-label="Français" title="Français" onclick='setLanguage("fr")'>FR</button>
             </div>
-            <button id="exportPdfButton" class="button-secondary" type="button">Export PDF</button>
+            <button id="exportPdfButton" class="button-secondary" type="button" data-i18n="exportPdf">Export PDF</button>
           </div>
         </section>
 
         <section class="analysis-hero">
           <div class="hero-copy">
-            <div class="eyebrow">Client analysis flow</div>
-            <h2>Enter a specific product and VORA will research source cost, Tunisia market price, and estimated margin.</h2>
+            <div class="eyebrow" data-i18n="heroEyebrow">Client analysis flow</div>
+            <h2 data-i18n="heroTitle">Enter a specific product and VORA will research source cost, Tunisia market price, and estimated margin.</h2>
             <div class="field">
-              <label for="prototypeProductInput">Product</label>
-              <input id="prototypeProductInput" type="text" placeholder="Vintage T9 hair trimmer">
+              <label for="prototypeProductInput" data-i18n="productInputLabel">Product</label>
+              <input id="prototypeProductInput" type="text" placeholder="Vintage T9 hair trimmer" data-i18n-placeholder="productPlaceholder">
             </div>
             <div class="action-row">
-              <button id="prototypeAnalyzeButton" class="button-primary" type="button">Analyze product</button>
+              <button id="prototypeAnalyzeButton" class="button-primary" type="button" data-i18n="analyzeButton">Analyze product</button>
             </div>
           </div>
           <div id="productPhoto" class="photo-slot">
-            <div class="placeholder">No reliable product image found.</div>
+            <div class="placeholder" data-i18n="initialImagePlaceholder">No reliable product image found.</div>
           </div>
         </section>
 
         <section id="prototypeResult" class="result-grid">
           <div class="result-band wide">
-            <h2>Waiting for analysis</h2>
-            <p>Raw provider search results, snippets, JSON, API call debug details, and internal errors stay out of the client view.</p>
+            <h2 data-i18n="waitingTitle">Waiting for analysis</h2>
+            <p data-i18n="waitingBody">Raw provider search results, snippets, JSON, API call debug details, and internal errors stay out of the client view.</p>
           </div>
         </section>
       </section>
@@ -791,6 +806,19 @@ let currentLanguage = "en";
 let currentPrototypeData = null;
 const copy = {
   en: {
+    clientEyebrow: "Client Analysis",
+    clientTitle: "VORA product opportunity report",
+    clientSubtitle: "Production-style sourcing, Tunisia retail market, and profitability estimate.",
+    exportPdf: "Export PDF",
+    heroEyebrow: "Client analysis flow",
+    heroTitle: "Enter a specific product and VORA will research source cost, Tunisia market price, and estimated margin.",
+    productInputLabel: "Product",
+    productPlaceholder: "Vintage T9 hair trimmer",
+    analyzeButton: "Analyze product",
+    initialImagePlaceholder: "No reliable product image found.",
+    waitingTitle: "Waiting for analysis",
+    waitingBody: "Raw provider search results, snippets, JSON, API call debug details, and internal errors stay out of the client view.",
+    analysisFailed: "Analysis failed",
     product: "Product",
     productAnalysis: "Product analysis",
     noDescription: "No source-backed product description was available.",
@@ -823,6 +851,19 @@ const copy = {
     noImage: "No reliable source-backed product image was found."
   },
   fr: {
+    clientEyebrow: "Analyse client",
+    clientTitle: "Rapport d'opportunité produit VORA",
+    clientSubtitle: "Recherche sourcing, marché retail tunisien et estimation de rentabilité.",
+    exportPdf: "Exporter PDF",
+    heroEyebrow: "Flux d'analyse client",
+    heroTitle: "Entrez un produit précis et VORA analysera le coût source, le prix du marché tunisien et la marge estimée.",
+    productInputLabel: "Produit",
+    productPlaceholder: "Tondeuse cheveux T9 vintage",
+    analyzeButton: "Analyser le produit",
+    initialImagePlaceholder: "Aucune image produit fiable trouvée.",
+    waitingTitle: "En attente d'analyse",
+    waitingBody: "Les résultats bruts, extraits, JSON, détails d'appels API et erreurs internes restent hors de la vue client.",
+    analysisFailed: "Échec de l'analyse",
     product: "Produit",
     productAnalysis: "Analyse produit",
     noDescription: "Aucune description fiable issue des sources n'a été trouvée.",
@@ -877,6 +918,7 @@ agentsNextButton.addEventListener("click", () => {
   renderAgentsPage();
 });
 exportPdfButton.addEventListener("click", () => window.print());
+applyStaticTranslations();
 if (window.location.pathname === "/analytics") {
   showPage("analyticsPage");
   adminPasswordInput.value = adminPassword;
@@ -922,7 +964,7 @@ async function analyzePrototype() {
     renderPrototypeResult(data);
     loadAnalytics();
   } catch (error) {
-    prototypeResult.innerHTML = `<div class="result-band wide"><h2>Analysis failed</h2><p>${escapeHtml(error.message)}</p></div>`;
+    prototypeResult.innerHTML = `<div class="result-band wide"><h2>${copy[currentLanguage].analysisFailed}</h2><p>${escapeHtml(error.message)}</p></div>`;
   } finally {
     prototypeAnalyzeButton.disabled = false;
   }
@@ -1018,7 +1060,22 @@ function setLanguage(language) {
   document.documentElement.lang = currentLanguage;
   document.getElementById("languageEnButton").classList.toggle("active", currentLanguage === "en");
   document.getElementById("languageFrButton").classList.toggle("active", currentLanguage === "fr");
+  document.getElementById("languageEnButton").setAttribute("aria-pressed", currentLanguage === "en" ? "true" : "false");
+  document.getElementById("languageFrButton").setAttribute("aria-pressed", currentLanguage === "fr" ? "true" : "false");
+  applyStaticTranslations();
   if (currentPrototypeData) renderPrototypeResult(currentPrototypeData);
+}
+
+function applyStaticTranslations() {
+  const labels = copy[currentLanguage];
+  document.querySelectorAll("[data-i18n]").forEach((element) => {
+    const key = element.dataset.i18n;
+    if (labels[key]) element.textContent = labels[key];
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+    const key = element.dataset.i18nPlaceholder;
+    if (labels[key]) element.setAttribute("placeholder", labels[key]);
+  });
 }
 
 function renderProductImage(data) {

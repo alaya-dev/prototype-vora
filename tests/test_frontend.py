@@ -114,9 +114,17 @@ class FrontendTests(unittest.TestCase):
 
     def test_client_ui_has_bilingual_toggle_and_guaranteed_image_fallback(self) -> None:
         self.assertIn("languageToggle", self.html)
+        self.assertIn("language-segment", self.html)
+        self.assertIn("language-option", self.html)
+        self.assertIn("aria-pressed", self.html)
         self.assertIn("setLanguage(\"en\")", self.html)
         self.assertIn("setLanguage(\"fr\")", self.html)
         self.assertIn("Français", self.html)
+        self.assertIn("applyStaticTranslations()", self.html)
+        self.assertIn("data-i18n=\"clientEyebrow\"", self.html)
+        self.assertIn("data-i18n-placeholder=\"productPlaceholder\"", self.html)
+        self.assertIn("Rapport d'opportunité produit VORA", self.html)
+        self.assertIn("Analyser le produit", self.html)
         self.assertIn("renderProductImage(data)", self.html)
         self.assertIn("fallbackProductImage(productLabel)", self.html)
 
