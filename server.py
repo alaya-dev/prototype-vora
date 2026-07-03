@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -75,6 +75,11 @@ def create_app(
         allow_headers=["*"],
     )
 
+    def require_admin_password(x_admin_password: str | None = Header(default=None)) -> None:
+        expected = resolved_settings.admin_dashboard_password
+        if expected and x_admin_password != expected:
+            raise HTTPException(status_code=401, detail="Analytics password required.")
+
     @app.get("/health")
     async def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
@@ -133,41 +138,57 @@ def create_app(
             raise HTTPException(status_code=404, detail="Prototype run not found.") from error
 
     @app.get("/api/analytics/runs", response_model=list[AnalyticsRunSummary])
-    async def analytics_runs() -> list[AnalyticsRunSummary]:
+    async def analytics_runs(_: None = Depends(require_admin_password)) -> list[AnalyticsRunSummary]:
         return resolved_store.list_runs()
 
     @app.get("/api/analytics/runs/{run_id}", response_model=AnalyticsRunDetail)
-    async def analytics_run_detail(run_id: str) -> AnalyticsRunDetail:
+    async def analytics_run_detail(
+        run_id: str,
+        _: None = Depends(require_admin_password),
+    ) -> AnalyticsRunDetail:
         try:
             return resolved_store.get_run_detail(run_id)
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Prototype run not found.") from error
 
     @app.get("/api/analytics/summary", response_model=AnalyticsSummary)
-    async def analytics_summary() -> AnalyticsSummary:
+    async def analytics_summary(_: None = Depends(require_admin_password)) -> AnalyticsSummary:
         return resolved_store.get_summary()
 
     @app.get("/api/analytics/cost-config", response_model=CostConfig)
-    async def get_cost_config() -> CostConfig:
+    async def get_cost_config(_: None = Depends(require_admin_password)) -> CostConfig:
         return resolved_store.get_cost_config()
 
     @app.post("/api/analytics/cost-config", response_model=CostConfig)
-    async def save_cost_config(config: CostConfig) -> CostConfig:
+    async def save_cost_config(
+        config: CostConfig,
+        _: None = Depends(require_admin_password),
+    ) -> CostConfig:
         saved = resolved_store.save_cost_config(config)
         resolved_prototype_orchestrator.cost_config = saved
         return saved
 
     @app.get("/api/sourcing-agents", response_model=list[SourcingAgent])
-    async def list_sourcing_agents(active_only: bool = False) -> list[SourcingAgent]:
+    async def list_sourcing_agents(
+        active_only: bool = False,
+        _: None = Depends(require_admin_password),
+    ) -> list[SourcingAgent]:
         return resolved_store.list_sourcing_agents(active_only=active_only)
 
     @app.post("/api/sourcing-agents", response_model=SourcingAgent)
-    async def create_sourcing_agent(agent: SourcingAgent) -> SourcingAgent:
+    async def create_sourcing_agent(
+        agent: SourcingAgent,
+        _: None = Depends(require_admin_password),
+    ) -> SourcingAgent:
         agent_id = resolved_store.upsert_sourcing_agent(agent.model_dump(exclude={"id"}))
         return resolved_store.list_sourcing_agents(active_only=False)[-1].model_copy(update={"id": agent_id})
 
     @app.put("/api/sourcing-agents/{agent_id}", response_model=SourcingAgent)
-    async def update_sourcing_agent(agent_id: int, agent: SourcingAgent) -> SourcingAgent:
+    async def update_sourcing_agent(
+        agent_id: int,
+        agent: SourcingAgent,
+        _: None = Depends(require_admin_password),
+    ) -> SourcingAgent:
         resolved_store.upsert_sourcing_agent(agent.model_dump(exclude={"id"}), agent_id=agent_id)
         for item in resolved_store.list_sourcing_agents(active_only=False):
             if item.id == agent_id:
@@ -175,7 +196,10 @@ def create_app(
         raise HTTPException(status_code=404, detail="Sourcing agent not found.")
 
     @app.delete("/api/sourcing-agents/{agent_id}")
-    async def delete_sourcing_agent(agent_id: int) -> dict[str, bool]:
+    async def delete_sourcing_agent(
+        agent_id: int,
+        _: None = Depends(require_admin_password),
+    ) -> dict[str, bool]:
         resolved_store.delete_sourcing_agent(agent_id)
         return {"deleted": True}
 

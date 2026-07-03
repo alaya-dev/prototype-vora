@@ -66,6 +66,40 @@ class FakeProvider:
         )
 
 
+class SequentialImageProvider(FakeProvider):
+    def __init__(self, provider_id: str) -> None:
+        super().__init__(
+            provider_id,
+            {
+                "china_sourcing": [_source("CN", "https://cn.example/t9", "US$2 factory price MOQ 100", "china_sourcing")],
+                "tunisia_sourcing": [],
+                "tunisia_retail": [
+                    _source("Retail 1", "https://shop1.tn/t9", "35 TND boutique", "tunisia_retail"),
+                    _source("Retail 2", "https://shop2.tn/t9", "42 TND boutique", "tunisia_retail"),
+                ],
+            },
+        )
+
+    async def search_group(self, product, group: str) -> ProviderEvidence:
+        self.calls.append(group)
+        if group == "tunisia_retail" and self.calls.count("tunisia_retail") > 1:
+            return ProviderEvidence(
+                provider_id=self.provider_id,
+                sources=[
+                    _source(
+                        "T9 product image result",
+                        "https://image.example/t9",
+                        "T9 vintage hair trimmer image",
+                        "tunisia_retail",
+                        image_urls=["https://cdn.example/dedicated-image.jpg"],
+                    )
+                ],
+                raw_queries_count=1,
+                provider_api_calls=1,
+            )
+        return await super().search_group(product, group)
+
+
 class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
     async def test_product_image_metadata_prefers_source_backed_images(self) -> None:
         firecrawl = FakeProvider(
@@ -82,7 +116,7 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
                 ],
                 "tunisia_sourcing": [],
                 "tunisia_retail": [
-                    _source("Retail 1", "https://shop1.tn/t9", "35 TND boutique", "tunisia_retail"),
+                    _source("Retail 1", "https://shop1.tn/t9", "35 TND boutique", "tunisia_retail", image_urls=["https://cdn.example/t9.jpg"]),
                     _source("Retail 2", "https://shop2.tn/t9", "42 TND boutique", "tunisia_retail"),
                 ],
             },
@@ -203,7 +237,7 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
                 "china_sourcing": [_source("CN", "https://cn.example/t9", "US$2 factory price MOQ 100", "china_sourcing")],
                 "tunisia_sourcing": [_source("TN gros", "https://grossiste.tn/t9", "prix gros 8 TND", "tunisia_sourcing")],
                 "tunisia_retail": [
-                    _source("Retail 1", "https://shop1.tn/t9", "35 TND boutique", "tunisia_retail"),
+                    _source("Retail 1", "https://shop1.tn/t9", "35 TND boutique", "tunisia_retail", image_urls=["https://cdn.example/t9.jpg"]),
                     _source("Retail 2", "https://shop2.tn/t9", "42 TND boutique", "tunisia_retail"),
                 ],
             },
@@ -258,7 +292,7 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("No reliable Tunisian wholesale sourcing offer", result.sourcing_summary.tunisia_wholesale_summary)
         self.assertTrue(any("No reliable Tunisian wholesale" in warning for warning in result.warnings))
 
-    async def test_reveal_returns_seller_contacts_without_china_product_links(self) -> None:
+    async def test_reveal_returns_cheapest_china_product_links_without_seller_contacts(self) -> None:
         store = PrototypeStore(_temp_db())
         store.upsert_sourcing_agent(
             {
@@ -273,43 +307,49 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
                 "active": True,
             }
         )
-        contact_provider = FakeProvider(
-            "firecrawl",
-            {
-                "china_sourcing": [
-                    _source(
-                        "CN Factory contact",
-                        "https://contact.example/cn-factory",
-                        "Email sales@cnfactory.com WhatsApp +8613800138000",
-                        "china_sourcing",
-                    )
-                ]
-            },
-        )
-        result = await _orchestrator(store=store, contact_providers=[contact_provider]).analyze(
+        analysis = _analysis()
+        analysis.china_sourcing_offers = [
+            analysis.china_sourcing_offers[0].model_copy(
+                update={
+                    "name": "Higher Factory",
+                    "product_title": "T9 higher price",
+                    "price_range_usd": "US$3",
+                    "price_min_usd_numeric": 3,
+                    "price_max_usd_numeric": 3,
+                    "source_url": "https://cn.example/t9-higher",
+                }
+            ),
+            analysis.china_sourcing_offers[0].model_copy(
+                update={
+                    "name": "Cheapest Factory",
+                    "product_title": "T9 cheapest offer",
+                    "price_range_usd": "US$1.20",
+                    "price_min_usd_numeric": 1.2,
+                    "price_max_usd_numeric": 1.2,
+                    "source_url": "https://cn.example/t9-cheapest",
+                }
+            ),
+        ]
+        result = await _orchestrator(store=store, analysis=analysis).analyze(
             PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
         )
-        self.assertEqual(contact_provider.calls, [])
 
-        reveal = await _orchestrator(store=store, contact_providers=[contact_provider]).reveal(result.run_id)
+        reveal = await _orchestrator(store=store).reveal(result.run_id)
 
-        self.assertEqual(reveal.china_sourcing_links, [])
-        self.assertEqual(reveal.seller_contacts[0].email, "sales@cnfactory.com")
-        self.assertEqual(reveal.seller_contacts[0].whatsapp, "+8613800138000")
-        self.assertEqual(reveal.seller_contacts[0].email_source, "contact.example")
-        self.assertEqual(reveal.seller_contacts[0].whatsapp_source, "contact.example")
+        self.assertGreaterEqual(len(reveal.china_sourcing_links), 2)
+        self.assertEqual(reveal.china_sourcing_links[0].url, "https://cn.example/t9-cheapest")
+        self.assertEqual(reveal.china_sourcing_links[0].title, "T9 cheapest offer")
+        self.assertIn("3.72 TND", reveal.china_sourcing_links[0].price or "")
+        self.assertEqual(reveal.seller_contacts, [])
         self.assertEqual(reveal.sourcing_agents[0].name, "Amina")
         detail = store.get_run_detail(result.run_id)
         self.assertIn("china_sourcing_links", detail.hidden_links)
-        self.assertTrue(detail.contact_enrichment_called)
-        self.assertEqual(detail.contact_provider_attempts, 1)
-        self.assertGreater(detail.contact_search_api_calls, 0)
-        self.assertEqual(detail.contacts_found_count, 1)
-        self.assertEqual(detail.contacts_with_email_count, 1)
-        self.assertEqual(detail.contacts_with_whatsapp_count, 1)
+        self.assertFalse(detail.contact_enrichment_called)
+        self.assertEqual(detail.contacts_found_count, 0)
 
-    async def test_reveal_mines_saved_china_listing_evidence_before_contact_search(self) -> None:
+    async def test_reveal_keeps_tunisia_links_and_sourcing_agents(self) -> None:
         store = PrototypeStore(_temp_db())
+        store.upsert_sourcing_agent({"name": "Amina", "email": "amina@example.com", "active": True})
         firecrawl = FakeProvider(
             "firecrawl",
             {
@@ -328,34 +368,22 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
                 ],
             },
         )
-        contact_provider = FakeProvider("firecrawl", {})
         analysis = _analysis()
-        analysis.china_sourcing_offers[0] = analysis.china_sourcing_offers[0].model_copy(
-            update={
-                "name": "MarketUnion",
-                "product_title": "MarketUnion T9 listing",
-                "source_url": "https://marketunion.example/t9",
-            }
-        )
         result = await _orchestrator(
             firecrawl=firecrawl,
             store=store,
-            contact_providers=[contact_provider],
             analysis=analysis,
         ).analyze(PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer"))
 
-        reveal = await _orchestrator(store=store, contact_providers=[contact_provider]).reveal(result.run_id)
+        reveal = await _orchestrator(store=store).reveal(result.run_id)
 
-        self.assertEqual(contact_provider.calls, [])
-        self.assertEqual(reveal.china_sourcing_links, [])
-        self.assertEqual(reveal.seller_contacts[0].email, "sales@marketunion.example")
-        self.assertEqual(reveal.seller_contacts[0].whatsapp, "+8613800138000")
-        self.assertEqual(reveal.seller_contacts[0].email_source, "marketunion.example")
-        self.assertEqual(reveal.seller_contacts[0].whatsapp_source, "marketunion.example")
+        self.assertEqual(reveal.china_sourcing_links[0].url, "https://cn.example/t9")
+        self.assertEqual(reveal.tunisia_sourcing_links[0].url, "https://grossiste.tn/t9")
+        self.assertEqual([agent.name for agent in reveal.sourcing_agents], ["Amina"])
         detail = store.get_run_detail(result.run_id)
         self.assertEqual(detail.contact_provider_attempts, 0)
         self.assertEqual(detail.contact_search_api_calls, 0)
-        self.assertEqual(detail.contacts_found_count, 1)
+        self.assertEqual(detail.contacts_found_count, 0)
 
     async def test_reveal_hides_empty_contact_cards_and_keeps_agents(self) -> None:
         store = PrototypeStore(_temp_db())
@@ -379,11 +407,23 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
 
         reveal = await _orchestrator(store=store, contact_providers=[contact_provider]).reveal(result.run_id)
 
+        self.assertEqual(reveal.china_sourcing_links[0].url, "https://cn.example/t9")
         self.assertEqual(reveal.seller_contacts, [])
         self.assertEqual([agent.name for agent in reveal.sourcing_agents], ["Amina"])
         detail = store.get_run_detail(result.run_id)
         self.assertEqual(detail.contacts_found_count, 0)
-        self.assertGreaterEqual(detail.contact_cards_rejected_count, 1)
+        self.assertEqual(detail.contact_cards_rejected_count, 0)
+
+    async def test_dedicated_image_fallback_runs_when_initial_evidence_has_no_image(self) -> None:
+        firecrawl = SequentialImageProvider("firecrawl")
+
+        result = await _orchestrator(firecrawl=firecrawl).analyze(
+            PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
+        )
+
+        self.assertEqual(result.product_image_url, "https://cdn.example/dedicated-image.jpg")
+        self.assertEqual(result.product_image_source_url, "https://image.example/t9")
+        self.assertGreaterEqual(firecrawl.calls.count("tunisia_retail"), 2)
 
     async def test_client_retail_examples_keep_market_product_links(self) -> None:
         result = await _orchestrator().analyze(

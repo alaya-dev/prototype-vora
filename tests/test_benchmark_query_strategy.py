@@ -64,7 +64,7 @@ class QueryStrategyTests(unittest.TestCase):
         self.assertNotIn("achat tunisie", joined)
 
     def test_tunisia_retail_queries_keep_normal_local_price_terms(self) -> None:
-        queries = build_regional_queries("LED strip lights", max_queries_per_region=10)
+        queries = build_regional_queries("LED strip lights", max_queries_per_region=20)
         joined = " ".join(queries.tunisia_retail).lower()
 
         self.assertIn("ruban led prix tunisie", joined)
@@ -89,6 +89,23 @@ class QueryStrategyTests(unittest.TestCase):
         self.assertIn("vintage t9 prix tunisie", joined)
         self.assertIn("site:mytek.tn", joined)
         self.assertIn("vintage t9 site:mytek.tn", joined)
+
+    def test_tunisia_retail_queries_keep_high_value_domains_before_broad_queries(self) -> None:
+        product = ProductUnderstanding(
+            original_product="Vintage T9",
+            normalized_product="T9 vintage hair trimmer",
+            english_search_name="T9 vintage hair trimmer",
+            french_search_name="tondeuse cheveux T9 vintage",
+        )
+        queries = build_regional_queries(product, max_queries_per_region=10)
+        joined = " ".join(queries.tunisia_retail).lower()
+
+        self.assertIn("tondeuse cheveux t9 vintage site:mytek.tn", joined)
+        self.assertIn("vintage t9 site:mytek.tn", joined)
+        self.assertIn("tondeuse cheveux t9 vintage site:jumia.com.tn", joined)
+        self.assertIn("vintage t9 site:jumia.com.tn", joined)
+        self.assertIn("tondeuse cheveux t9 vintage site:tunisianet.com.tn", joined)
+        self.assertNotIn("grossiste", joined)
 
     def test_product_intent_keeps_brand_model_and_category_terms(self) -> None:
         hoco = build_regional_queries("wireless earbuds hoco", max_queries_per_region=1)

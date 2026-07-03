@@ -329,16 +329,17 @@ class PrototypeStore:
         hidden = json.loads(run["hidden_links_json"] or "{}")
         return PrototypeRevealResponse(
             run_id=run_id,
-            china_sourcing_links=[],
+            china_sourcing_links=_sort_sourcing_links(
+                [
+                    PrototypeSourcingLink.model_validate(link)
+                    for link in hidden.get("china_sourcing_links", [])
+                ]
+            ),
             tunisia_sourcing_links=[
                 PrototypeSourcingLink.model_validate(link)
                 for link in hidden.get("tunisia_sourcing_links", [])
             ],
-            seller_contacts=[
-                ContactSellerCard.model_validate(contact)
-                for contact in hidden.get("seller_contacts", [])
-                if _has_usable_contact_dict(contact)
-            ],
+            seller_contacts=[],
             sourcing_agents=self.list_sourcing_agents(active_only=True),
         )
 
@@ -544,6 +545,19 @@ def _has_usable_contact_dict(contact: dict) -> bool:
         or contact.get("contact_page_url")
         or contact.get("website")
     )
+
+
+def _sort_sourcing_links(links: list[PrototypeSourcingLink]) -> list[PrototypeSourcingLink]:
+    return sorted(links, key=lambda link: (_price_sort_value(link.price), link.title.lower()))
+
+
+def _price_sort_value(price: str | None) -> float:
+    if not price:
+        return float("inf")
+    match = re.search(r"\d+(?:[.,]\d+)?", price)
+    if not match:
+        return float("inf")
+    return float(match.group(0).replace(",", "."))
 
 
 def _group_rows(rows, key: str) -> dict[str, list]:

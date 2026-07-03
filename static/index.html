@@ -38,8 +38,8 @@
   }
 
   .shell {
-    width: min(1240px, calc(100% - 28px));
-    margin: 18px auto 48px;
+    width: min(1180px, calc(100% - 28px));
+    margin: 18px auto 56px;
     display: grid;
     gap: 16px;
   }
@@ -53,6 +53,7 @@
     background: var(--panel);
     box-shadow: var(--shadow);
     border-radius: var(--radius);
+    animation: surfaceIn 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   .topbar {
@@ -61,6 +62,14 @@
     align-items: center;
     gap: 12px;
     padding: 16px 18px;
+    flex-wrap: wrap;
+  }
+
+  .topbar-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
   }
 
   .brand {
@@ -104,6 +113,9 @@
     grid-template-columns: 1fr;
     gap: 18px;
     align-items: stretch;
+    background:
+      linear-gradient(135deg, rgba(255, 253, 248, 0.94), rgba(213, 236, 233, 0.44)),
+      var(--panel);
   }
 
   .hero-copy {
@@ -160,7 +172,7 @@
     transition: transform 180ms ease-out, box-shadow 180ms ease-out, opacity 180ms ease-out;
   }
 
-  button:hover { transform: translateY(-1px); }
+  button:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(31, 41, 55, 0.1); }
   button:disabled { cursor: wait; opacity: 0.62; transform: none; }
 
   .button-primary {
@@ -282,6 +294,11 @@
     to { background-position: -100% 0; }
   }
 
+  @keyframes surfaceIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
   details {
     border: 1px solid rgba(31, 41, 55, 0.08);
     background: rgba(255, 255, 255, 0.72);
@@ -364,12 +381,7 @@
   }
 
   .app-layout {
-    width: min(1360px, calc(100% - 28px));
-    margin: 18px auto 48px;
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 16px;
-    align-items: start;
+    min-height: 100vh;
   }
 
   .sidebar {
@@ -403,6 +415,25 @@
     color: var(--accent-strong);
   }
 
+  .language-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    min-width: 190px;
+  }
+
+  .language-toggle button {
+    padding: 10px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--text);
+  }
+
+  .language-toggle button.active {
+    background: var(--accent-strong);
+    color: #fffdf8;
+  }
+
   .page {
     display: none;
   }
@@ -410,6 +441,11 @@
   .page.active {
     display: grid;
     gap: 16px;
+  }
+
+  .analytics-lock {
+    max-width: 560px;
+    margin: 0 auto;
   }
 
   .report-card {
@@ -424,6 +460,27 @@
     align-items: start;
     border-bottom: 1px solid var(--line);
     padding-bottom: 12px;
+  }
+
+  .analysis-copy {
+    display: grid;
+    gap: 14px;
+    max-width: 74ch;
+  }
+
+  .analysis-copy article {
+    display: grid;
+    gap: 6px;
+  }
+
+  .analysis-copy p {
+    color: var(--text);
+  }
+
+  .report-facts {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .report-table {
@@ -508,6 +565,10 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
+    .report-facts {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .analytics-shell {
       grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
       align-items: start;
@@ -517,13 +578,6 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .app-layout {
-      grid-template-columns: 220px minmax(0, 1fr);
-    }
-
-    .sidebar {
-      position: sticky;
-    }
   }
 
   .benchmark-compat {
@@ -531,14 +585,6 @@
   }
 
   @media (max-width: 900px) {
-    .app-layout {
-      grid-template-columns: 1fr;
-    }
-
-    .sidebar {
-      position: static;
-    }
-
     .analysis-hero,
     .result-grid,
     .analytics-grid,
@@ -581,30 +627,24 @@
 </head>
 <body>
   <div class="app-layout">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">V</div>
-        <div>
-          <h1>VORA</h1>
-          <p>Client analysis and internal analytics.</p>
-        </div>
-      </div>
-      <nav class="nav-stack" aria-label="Main navigation">
-        <button class="nav-button active" data-page="clientPage" type="button">Client Analysis</button>
-        <button class="nav-button" data-page="analyticsPage" type="button">Analytics</button>
-      </nav>
-      <span class="pill">links are hidden until GO</span>
-    </aside>
-
     <main class="shell">
       <section id="clientPage" class="page active">
         <section class="topbar">
-          <div>
-            <div class="eyebrow">Client Analysis</div>
-            <h2>VORA product opportunity report</h2>
-            <p>Production-style sourcing, Tunisia retail market, and profitability estimate.</p>
+          <div class="brand">
+            <div class="brand-mark">V</div>
+            <div>
+              <div class="eyebrow">Client Analysis</div>
+              <h2>VORA product opportunity report</h2>
+              <p>Production-style sourcing, Tunisia retail market, and profitability estimate.</p>
+            </div>
           </div>
-          <button id="exportPdfButton" class="button-secondary" type="button">Export PDF</button>
+          <div class="topbar-actions">
+            <div id="languageToggle" class="language-toggle" aria-label="Language">
+              <button id="languageEnButton" class="active" type="button" onclick='setLanguage("en")'>English</button>
+              <button id="languageFrButton" type="button" onclick='setLanguage("fr")'>Français</button>
+            </div>
+            <button id="exportPdfButton" class="button-secondary" type="button">Export PDF</button>
+          </div>
         </section>
 
         <section class="analysis-hero">
@@ -642,7 +682,14 @@
           <button id="analyticsRefreshButton" class="button-secondary" type="button">Refresh analytics</button>
         </section>
 
-        <section id="analyticsPanel" class="analytics-grid">
+        <section id="analyticsLogin" class="panel analytics-lock">
+          <h2>Admin access</h2>
+          <p>Enter the analytics password configured in ADMIN_DASHBOARD_PASSWORD. If no password is configured, leave it blank and unlock.</p>
+          <label class="field">Analytics password<input id="adminPasswordInput" type="password" autocomplete="current-password"></label>
+          <button id="unlockAnalyticsButton" class="button-primary" type="button">Unlock analytics</button>
+        </section>
+
+        <section id="analyticsPanel" class="analytics-grid" hidden>
           <section>
             <h2>Analytics</h2>
             <h3>Contact enrichment</h3>
@@ -729,18 +776,95 @@ const agentsPrevButton = document.getElementById("agentsPrevButton");
 const agentsNextButton = document.getElementById("agentsNextButton");
 const agentsPageLabel = document.getElementById("agentsPageLabel");
 const exportPdfButton = document.getElementById("exportPdfButton");
+const analyticsLogin = document.getElementById("analyticsLogin");
+const analyticsPanel = document.getElementById("analyticsPanel");
+const adminPasswordInput = document.getElementById("adminPasswordInput");
+const unlockAnalyticsButton = document.getElementById("unlockAnalyticsButton");
 let currentRunId = null;
 let currentAgents = [];
 let agentsPage = 1;
 const agentsPageSize = 5;
 let analyticsRunsCache = [];
 let selectedAnalyticsRunId = null;
+let adminPassword = localStorage.getItem("vora_admin_password") || "";
+let currentLanguage = "en";
+let currentPrototypeData = null;
+const copy = {
+  en: {
+    product: "Product",
+    productAnalysis: "Product analysis",
+    noDescription: "No source-backed product description was available.",
+    category: "Category",
+    englishSearchName: "English search name",
+    frenchSearchName: "French search name",
+    sourcingTitle: "Sourcing price analysis",
+    retailTitle: "Tunisia market analysis",
+    reportEyebrow: "Business analysis report",
+    reportTitle: "Professional opportunity report",
+    estimateOnly: "Estimate only",
+    reportIntro: "This analysis is an estimate, not a promise of profit. It should be read as a decision aid based on the source links and retail evidence available in this run.",
+    priceAnalysis: "Price analysis",
+    marketAnalysis: "Market analysis",
+    businessReading: "Business reading",
+    sourceUnitPrice: "China product unit price",
+    landedCost: "Estimated landed cost per unit",
+    moq: "China MOQ",
+    tunisiaWholesale: "Tunisia wholesale",
+    minPrice: "Min price",
+    maxPrice: "Max price",
+    averagePrice: "Average price",
+    sellerDensity: "Seller density",
+    retailSellingPrice: "Estimated retail selling price",
+    estimatedProfit: "Estimated profit after campaign",
+    productLinksHidden: "Wholesale product offer links are hidden until GO.",
+    decisionTitle: "GO / NO GO decision",
+    goRationale: "NO GO rationale",
+    suggestedNextAction: "Suggested next action: Try a more specific product variant or search another product.",
+    noImage: "No reliable source-backed product image was found."
+  },
+  fr: {
+    product: "Produit",
+    productAnalysis: "Analyse produit",
+    noDescription: "Aucune description fiable issue des sources n'a été trouvée.",
+    category: "Catégorie",
+    englishSearchName: "Nom de recherche anglais",
+    frenchSearchName: "Nom de recherche français",
+    sourcingTitle: "Analyse du prix d'achat",
+    retailTitle: "Analyse du marché tunisien",
+    reportEyebrow: "Rapport d'analyse commerciale",
+    reportTitle: "Rapport professionnel d'opportunité",
+    estimateOnly: "Estimation",
+    reportIntro: "Cette analyse est une estimation, pas une promesse de profit. Elle sert d'aide à la décision à partir des liens sources et des preuves marché disponibles dans cette recherche.",
+    priceAnalysis: "Analyse des prix",
+    marketAnalysis: "Analyse du marché",
+    businessReading: "Lecture business",
+    sourceUnitPrice: "Prix produit Chine",
+    landedCost: "Coût estimé rendu par unité",
+    moq: "MOQ Chine",
+    tunisiaWholesale: "Grossiste Tunisie",
+    minPrice: "Prix minimum",
+    maxPrice: "Prix maximum",
+    averagePrice: "Prix moyen",
+    sellerDensity: "Densité vendeurs",
+    retailSellingPrice: "Prix de vente estimé",
+    estimatedProfit: "Profit estimé après campagne",
+    productLinksHidden: "Les liens d'offres sourcing sont cachés jusqu'au GO.",
+    decisionTitle: "Décision GO / NO GO",
+    goRationale: "Raison du NO GO",
+    suggestedNextAction: "Action conseillée : essayez une variante plus précise ou recherchez un autre produit.",
+    noImage: "Aucune image produit fiable issue des sources n'a été trouvée."
+  }
+};
 
 prototypeAnalyzeButton.addEventListener("click", analyzePrototype);
 prototypeProductInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") analyzePrototype();
 });
 analyticsRefreshButton.addEventListener("click", loadAnalytics);
+unlockAnalyticsButton.addEventListener("click", unlockAnalytics);
+adminPasswordInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") unlockAnalytics();
+});
 saveCostButton.addEventListener("click", saveCostConfig);
 saveAgentButton.addEventListener("click", saveAgent);
 agentsPrevButton.addEventListener("click", () => {
@@ -753,17 +877,29 @@ agentsNextButton.addEventListener("click", () => {
   renderAgentsPage();
 });
 exportPdfButton.addEventListener("click", () => window.print());
-document.querySelectorAll("[data-page]").forEach((button) => {
-  button.addEventListener("click", () => showPage(button.dataset.page));
-});
-if (window.location.pathname === "/analytics") showPage("analyticsPage");
-loadAnalytics();
+if (window.location.pathname === "/analytics") {
+  showPage("analyticsPage");
+  adminPasswordInput.value = adminPassword;
+  unlockAnalytics();
+} else {
+  showPage("clientPage");
+}
 
 function showPage(pageId) {
   document.querySelectorAll(".page").forEach((page) => page.classList.toggle("active", page.id === pageId));
   document.querySelectorAll("[data-page]").forEach((button) => {
     button.classList.toggle("active", button.dataset.page === pageId);
   });
+}
+
+function adminHeaders(extra = {}) {
+  return adminPassword ? { ...extra, "x-admin-password": adminPassword } : extra;
+}
+
+async function unlockAnalytics() {
+  adminPassword = adminPasswordInput.value.trim();
+  localStorage.setItem("vora_admin_password", adminPassword);
+  await loadAnalytics();
 }
 
 async function analyzePrototype() {
@@ -782,6 +918,7 @@ async function analyzePrototype() {
   try {
     const data = await readJson(response);
     currentRunId = data.run_id;
+    currentPrototypeData = data;
     renderPrototypeResult(data);
     loadAnalytics();
   } catch (error) {
@@ -792,75 +929,80 @@ async function analyzePrototype() {
 }
 
 function renderPrototypeResult(data) {
-  productPhoto.innerHTML = data.product_image_url
-    ? `<img src="${escapeAttribute(data.product_image_url)}" alt="${escapeAttribute(data.product_understanding?.normalized_product || "Product")}" onerror="handleProductImageError(this)">`
-    : `<div class="placeholder"><img src="${fallbackProductImage()}" alt="Illustrative product image unavailable from sources."><p>No reliable source-backed product image was found.</p></div>`;
+  productPhoto.innerHTML = renderProductImage(data);
   const retail = data.retail_market_summary || {};
   const profit = data.profitability_estimate || {};
   const chinaTndRange = priceRangeTnd(
     data.sourcing_summary?.china_price_min_tnd_estimate,
     data.sourcing_summary?.china_price_max_tnd_estimate
   );
+  const labels = copy[currentLanguage];
   prototypeResult.innerHTML = `
     <section class="result-band product-card wide">
-      <div class="eyebrow">Product</div>
-      <h2>${escapeHtml(data.product_understanding?.normalized_product || "Product analysis")}</h2>
-      <p>${escapeHtml(data.product_description || "No source-backed product description was available.")}</p>
+      <div class="eyebrow">${labels.product}</div>
+      <h2>${escapeHtml(data.product_understanding?.normalized_product || labels.productAnalysis)}</h2>
+      <p>${escapeHtml(data.product_description || labels.noDescription)}</p>
       <p class="hidden-note">Image confidence: ${escapeHtml(data.product_image_confidence || "fallback")}. ${escapeHtml(data.product_image_notes || "")}</p>
       <div class="metric-grid">
-        ${metric("Category", data.product_understanding?.product_category || "Not detected")}
-        ${metric("English search name", data.product_understanding?.english_search_name || "")}
-        ${metric("French search name", data.product_understanding?.french_search_name || "")}
+        ${metric(labels.category, data.product_understanding?.product_category || "Not detected")}
+        ${metric(labels.englishSearchName, data.product_understanding?.english_search_name || "")}
+        ${metric(labels.frenchSearchName, data.product_understanding?.french_search_name || "")}
       </div>
     </section>
     <section class="result-band summary-card">
-      <h2>Sourcing price section</h2>
+      <h2>${labels.sourcingTitle}</h2>
       <p>${escapeHtml(sourcingSentence(data.sourcing_summary))}</p>
       <div class="metric-grid">
-        ${metric("China product unit price", tnd(profit.source_unit_price_tnd) || chinaTndRange)}
-        ${metric("Estimated landed cost per unit", tnd(profit.estimated_landed_cost_per_unit_tnd))}
-        ${metric("China MOQ", data.sourcing_summary?.china_moq_summary || "Not found")}
-        ${metric("Tunisia wholesale", data.sourcing_summary?.tunisia_wholesale_summary || "Not found")}
+        ${metric(labels.sourceUnitPrice, tnd(profit.source_unit_price_tnd) || chinaTndRange)}
+        ${metric(labels.landedCost, tnd(profit.estimated_landed_cost_per_unit_tnd))}
+        ${metric(labels.moq, data.sourcing_summary?.china_moq_summary || "Not found")}
+        ${metric(labels.tunisiaWholesale, data.sourcing_summary?.tunisia_wholesale_summary || "Not found")}
       </div>
-      <p class="hidden-note">Wholesale product offer links are hidden until GO.</p>
+      <p class="hidden-note">${labels.productLinksHidden}</p>
     </section>
     <section class="result-band summary-card">
-      <h2>Tunisia retail market section</h2>
+      <h2>${labels.retailTitle}</h2>
       <p>${escapeHtml(retail.retail_price_range_tnd || "Retail price range was not found.")}</p>
       <div class="metric-grid">
-        ${metric("Min price", tnd(retail.retail_min_tnd))}
-        ${metric("Max price", tnd(retail.retail_max_tnd))}
-        ${metric("Average price", tnd(retail.retail_avg_tnd))}
-        ${metric("Seller density", retail.seller_density || "unknown")}
+        ${metric(labels.minPrice, tnd(retail.retail_min_tnd))}
+        ${metric(labels.maxPrice, tnd(retail.retail_max_tnd))}
+        ${metric(labels.averagePrice, tnd(retail.retail_avg_tnd))}
+        ${metric(labels.sellerDensity, retail.seller_density || "unknown")}
       </div>
       <div class="list">${(retail.example_retail_prices || []).map(renderRetailExample).join("")}</div>
     </section>
     <section id="profitabilityReport" class="result-band report-card wide">
       <div class="report-header">
         <div>
-          <div class="eyebrow">Business profitability estimate section</div>
-          <h2>Professional opportunity report</h2>
+          <div class="eyebrow">${labels.reportEyebrow}</div>
+          <h2>${labels.reportTitle}</h2>
         </div>
-        <span class="pill">Estimate only</span>
+        <span class="pill">${labels.estimateOnly}</span>
       </div>
-      <p>This estimate is not a guarantee. It depends on supplier reliability, landed cost, ads performance, and fulfillment execution.</p>
-      <table class="report-table">
-        <thead><tr><th>Metric</th><th>Estimated value</th><th>Unit</th></tr></thead>
-        <tbody>
-          ${reportRow("China product unit price", tnd(profit.source_unit_price_tnd))}
-          ${reportRow("Estimated retail selling price", tnd(profit.estimated_selling_price_tnd))}
-          ${reportRow("Estimated Meta campaign budget", tnd(profit.estimated_meta_campaign_budget_tnd))}
-          ${reportRow("Estimated landed cost per unit", tnd(profit.estimated_landed_cost_per_unit_tnd))}
-          ${reportRow("Gross margin per unit before marketing", tnd(profit.gross_margin_per_unit_before_marketing_tnd ?? profit.estimated_margin_per_unit_tnd ?? profit.estimated_profit_per_unit_tnd))}
-          ${reportRow("Gross profit for 1000 before marketing", tnd(profit.gross_profit_for_1000_before_marketing_tnd))}
-          ${reportRow("Net profit for 1000 units after campaign", tnd(profit.net_profit_for_1000_after_marketing_tnd ?? profit.estimated_profit_for_1000_units_tnd))}
-        </tbody>
-      </table>
-      ${renderList("Assumptions", profit.assumptions || [])}
-      ${renderList("Main risks", profit.risks || [])}
+      <p>${labels.reportIntro}</p>
+      <div class="analysis-copy">
+        <article>
+          <h3>${labels.priceAnalysis}</h3>
+          <p>${escapeHtml(priceAnalysisText(data))}</p>
+        </article>
+        <article>
+          <h3>${labels.marketAnalysis}</h3>
+          <p>${escapeHtml(marketAnalysisText(data))}</p>
+        </article>
+        <article>
+          <h3>${labels.businessReading}</h3>
+          <p>${escapeHtml(businessReadingText(data))}</p>
+        </article>
+      </div>
+      <div class="report-facts">
+        ${metric(labels.sourceUnitPrice, tnd(profit.source_unit_price_tnd))}
+        ${metric(labels.landedCost, tnd(profit.estimated_landed_cost_per_unit_tnd))}
+        ${metric(labels.retailSellingPrice, tnd(profit.estimated_selling_price_tnd))}
+        ${metric(labels.estimatedProfit, tnd(profit.net_profit_for_1000_after_marketing_tnd ?? profit.estimated_profit_for_1000_units_tnd))}
+      </div>
     </section>
     <section class="result-band wide">
-      <h2>GO / NO GO decision section</h2>
+      <h2>${labels.decisionTitle}</h2>
       <p><strong>${escapeHtml(data.recommendation || "investigate_more")}</strong>: ${escapeHtml(data.recommendation_reason || "")}</p>
       <div class="action-row decision-bar">
         <button class="button-go" onclick="revealGo()">GO</button>
@@ -869,6 +1011,58 @@ function renderPrototypeResult(data) {
       <div id="decisionReveal" class="list"></div>
     </section>
   `;
+}
+
+function setLanguage(language) {
+  currentLanguage = language === "fr" ? "fr" : "en";
+  document.documentElement.lang = currentLanguage;
+  document.getElementById("languageEnButton").classList.toggle("active", currentLanguage === "en");
+  document.getElementById("languageFrButton").classList.toggle("active", currentLanguage === "fr");
+  if (currentPrototypeData) renderPrototypeResult(currentPrototypeData);
+}
+
+function renderProductImage(data) {
+  const productLabel = data.product_understanding?.normalized_product || data.product_description || "Product image";
+  const imageUrl = String(data.product_image_url || "").trim();
+  if (!imageUrl || data.product_image_confidence === "fallback") {
+    return `<div class="placeholder"><img src="${fallbackProductImage(productLabel)}" alt="Illustrative product image unavailable from sources."><p>${copy[currentLanguage].noImage}</p></div>`;
+  }
+  return `<img src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(productLabel)}" onerror="handleProductImageError(this, '${escapeAttribute(productLabel)}')">`;
+}
+
+function priceAnalysisText(data) {
+  const profit = data.profitability_estimate || {};
+  const sourcing = data.sourcing_summary || {};
+  const sourcePrice = tnd(profit.source_unit_price_tnd);
+  const landed = tnd(profit.estimated_landed_cost_per_unit_tnd);
+  const retailPrice = tnd(profit.estimated_selling_price_tnd);
+  const chinaRange = priceRangeTnd(sourcing.china_price_min_tnd_estimate, sourcing.china_price_max_tnd_estimate);
+  if (currentLanguage === "fr") {
+    return `Le prix d'achat Chine observé est ${sourcePrice !== "Not found" ? sourcePrice : chinaRange}. Le coût rendu estimé est ${landed}; il doit rester séparé du prix produit car il dépend du transport, de l'import et de la manutention. Le prix de vente utilisé pour l'analyse est ${retailPrice}, à comparer avec les prix de détail tunisiens validés.`;
+  }
+  return `The observed China product unit price is ${sourcePrice !== "Not found" ? sourcePrice : chinaRange}. The estimated landed cost is ${landed}; it stays separate from the product price because shipping, import, and handling assumptions can change the real cost. The selling price used for this analysis is ${retailPrice}, checked against the validated Tunisia retail evidence.`;
+}
+
+function marketAnalysisText(data) {
+  const retail = data.retail_market_summary || {};
+  const range = retail.retail_price_range_tnd || priceRangeTnd(retail.retail_min_tnd, retail.retail_max_tnd);
+  const density = retail.seller_density || "unknown";
+  const sellers = retail.unique_sellers_count ?? 0;
+  if (currentLanguage === "fr") {
+    return `Le marché retail tunisien indique une fourchette visible de ${range}. La densité vendeurs est ${density}, avec ${sellers} vendeur(s) unique(s) détecté(s). Si les sources sont peu nombreuses, la conclusion doit rester prudente et la recherche doit être relancée avec une variante produit plus précise.`;
+  }
+  return `The Tunisia retail market shows a visible price range of ${range}. Seller density is ${density}, with ${sellers} unique seller(s) detected. If the source count is thin, the market conclusion should stay conservative and the search should be repeated with a more specific product variant.`;
+}
+
+function businessReadingText(data) {
+  const profit = data.profitability_estimate || {};
+  const estimate = tnd(profit.net_profit_for_1000_after_marketing_tnd ?? profit.estimated_profit_for_1000_units_tnd);
+  const recommendation = data.recommendation || "investigate_more";
+  const reason = data.recommendation_reason || "Evidence quality is not strong enough for a confident decision.";
+  if (currentLanguage === "fr") {
+    return `Après les hypothèses disponibles, le profit estimé affiché est ${estimate}. La recommandation actuelle est ${recommendation}. ${reason} Cette estimation ne garantit pas le résultat réel, surtout si le coût rendu ou la demande retail restent incertains.`;
+  }
+  return `After the available assumptions, the displayed estimated profit is ${estimate}. The current recommendation is ${recommendation}. ${reason} This estimate does not guarantee the real outcome, especially when landed cost or retail demand evidence is still uncertain.`;
 }
 
 function sourcingSentence(summary) {
@@ -886,7 +1080,7 @@ async function revealGo() {
   const response = await fetch(`/prototype/runs/${currentRunId}/reveal`);
   const data = await readJson(response);
   document.getElementById("decisionReveal").innerHTML = `
-    <div class="item"><strong>China seller contacts</strong>${renderSellerContacts(data.seller_contacts || [])}</div>
+    <div class="item"><strong>China product offer links</strong><p>Cheapest source-backed offer first. Open the product page to order or contact the platform seller directly.</p>${renderLinks(data.china_sourcing_links || [])}</div>
     <div class="item"><strong>Tunisia wholesale/importer/distributor product offer links</strong>${renderLinks(data.tunisia_sourcing_links || [])}</div>
     <div class="item"><strong>Sourcing agents</strong>${renderAgents(data.sourcing_agents || [])}<p>Contact sourcing agents for logistics, purchasing, and supplier verification.</p></div>
   `;
@@ -903,17 +1097,20 @@ function showNoGo(reason) {
 }
 
 async function loadAnalytics() {
+  if (window.location.pathname !== "/analytics") return;
   try {
     const [summaryResponse, runsResponse, costResponse, agentsResponse] = await Promise.all([
-      fetch("/api/analytics/summary"),
-      fetch("/api/analytics/runs"),
-      fetch("/api/analytics/cost-config"),
-      fetch("/api/sourcing-agents")
+      fetch("/api/analytics/summary", { headers: adminHeaders() }),
+      fetch("/api/analytics/runs", { headers: adminHeaders() }),
+      fetch("/api/analytics/cost-config", { headers: adminHeaders() }),
+      fetch("/api/sourcing-agents", { headers: adminHeaders() })
     ]);
     const summary = await readJson(summaryResponse);
     const runs = await readJson(runsResponse);
     const cost = await readJson(costResponse);
     const agents = await readJson(agentsResponse);
+    analyticsLogin.hidden = true;
+    analyticsPanel.hidden = false;
     analyticsSummary.innerHTML = `
       ${metric("Total runs", summary.total_runs ?? 0)}
       ${metric("Estimated research cost", `${summary.total_estimated_research_cost_usd ?? 0} USD`)}
@@ -937,6 +1134,8 @@ async function loadAnalytics() {
     agentsPage = Math.min(agentsPage, Math.max(1, Math.ceil(currentAgents.length / agentsPageSize)));
     renderAgentsPage();
   } catch (error) {
+    analyticsLogin.hidden = false;
+    analyticsPanel.hidden = true;
     analyticsSummary.innerHTML = metric("Analytics error", error.message);
     analyticsRuns.innerHTML = `<div class="item">Unable to load analytics. ${escapeHtml(error.message)}</div>`;
     analyticsRunDetail.innerHTML = `<div class="item">Unable to load analytics detail. ${escapeHtml(error.message)}</div>`;
@@ -971,7 +1170,7 @@ async function loadAnalyticsRunDetail(runId) {
   selectedAnalyticsRunId = runId;
   renderAnalyticsRunList(analyticsRunsCache);
   analyticsRunDetail.innerHTML = `<div class="item"><div class="skeleton"></div><div class="skeleton"></div></div>`;
-  const response = await fetch(`/api/analytics/runs/${runId}`);
+  const response = await fetch(`/api/analytics/runs/${runId}`, { headers: adminHeaders() });
   const detail = await readJson(response);
   const providerAttempts = (detail.provider_attempts || []).map((attempt) => `
     <div class="item">
@@ -1046,7 +1245,7 @@ async function saveCostConfig() {
   });
   await fetch("/api/analytics/cost-config", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: adminHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload)
   });
   loadAnalytics();
@@ -1055,7 +1254,7 @@ async function saveCostConfig() {
 async function saveAgent() {
   await fetch("/api/sourcing-agents", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: adminHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       name: document.getElementById("agentName").value,
       email: document.getElementById("agentEmail").value,
@@ -1073,7 +1272,7 @@ async function saveAgent() {
 }
 
 async function deleteAgent(agentId) {
-  await fetch(`/api/sourcing-agents/${agentId}`, { method: "DELETE" });
+  await fetch(`/api/sourcing-agents/${agentId}`, { method: "DELETE", headers: adminHeaders() });
   loadAnalytics();
 }
 
@@ -1106,34 +1305,6 @@ function renderRetailExample(item) {
 function renderLinks(links) {
   if (!links.length) return `<p>No links available.</p>`;
   return links.map((link) => `<div><a href="${escapeAttribute(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.title || link.url)}</a><span> ${escapeHtml(tndValueOrText(link.price || ""))} ${escapeHtml(link.moq || "")}</span></div>`).join("");
-}
-
-function renderSellerContacts(contacts) {
-  const usableContacts = (contacts || []).filter(hasUsableContact);
-  if (!usableContacts.length) {
-    return `<p>Direct seller contact was not found from public sources. Please contact one of our sourcing agents for supplier verification and purchasing support.</p>`;
-  }
-  return usableContacts.map((contact) => `
-    <div class="item">
-      <strong>${escapeHtml(contact.company_name || contact.seller_name || "Seller")}</strong>
-      <span>${escapeHtml(contact.country || "")} ${escapeHtml(contact.platform || "")} Confidence: ${escapeHtml(contact.contact_confidence || "low")}</span>
-      <p>${escapeHtml(contact.contact_notes || "Contact extracted from public supplier evidence.")}</p>
-      <div class="list">
-        ${contact.email ? `<span>Email: ${escapeHtml(contact.email)}</span>${contact.email_source ? `<span class="source-note">Email from ${escapeHtml(contact.email_source)}</span>` : ""}` : ""}
-        ${contact.phone ? `<span>Phone: ${escapeHtml(contact.phone)}</span>${contact.phone_source ? `<span class="source-note">Phone from ${escapeHtml(contact.phone_source)}</span>` : ""}` : ""}
-        ${contact.whatsapp ? `<span>WhatsApp: ${escapeHtml(contact.whatsapp)}</span>${contact.whatsapp_source ? `<span class="source-note">WhatsApp from ${escapeHtml(contact.whatsapp_source)}</span>` : ""}` : ""}
-        ${contact.website ? `<span>Website: ${escapeHtml(contact.website)}</span>${contact.website_source ? `<span class="source-note">Website from ${escapeHtml(contact.website_source)}</span>` : ""}` : ""}
-        ${contact.contact_page_url ? `<span>Contact page: ${escapeHtml(contact.contact_page_url)}</span>${contact.contact_page_source ? `<span class="source-note">Contact page from ${escapeHtml(contact.contact_page_source)}</span>` : ""}` : ""}
-      </div>
-      <div class="contact-actions">
-        ${contact.email ? `<a href="mailto:${escapeAttribute(contact.email)}">Email seller</a>` : ""}
-        ${(contact.whatsapp || contact.phone) ? `<a href="https://wa.me/${escapeAttribute(normalizePhone(contact.whatsapp || contact.phone))}" target="_blank" rel="noopener noreferrer">WhatsApp seller</a>` : ""}
-        ${contact.phone ? `<a href="tel:${escapeAttribute(contact.phone)}">Call seller</a>` : ""}
-        ${contact.contact_page_url ? `<a href="${escapeAttribute(contact.contact_page_url)}" target="_blank" rel="noopener noreferrer">Contact page</a>` : ""}
-        ${contact.website ? `<a href="${escapeAttribute(contact.website)}" target="_blank" rel="noopener noreferrer">Website</a>` : ""}
-      </div>
-    </div>
-  `).join("");
 }
 
 function renderAgents(agents) {
@@ -1239,21 +1410,31 @@ function normalizeTndDisplayText(text) {
     .replace(/\bDT\b/gi, "TND");
 }
 
-function fallbackProductImage() {
+function fallbackProductImage(productLabel = "Product image") {
+  const safeLabel = String(productLabel || "Product image").slice(0, 46);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="520" viewBox="0 0 720 520">
     <rect width="720" height="520" fill="#fffdf8"/>
     <rect x="80" y="70" width="560" height="380" rx="22" fill="#d5ece9" stroke="#0d5c63" stroke-width="3"/>
-    <path d="M245 322c56-78 95-125 143-125 44 0 79 38 119 98" fill="none" stroke="#083d42" stroke-width="18" stroke-linecap="round"/>
-    <circle cx="281" cy="184" r="34" fill="#b86a1b"/>
-    <text x="360" y="405" text-anchor="middle" font-family="Segoe UI, Arial" font-size="28" fill="#1d2430">Illustrative image unavailable</text>
+    <rect x="210" y="135" width="300" height="210" rx="28" fill="#fffdf8" stroke="#083d42" stroke-width="8"/>
+    <circle cx="286" cy="216" r="36" fill="#b86a1b"/>
+    <path d="M342 260h96M342 218h96" stroke="#0d5c63" stroke-width="18" stroke-linecap="round"/>
+    <text x="360" y="395" text-anchor="middle" font-family="Segoe UI, Arial" font-size="26" fill="#1d2430">${escapeSvgText(safeLabel)}</text>
+    <text x="360" y="430" text-anchor="middle" font-family="Segoe UI, Arial" font-size="20" fill="#5e6875">Illustrative image unavailable</text>
   </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-function handleProductImageError(image) {
+function handleProductImageError(image, productLabel = "Product image") {
   image.onerror = null;
-  image.src = fallbackProductImage();
+  image.src = fallbackProductImage(productLabel);
   image.alt = "Illustrative product image unavailable from sources.";
+}
+
+function escapeSvgText(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 async function readJson(response) {

@@ -230,6 +230,29 @@ class ApiTests(unittest.TestCase):
         combined = cost_response.text + agent_response.text + summary_response.text
         self.assertNotIn("secret-tvly", combined)
 
+    def test_analytics_api_requires_admin_password_when_configured(self) -> None:
+        server_module = importlib.import_module("server")
+        app = server_module.create_app(
+            settings=_settings(admin_dashboard_password="admin-secret"),
+            benchmark_pipeline=_benchmark_pipeline(),
+            provider_infos=ProvidersResponse(providers=[]),
+        )
+        client = TestClient(app)
+
+        self.assertEqual(client.get("/api/analytics/summary").status_code, 401)
+        self.assertEqual(
+            client.get("/api/analytics/summary", headers={"x-admin-password": "wrong"}).status_code,
+            401,
+        )
+        self.assertEqual(
+            client.get("/api/analytics/summary", headers={"x-admin-password": "admin-secret"}).status_code,
+            200,
+        )
+        self.assertEqual(
+            client.get("/api/sourcing-agents", headers={"x-admin-password": "admin-secret"}).status_code,
+            200,
+        )
+
 
 def _benchmark_pipeline() -> StubBenchmarkPipeline:
     return StubBenchmarkPipeline(

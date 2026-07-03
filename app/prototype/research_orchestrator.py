@@ -15,7 +15,6 @@ from app.benchmark.schemas import (
 )
 from app.benchmark.validation import validate_provider_result
 from app.prototype.schemas import (
-    ContactEnrichmentMetrics,
     CostConfig,
     ExampleRetailPrice,
     HiddenSourcingLinks,
@@ -27,7 +26,6 @@ from app.prototype.schemas import (
     RetailMarketSummary,
     SourcingSummary,
 )
-from app.prototype.contact_enrichment import ContactEnrichmentAgent, _has_usable_contact
 from app.prototype.storage import PrototypeStore
 from app.schemas import IntentResult, ProductUnderstanding
 
@@ -53,7 +51,6 @@ class PrototypeResearchOrchestrator:
         self.intent_client = intent_client
         self.analysis_client = analysis_client
         self.providers = providers
-        self.contact_enricher = ContactEnrichmentAgent(contact_providers or providers)
         self.store = store
         self.cost_config = cost_config or self.store.get_cost_config()
 
@@ -99,6 +96,16 @@ class PrototypeResearchOrchestrator:
             french_search_name=intent.normalized_product,
         )
         evidence, warnings = await self._collect_evidence(run_id, product)
+        if _best_source_image(evidence, product) is None:
+            image_evidence = await self._collect_image_evidence(run_id, product)
+            if image_evidence.sources:
+                evidence = evidence.model_copy(
+                    update={
+                        "sources": _dedupe_sources([*evidence.sources, *image_evidence.sources]),
+                        "raw_queries_count": evidence.raw_queries_count + image_evidence.raw_queries_count,
+                        "provider_api_calls": evidence.provider_api_calls + image_evidence.provider_api_calls,
+                    }
+                )
         analysis_result = await self._extract_analysis(product, evidence, request.quantity_scenarios)
         self.store.log_api_usage(run_id, "gemini_analysis", 1)
         validated = validate_provider_result(_as_provider_analysis(analysis_result), evidence.sources)
@@ -124,45 +131,6 @@ class PrototypeResearchOrchestrator:
         return response
 
     async def reveal(self, run_id: str):
-        reveal = self.store.get_reveal(run_id)
-        if reveal.seller_contacts:
-            return reveal
-        hidden = self.store.get_hidden_links(run_id)
-        china_links = [
-            PrototypeSourcingLink.model_validate(link)
-            for link in hidden.get("china_sourcing_links", [])
-        ]
-        started = time.perf_counter()
-        enrichment = await self.contact_enricher.enrich(china_links)
-        for attempt in enrichment.provider_attempts:
-            self.store.log_provider_attempt(
-                run_id,
-                attempt.provider_id,
-                "contact_enrichment",
-                attempt.status,
-                attempt.api_calls,
-                attempt.raw_sources_count,
-                attempt.latency_ms,
-            )
-        if enrichment.provider_api_calls:
-            self.store.log_api_usage(run_id, "contact_enrichment", 1)
-        usable_contacts = [contact for contact in enrichment.contacts if _has_usable_contact(contact)]
-        hidden["seller_contacts"] = [contact.model_dump() for contact in usable_contacts]
-        self.store.update_hidden_links(run_id, hidden)
-        self.store.update_contact_enrichment_metrics(
-            run_id,
-            ContactEnrichmentMetrics(
-                contacts_found_count=len(usable_contacts),
-                contacts_with_email_count=sum(1 for contact in usable_contacts if contact.email),
-                contacts_with_whatsapp_count=sum(1 for contact in usable_contacts if contact.whatsapp),
-                contact_enrichment_latency=enrichment.latency_ms or _elapsed_ms(started),
-                contact_enrichment_status=enrichment.status,
-                contact_enrichment_reason="Contact enrichment was triggered by the GO reveal endpoint.",
-                contact_cards_rejected_count=enrichment.rejected_count,
-                contact_rejection_reasons=enrichment.rejection_reasons,
-                usable_contacts_found_count=len(usable_contacts),
-            ),
-        )
         return self.store.get_reveal(run_id)
 
     async def _collect_evidence(
@@ -223,6 +191,51 @@ class PrototypeResearchOrchestrator:
             warnings,
         )
 
+    async def _collect_image_evidence(
+        self,
+        run_id: str,
+        product: ProductUnderstanding,
+    ) -> ProviderEvidence:
+        collected: list[ProviderRawSource] = []
+        raw_queries = 0
+        api_calls = 0
+        for provider in self.providers:
+            provider_id = getattr(provider, "provider_id", "unknown")
+            started = time.perf_counter()
+            try:
+                evidence = await provider.search_group(product, "tunisia_retail")
+                collected.extend(evidence.sources)
+                raw_queries += evidence.raw_queries_count
+                api_calls += evidence.provider_api_calls
+                self.store.log_provider_attempt(
+                    run_id,
+                    provider_id,
+                    "image_discovery",
+                    "success",
+                    evidence.provider_api_calls,
+                    len(evidence.sources),
+                    _elapsed_ms(started),
+                )
+                if _best_source_image(evidence, product):
+                    break
+            except (ProviderNotConfiguredError, ProviderAdapterError):
+                self.store.log_provider_attempt(
+                    run_id,
+                    provider_id,
+                    "image_discovery",
+                    "failed",
+                    0,
+                    0,
+                    _elapsed_ms(started),
+                )
+                continue
+        return ProviderEvidence(
+            provider_id="prototype_image_discovery",
+            sources=_dedupe_sources(collected),
+            raw_queries_count=raw_queries,
+            provider_api_calls=api_calls,
+        )
+
     async def _extract_analysis(
         self,
         product: ProductUnderstanding,
@@ -270,7 +283,7 @@ def _has_tunisia_sourcing_signal(source: ProviderRawSource) -> bool:
 
 def _has_tunisia_retail_signal(source: ProviderRawSource) -> bool:
     text = _source_text(source)
-    return source.region_hint == "tunisia_retail" or any(signal in text for signal in ("boutique", "achat", "vente", "livraison", "magasin", "jumia", "tayara", "mytek"))
+    return source.region_hint == "tunisia_retail" or any(signal in text for signal in ("boutique", "achat", "vente", "livraison", "magasin", "jumia", "tayara", "mytek", "wamia", "spacenet", "wikishop", "shopiwell", "keyshop", "affariyet"))
 
 
 def _looks_retail_or_foreign(source: ProviderRawSource) -> bool:
