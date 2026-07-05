@@ -2121,8 +2121,7 @@ function renderSourcingAgentComposer(agents, data) {
         <label class="field">${escapeHtml(labels.userPhone)}<input id="composerUserPhone" type="text" oninput="generateSourcingEmail()"></label>
         <label class="field">${escapeHtml(labels.userNote)}<input id="composerUserNote" type="text" oninput="generateSourcingEmail()"></label>
       </div>
-      <div class="contact-actions">
-        <button class="button-secondary" type="button" onclick="generateSourcingEmail()">${escapeHtml(labels.generateEmail)}</button>
+      <div class="contact-actions" >
         <button class="button-secondary" type="button" onclick="copyGeneratedEmail('body')">${escapeHtml(labels.copyEmail)}</button>
         <button class="button-secondary" type="button" onclick="copyGeneratedEmail('subject')">${escapeHtml(labels.copySubject)}</button>
         <span id="openMailClientSlot"></span>
