@@ -355,6 +355,51 @@ class BenchmarkValidationTests(unittest.TestCase):
         self.assertEqual(validated.tunisia_retail_market.retail_sources_count, 3)
         self.assertEqual(validated.tunisia_retail_market.seller_density, "medium")
 
+    def test_tunisia_retail_intervals_use_both_endpoints_and_midpoint_average(self) -> None:
+        analysis = ProviderAnalysisResult(
+            tunisia_retail_market=TunisiaRetailMarket(
+                retail_offers=[
+                    TunisiaRetailOffer(
+                        seller_name="Mytek",
+                        price_range_tnd="4.000 - 69.000 TND",
+                        source_url="https://mytek.tn/639-support-voiture-tunisie",
+                        price_evidence="direct",
+                        evidence_level="direct",
+                        confidence="high",
+                        product_match="broad",
+                    ),
+                    TunisiaRetailOffer(
+                        seller_name="Spacenet",
+                        price_range_tnd="7.900 - 339.000 DT",
+                        source_url="https://spacenet.tn/support-voiture.html",
+                        price_evidence="direct",
+                        evidence_level="direct",
+                        confidence="high",
+                        product_match="broad",
+                    ),
+                ]
+            )
+        )
+
+        validated = validate_provider_result(analysis, raw_sources=[])
+        offers = {offer.seller_name: offer for offer in validated.tunisia_retail_market.retail_offers}
+
+        self.assertEqual(offers["Mytek"].price_min_tnd_numeric, 4)
+        self.assertEqual(offers["Mytek"].price_max_tnd_numeric, 69)
+        self.assertEqual(offers["Mytek"].price_range_tnd, "4–69 TND")
+        self.assertEqual(offers["Mytek"].source_price_type, "range")
+        self.assertEqual(offers["Mytek"].source_page_type, "category_or_listing")
+        self.assertEqual(offers["Spacenet"].price_min_tnd_numeric, 7.9)
+        self.assertEqual(offers["Spacenet"].price_max_tnd_numeric, 339)
+        self.assertEqual(offers["Spacenet"].price_range_tnd, "7.9–339 TND")
+        self.assertEqual(validated.tunisia_retail_market.price_min_tnd, 4)
+        self.assertEqual(validated.tunisia_retail_market.price_max_tnd, 339)
+        self.assertEqual(validated.tunisia_retail_market.price_avg_tnd, 104.97)
+        self.assertIn(
+            "Some prices come from category/listing ranges, not exact product pages.",
+            validated.tunisia_retail_market.competition_notes,
+        )
+
     def test_tunisia_sourcing_excludes_foreign_and_retail_sources(self) -> None:
         analysis = ProviderAnalysisResult(
             tunisia_sourcing_offers=[

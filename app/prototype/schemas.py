@@ -64,6 +64,8 @@ class ExampleRetailPrice(StrictModel):
     product_title: str | None = None
     price_tnd: float | None = None
     price_range_tnd: str | None = None
+    source_price_type: str = "unknown"
+    source_page_type: str = "unknown"
     source_url: str | None = None
     confidence: str = "low"
 
@@ -98,6 +100,9 @@ class ProfitabilityEstimate(StrictModel):
     estimated_landed_cost_per_unit_tnd: float | None = None
     landed_cost_breakdown_notes: str = ""
     estimated_meta_campaign_budget_tnd: float | None = None
+    digital_ad_budget_min_tnd: float | None = None
+    digital_ad_budget_max_tnd: float | None = None
+    digital_ad_budget_default_tnd: float | None = None
     expected_units_sold_from_campaign: float | None = None
     estimated_ad_cost_per_sold_unit_tnd: float | None = None
     ad_cost_notes: str = ""
@@ -107,6 +112,8 @@ class ProfitabilityEstimate(StrictModel):
     gross_margin_per_unit_before_marketing_tnd: float | None = None
     gross_profit_for_1000_before_marketing_tnd: float | None = None
     net_profit_for_1000_after_marketing_tnd: float | None = None
+    net_profit_for_1000_after_advertising_min_tnd: float | None = None
+    net_profit_for_1000_after_advertising_max_tnd: float | None = None
     estimated_margin_per_unit_tnd: float | None = None
     estimated_profit_per_unit_tnd: float | None = None
     estimated_profit_for_100_units_tnd: float | None = None
@@ -190,7 +197,9 @@ class CostConfig(StrictModel):
     gemini_analysis_cost_per_call: float = 0.0
     usd_to_tnd_rate: float = 3.1
     default_meta_ads_cost_per_sale_tnd: float = 5.0
-    default_meta_campaign_budget_tnd: float | None = 300.0
+    default_meta_campaign_budget_tnd: float | None = 400.0
+    default_digital_ad_budget_min_tnd: float = 300.0
+    default_digital_ad_budget_max_tnd: float = 500.0
     default_expected_units_sold_from_campaign: float | None = None
     default_shipping_per_unit_tnd: float = 4.0
     default_customs_or_import_rate_percent: float = 10.0

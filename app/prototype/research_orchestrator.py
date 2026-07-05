@@ -36,6 +36,9 @@ from app.schemas import IntentResult, ProductUnderstanding
 EVIDENCE_GROUPS = ("china_sourcing", "tunisia_sourcing", "tunisia_retail")
 TUNISIA_WHOLESALE_NOT_FOUND = "No reliable Tunisian wholesale sourcing offer was found for this product."
 ANALYSIS_QUANTITY_UNITS = 1000
+DIGITAL_AD_BUDGET_MIN_TND = 300.0
+DIGITAL_AD_BUDGET_MAX_TND = 500.0
+DIGITAL_AD_BUDGET_DEFAULT_TND = 400.0
 IMAGE_MARKDOWN_RE = re.compile(r"!\[[^\]]*\]\((https?://[^)\s]+)\)", re.IGNORECASE)
 IMAGE_HTML_RE = re.compile(r"""<img[^>]+src=["'](https?://[^"']+)["']""", re.IGNORECASE)
 META_IMAGE_RE = re.compile(r"""(?:og:image|twitter:image)[^"'=:\n\r>]*[:=]\s*["']?(https?://[^"'\s>]+)""", re.IGNORECASE)
@@ -351,7 +354,7 @@ def _to_client_response(
 ) -> PrototypeAnalyzeResponse:
     if isinstance(draft, PrototypeAnalysisDraft):
         computed = _response_from_validated(run_id, product, validated, evidence, cost_config, quantity_scenarios, warnings)
-        draft_retail = _retail_summary_from_validated(validated)
+        draft_retail = _retail_summary_with_fallbacks(_retail_summary_from_validated(validated))
         base = computed.model_copy(
             update={
                 **_image_payload(_valid_image_or_none(draft.product_image_url, evidence), evidence, product),
@@ -360,7 +363,11 @@ def _to_client_response(
                     draft.localized_analysis,
                     draft.product_description or computed.product_description,
                 ),
-                "retail_market_summary": draft_retail if validated.tunisia_retail_market.retail_offers else draft.retail_market_summary,
+                "retail_market_summary": (
+                    draft_retail
+                    if validated.tunisia_retail_market.retail_offers
+                    else _retail_summary_with_fallbacks(draft.retail_market_summary)
+                ),
                 "recommendation": draft.recommendation,
                 "recommendation_reason": draft.recommendation_reason,
                 "warnings": list(dict.fromkeys(warnings + draft.warnings)),
@@ -460,10 +467,20 @@ def _response_from_validated(
         if gross_margin is not None
         else None
     )
-    campaign_budget = cost_config.default_meta_campaign_budget_tnd
+    campaign_budget = _digital_ad_budget_default(cost_config)
     net_profit_1000 = (
         round(gross_profit_1000 - float(campaign_budget), 2)
         if gross_profit_1000 is not None and campaign_budget is not None
+        else None
+    )
+    net_profit_min = (
+        round(gross_profit_1000 - _digital_ad_budget_max(cost_config), 2)
+        if gross_profit_1000 is not None
+        else None
+    )
+    net_profit_max = (
+        round(gross_profit_1000 - _digital_ad_budget_min(cost_config), 2)
+        if gross_profit_1000 is not None
         else None
     )
     recommendation, recommendation_reason = _conservative_recommendation(
@@ -510,7 +527,10 @@ def _response_from_validated(
             estimated_misc_per_unit_tnd=landed_parts["misc"],
             estimated_landed_cost_per_unit_tnd=landed_cost,
             landed_cost_breakdown_notes=landed_notes,
-            estimated_meta_campaign_budget_tnd=cost_config.default_meta_campaign_budget_tnd,
+            estimated_meta_campaign_budget_tnd=campaign_budget,
+            digital_ad_budget_min_tnd=_digital_ad_budget_min(cost_config),
+            digital_ad_budget_max_tnd=_digital_ad_budget_max(cost_config),
+            digital_ad_budget_default_tnd=campaign_budget,
             expected_units_sold_from_campaign=cost_config.default_expected_units_sold_from_campaign,
             estimated_ad_cost_per_sold_unit_tnd=ad_allocation,
             ad_cost_notes=ad_notes,
@@ -520,6 +540,8 @@ def _response_from_validated(
             gross_margin_per_unit_before_marketing_tnd=gross_margin,
             gross_profit_for_1000_before_marketing_tnd=gross_profit_1000,
             net_profit_for_1000_after_marketing_tnd=net_profit_1000,
+            net_profit_for_1000_after_advertising_min_tnd=net_profit_min,
+            net_profit_for_1000_after_advertising_max_tnd=net_profit_max,
             estimated_margin_per_unit_tnd=gross_margin,
             estimated_profit_per_unit_tnd=gross_margin,
             estimated_profit_for_100_units_tnd=None,
@@ -666,16 +688,22 @@ def _landed_cost_breakdown(source_unit_price: float | None, cost_config: CostCon
 
 
 def _ad_allocation(cost_config: CostConfig) -> tuple[float | None, str]:
-    budget = cost_config.default_meta_campaign_budget_tnd
+    budget = _digital_ad_budget_default(cost_config)
     expected_units = cost_config.default_expected_units_sold_from_campaign
     if budget is None or expected_units is None or expected_units <= 0:
         if budget is not None:
-            return None, f"Meta campaign budget assumed at {budget:g} TND. Per-unit ad allocation is not calculated in this simplified report."
-        return None, "Meta ads campaign estimate requires an admin campaign budget assumption."
+            return None, (
+                f"Digital advertising budget assumed at {budget:g} TND total for the scenario. "
+                "Per-unit ad allocation is only shown when expected units sold are available."
+            )
+        return None, "Digital advertising estimate requires a scenario budget assumption."
     allocation = round(float(budget) / float(expected_units), 2)
     return (
         allocation,
-        f"Meta campaign allocation: {budget:g} TND / {expected_units:g} expected units sold = {allocation:g} TND per sold unit. This is an assumption, not a guarantee.",
+        (
+            f"Digital advertising allocation: {budget:g} TND total / {expected_units:g} expected units sold "
+            f"= {allocation:g} TND per sold unit. This remains an allocation estimate, not a guarantee."
+        ),
     )
 
 
@@ -773,7 +801,7 @@ def _range_text(prefix: str, values: list[float | None], suffix: str = "") -> st
 def _retail_summary_from_validated(validated: ProviderAnalysisResult) -> RetailMarketSummary:
     retail = validated.tunisia_retail_market
     seller_density = _computed_seller_density(retail.retail_offers)
-    return RetailMarketSummary(
+    return _retail_summary_with_fallbacks(RetailMarketSummary(
         retail_price_range_tnd=_range_text("", [retail.price_min_tnd, retail.price_max_tnd], suffix=" TND"),
         retail_min_tnd=retail.price_min_tnd,
         retail_max_tnd=retail.price_max_tnd,
@@ -785,6 +813,8 @@ def _retail_summary_from_validated(validated: ProviderAnalysisResult) -> RetailM
                 product_title=offer.product_title,
                 price_tnd=offer.price_min_tnd_numeric,
                 price_range_tnd=offer.price_range_tnd,
+                source_price_type=offer.source_price_type,
+                source_page_type=offer.source_page_type,
                 source_url=offer.source_url,
                 confidence=offer.confidence,
             )
@@ -792,7 +822,51 @@ def _retail_summary_from_validated(validated: ProviderAnalysisResult) -> RetailM
         ],
         competition_notes=retail.competition_notes,
         availability_notes=retail.availability_notes,
+    ))
+
+
+def _retail_summary_with_fallbacks(summary: RetailMarketSummary) -> RetailMarketSummary:
+    if (
+        summary.retail_price_range_tnd
+        and summary.retail_min_tnd is not None
+        and summary.retail_max_tnd is not None
+        and summary.retail_avg_tnd is not None
+    ):
+        return summary
+    range_points: list[float] = []
+    average_points: list[float] = []
+    for item in summary.example_retail_prices:
+        values = _example_retail_values(item)
+        if not values:
+            continue
+        range_points.extend(values)
+        average_points.append(round(sum(values) / len(values), 2))
+    retail_min = summary.retail_min_tnd if summary.retail_min_tnd is not None else (min(range_points) if range_points else None)
+    retail_max = summary.retail_max_tnd if summary.retail_max_tnd is not None else (max(range_points) if range_points else None)
+    retail_avg = summary.retail_avg_tnd if summary.retail_avg_tnd is not None else (
+        round(sum(average_points) / len(average_points), 2) if average_points else None
     )
+    retail_range = summary.retail_price_range_tnd or _range_text("", [retail_min, retail_max], suffix=" TND")
+    return summary.model_copy(
+        update={
+            "retail_price_range_tnd": retail_range,
+            "retail_min_tnd": retail_min,
+            "retail_max_tnd": retail_max,
+            "retail_avg_tnd": retail_avg,
+        }
+    )
+
+
+def _example_retail_values(item: ExampleRetailPrice) -> list[float]:
+    if item.price_tnd is not None:
+        return [float(item.price_tnd)]
+    text = (item.price_range_tnd or "").replace("\u2013", "-")
+    numbers = [float(value) for value in re.findall(r"\d+(?:\.\d+)?", text)]
+    if not numbers:
+        return []
+    if len(numbers) == 1:
+        return numbers
+    return sorted(numbers[:2])
 
 
 def _tunisia_wholesale_summary(offers: list[TunisiaSourcingOffer]) -> str:
@@ -800,6 +874,27 @@ def _tunisia_wholesale_summary(offers: list[TunisiaSourcingOffer]) -> str:
     if not prices:
         return TUNISIA_WHOLESALE_NOT_FOUND
     return f"Tunisian wholesale/importer/distributor evidence was found around {min(prices):g} to {max(prices):g} TND per unit."
+
+
+def _digital_ad_budget_min(cost_config: CostConfig) -> float:
+    configured = cost_config.default_digital_ad_budget_min_tnd
+    if configured is None or configured < 50:
+        return DIGITAL_AD_BUDGET_MIN_TND
+    return float(configured)
+
+
+def _digital_ad_budget_max(cost_config: CostConfig) -> float:
+    configured = cost_config.default_digital_ad_budget_max_tnd
+    if configured is None or configured < 50:
+        return DIGITAL_AD_BUDGET_MAX_TND
+    return float(configured)
+
+
+def _digital_ad_budget_default(cost_config: CostConfig) -> float:
+    configured = cost_config.default_meta_campaign_budget_tnd
+    if configured is not None and configured >= _digital_ad_budget_min(cost_config) and configured <= _digital_ad_budget_max(cost_config):
+        return float(configured)
+    return DIGITAL_AD_BUDGET_DEFAULT_TND
 
 
 def _overall_confidence(validated: ProviderAnalysisResult) -> str:
@@ -1133,7 +1228,7 @@ def _why_no_go_score(context: DecisionScoreContext, confidence: str) -> list[str
         )
     if profitability and profitability.estimated_meta_campaign_budget_tnd is not None:
         reasons.append(
-            f"The scenario already includes a total Meta campaign budget of {profitability.estimated_meta_campaign_budget_tnd:g} TND, which tightens the margin buffer."
+            f"The scenario already includes a total digital advertising budget of {profitability.estimated_meta_campaign_budget_tnd:g} TND, which tightens the margin buffer."
         )
     if not context.validated.tunisia_sourcing_offers:
         reasons.append("Local wholesale competitiveness in Tunisia is still not visible in the evidence.")
@@ -1149,7 +1244,7 @@ def _what_would_change_the_decision(context: DecisionScoreContext) -> list[str]:
         f"Confirm supplier terms and a quote for {ANALYSIS_QUANTITY_UNITS} units.",
         "Compare at least two sourcing options to improve price competitiveness.",
         "Validate product quality and exact product fit with a sample.",
-        "Pressure-test campaign economics with a small Meta test budget.",
+        "Pressure-test campaign economics with a small digital advertising test budget.",
     ]
     if not context.validated.tunisia_sourcing_offers:
         actions.append("Verify whether the product can be positioned above current Tunisia retail competitors without local wholesale support.")

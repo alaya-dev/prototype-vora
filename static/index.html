@@ -345,29 +345,34 @@
 
   .letter-loader {
     display: inline-flex;
-    gap: 3px;
+    flex-direction: row;
+    gap: 0;
     align-items: center;
     justify-content: center;
+    white-space: nowrap;
+    width: max-content;
+    max-width: 100%;
     color: var(--secondary);
     font-size: clamp(28px, 7vw, 52px);
     font-weight: 900;
     line-height: 1;
   }
 
-  .letter-loader span {
+  .letter-loader .loader-letter {
     display: inline-block;
+    flex: 0 0 auto;
     animation: letterPulse 1.25s ease-in-out infinite;
     text-shadow: 0 10px 26px rgba(22, 70, 152, 0.14);
   }
 
-  .letter-loader span:nth-child(2) { animation-delay: 80ms; }
-  .letter-loader span:nth-child(3) { animation-delay: 160ms; }
-  .letter-loader span:nth-child(4) { animation-delay: 240ms; }
-  .letter-loader span:nth-child(5) { animation-delay: 320ms; }
-  .letter-loader span:nth-child(6) { animation-delay: 400ms; }
-  .letter-loader span:nth-child(7) { animation-delay: 480ms; }
-  .letter-loader span:nth-child(8) { animation-delay: 560ms; }
-  .letter-loader span:nth-child(9) { animation-delay: 640ms; }
+  .letter-loader .loader-letter:nth-child(2) { animation-delay: 80ms; }
+  .letter-loader .loader-letter:nth-child(3) { animation-delay: 160ms; }
+  .letter-loader .loader-letter:nth-child(4) { animation-delay: 240ms; }
+  .letter-loader .loader-letter:nth-child(5) { animation-delay: 320ms; }
+  .letter-loader .loader-letter:nth-child(6) { animation-delay: 400ms; }
+  .letter-loader .loader-letter:nth-child(7) { animation-delay: 480ms; }
+  .letter-loader .loader-letter:nth-child(8) { animation-delay: 560ms; }
+  .letter-loader .loader-letter:nth-child(9) { animation-delay: 640ms; }
 
   .analysis-loader p {
     max-width: 44ch;
@@ -1144,14 +1149,16 @@ const copy = {
     maxPrice: "Max price",
     averagePrice: "Average price",
     retailSellingPrice: "Estimated retail selling price",
-    estimatedProfit: "Net profit for 1000 units after marketing",
+    estimatedProfit: "Net profit for 1000 units after advertising",
     analysisQuantity: "Analysis quantity",
     analysisQuantityUnits: "Analysis quantity: 1000 units",
-    grossMarginPerUnit: "Gross margin per unit before marketing",
-    grossProfitForScenario: "Gross profit for 1000 units before marketing",
-    metaCampaignBudgetTotal: "Meta campaign budget total",
-    netProfitForScenario: "Net profit for 1000 units after marketing",
-    adAllocationPerSoldUnit: "Ad allocation per sold unit",
+    grossMarginPerUnit: "Gross margin per unit before advertising",
+    grossProfitForScenario: "Gross profit for 1000 units before advertising",
+    digitalAdvertisingBudget: "Digital advertising budget",
+    estimatedDigitalAdvertisingBudget: "Estimated digital advertising budget",
+    totalDigitalAdvertisingBudget: "Total digital advertising budget for the scenario",
+    netProfitForScenario: "Net profit for 1000 units after advertising",
+    adAllocationPerSoldUnit: "Digital advertising allocation per sold unit",
     metricColumn: "Metric",
     valueColumn: "Value",
     productLinksHidden: "Wholesale product offer links are hidden until GO.",
@@ -1241,14 +1248,16 @@ const copy = {
     maxPrice: "Prix maximum",
     averagePrice: "Prix moyen",
     retailSellingPrice: "Prix de vente estimé",
-    estimatedProfit: "Profit net pour 1000 unités après marketing",
+    estimatedProfit: "Profit net pour 1000 unités après publicité",
     analysisQuantity: "Quantité d'analyse",
     analysisQuantityUnits: "Quantité d’analyse : 1000 unités",
-    grossMarginPerUnit: "Marge brute par unité avant marketing",
-    grossProfitForScenario: "Profit brut pour 1000 unités avant marketing",
-    metaCampaignBudgetTotal: "Budget total de campagne Meta",
-    netProfitForScenario: "Profit net pour 1000 unités après marketing",
-    adAllocationPerSoldUnit: "Allocation pub par unité vendue",
+    grossMarginPerUnit: "Marge brute par unité avant publicité",
+    grossProfitForScenario: "Profit brut pour 1000 unités avant publicité",
+    digitalAdvertisingBudget: "Budget publicitaire digital",
+    estimatedDigitalAdvertisingBudget: "Budget publicitaire digital estimé",
+    totalDigitalAdvertisingBudget: "Budget publicitaire digital total pour le scénario",
+    netProfitForScenario: "Profit net pour 1000 unités après publicité",
+    adAllocationPerSoldUnit: "Allocation publicitaire digitale par unité vendue",
     metricColumn: "Indicateur",
     valueColumn: "Valeur",
     productLinksHidden: "Les liens d'offres sourcing sont cachés jusqu'au GO.",
@@ -1290,8 +1299,8 @@ const copy = {
     frenchLanguage: "Français",
     copied: "Copié",
     noAgentEmail: "Aucun email n’est disponible pour l’agent sélectionné.",
-    analyzing: "Analyse",
-    findingProduct: "Recherche produit",
+    analyzing: "Analyse en cours",
+    findingProduct: "Recherche du produit",
     searchingEvidence: "Recherche de preuves",
     noReliableProductImageFound: "Aucune image produit fiable trouvée",
     tunisiaWholesaleNotFound: "Aucune offre fiable de sourcing grossiste tunisien n'a été trouvée pour ce produit.",
@@ -1379,7 +1388,7 @@ async function analyzePrototype() {
 
 function renderPrototypeResult(data) {
   productPhoto.innerHTML = renderProductImage(data);
-  const retail = data.retail_market_summary || {};
+  const retail = deriveRetailSummary(data.retail_market_summary || {});
   const profit = data.profitability_estimate || {};
   const quantityUnits = analysisQuantityUnits(data);
   const chinaTndRange = priceRangeTnd(
@@ -1418,6 +1427,7 @@ function renderPrototypeResult(data) {
     <section class="result-band summary-card">
       <h2>${labels.retailTitle}</h2>
       <p>${escapeHtml(retail.retail_price_range_tnd || "Retail price range was not found.")}</p>
+      ${retail.competition_notes ? `<p class="hidden-note">${escapeHtml(retail.competition_notes)}</p>` : ""}
       <div class="metric-grid">
         ${metric(labels.minPrice, tnd(retail.retail_min_tnd))}
         ${metric(labels.maxPrice, tnd(retail.retail_max_tnd))}
@@ -1461,7 +1471,7 @@ function renderPrototypeResult(data) {
         <tbody>
           ${reportRow(labels.grossMarginPerUnit, tnd(profit.gross_margin_per_unit_before_marketing_tnd))}
           ${reportRow(labels.grossProfitForScenario, tnd(profit.gross_profit_for_1000_before_marketing_tnd))}
-          ${reportRow(labels.metaCampaignBudgetTotal, tnd(profit.estimated_meta_campaign_budget_tnd))}
+          ${reportRow(labels.totalDigitalAdvertisingBudget, digitalAdvertisingBudgetRange(data))}
           ${profit.estimated_ad_cost_per_sold_unit_tnd !== null && profit.estimated_ad_cost_per_sold_unit_tnd !== undefined ? reportRow(labels.adAllocationPerSoldUnit, tnd(profit.estimated_ad_cost_per_sold_unit_tnd)) : ""}
           ${reportRow(labels.netProfitForScenario, tnd(profit.net_profit_for_1000_after_marketing_tnd ?? profit.estimated_profit_for_1000_units_tnd))}
         </tbody>
@@ -1485,7 +1495,7 @@ function renderAnalysisPendingState() {
   productPhoto.innerHTML = renderImageLoader();
   prototypeResult.innerHTML = `
     <section class="result-band wide loading analysis-loader" aria-label="${escapeAttribute(labels.analyzingProductOpportunity)}">
-      <div class="letter-loader" aria-hidden="true">${labels.analyzing.split("").map((letter) => `<span>${escapeHtml(letter)}</span>`).join("")}</div>
+      <div class="letter-loader" aria-hidden="true">${labels.analyzing.split("").map((letter) => `<span class="loader-letter">${escapeHtml(letter)}</span>`).join("")}</div>
       <p>${escapeHtml(labels.searchingEvidence)}</p>
     </section>
   `;
@@ -1601,13 +1611,13 @@ function decisionChangeActions(data, scores, recommendation) {
           "Valider rapidement les termes fournisseur et un devis pour 1000 unités.",
           "Comparer au moins deux options de sourcing pour améliorer le prix.",
           "Confirmer l’adéquation produit avec un échantillon.",
-          "Tester l’économie de campagne avec un petit budget Meta."
+          "Tester l’économie de campagne avec un petit budget publicitaire digital."
         ]
       : [
           "Obtenir un devis fournisseur exact pour 1000 unités.",
           "Comparer au moins deux options de sourcing pour améliorer le coût.",
           "Valider la qualité produit avec un échantillon.",
-          "Tester l’économie de campagne avec un petit budget Meta."
+          "Tester l’économie de campagne avec un petit budget publicitaire digital."
         ];
   }
 
@@ -1616,13 +1626,13 @@ function decisionChangeActions(data, scores, recommendation) {
         "Confirm supplier terms and a quote for 1000 units.",
         "Compare at least two sourcing options to improve price competitiveness.",
         "Validate product quality and exact product fit with a sample.",
-        "Pressure-test campaign economics with a small Meta test budget."
+        "Pressure-test campaign economics with a small digital advertising test budget."
       ]
     : [
         "Confirm supplier terms and a quote for 1000 units.",
         "Compare at least two sourcing options to improve price competitiveness.",
         "Validate product quality and exact product fit with a sample.",
-        "Pressure-test campaign economics with a small Meta test budget."
+        "Pressure-test campaign economics with a small digital advertising test budget."
       ];
 }
 
@@ -1651,6 +1661,67 @@ function analysisQuantityUnits(data) {
   return Number.isFinite(value) && value > 0 ? Math.round(value) : 1000;
 }
 
+function deriveRetailSummary(retail) {
+  const summary = retail || {};
+  if (
+    summary.retail_price_range_tnd &&
+    summary.retail_min_tnd !== null &&
+    summary.retail_min_tnd !== undefined &&
+    summary.retail_max_tnd !== null &&
+    summary.retail_max_tnd !== undefined &&
+    summary.retail_avg_tnd !== null &&
+    summary.retail_avg_tnd !== undefined
+  ) {
+    return summary;
+  }
+  const examples = Array.isArray(summary.example_retail_prices) ? summary.example_retail_prices : [];
+  const rangePoints = [];
+  const averagePoints = [];
+  examples.forEach((item) => {
+    const values = retailExampleValues(item);
+    if (!values.length) return;
+    rangePoints.push(...values);
+    averagePoints.push(values.reduce((sum, value) => sum + value, 0) / values.length);
+  });
+  const retailMin = summary.retail_min_tnd ?? (rangePoints.length ? Math.min(...rangePoints) : null);
+  const retailMax = summary.retail_max_tnd ?? (rangePoints.length ? Math.max(...rangePoints) : null);
+  const retailAvg = summary.retail_avg_tnd ?? (
+    averagePoints.length ? Number((averagePoints.reduce((sum, value) => sum + value, 0) / averagePoints.length).toFixed(2)) : null
+  );
+  return {
+    ...summary,
+    retail_min_tnd: retailMin,
+    retail_max_tnd: retailMax,
+    retail_avg_tnd: retailAvg,
+    retail_price_range_tnd: summary.retail_price_range_tnd || priceRangeTnd(retailMin, retailMax),
+  };
+}
+
+function retailExampleValues(item) {
+  if (item?.price_tnd !== null && item?.price_tnd !== undefined && item?.price_tnd !== "") {
+    const numeric = Number(item.price_tnd);
+    return Number.isFinite(numeric) ? [numeric] : [];
+  }
+  const text = String(item?.price_range_tnd || "").replace(/–/g, "-");
+  const numbers = [...text.matchAll(/\d+(?:\.\d+)?/g)]
+    .map((match) => Number(match[0]))
+    .filter((value) => Number.isFinite(value));
+  if (!numbers.length) return [];
+  if (numbers.length === 1) return [numbers[0]];
+  return [Math.min(numbers[0], numbers[1]), Math.max(numbers[0], numbers[1])];
+}
+
+function digitalAdvertisingBudgetRange(data) {
+  const profit = data.profitability_estimate || {};
+  const min = Number(profit.digital_ad_budget_min_tnd);
+  const max = Number(profit.digital_ad_budget_max_tnd);
+  const safeMin = Number.isFinite(min) && min >= 50 ? min : 300;
+  const safeMax = Number.isFinite(max) && max >= 50 ? max : 500;
+  return currentLanguage === "fr"
+    ? `${formatNumber(safeMin)}-${formatNumber(safeMax)} TND total`
+    : `${formatNumber(safeMin)}-${formatNumber(safeMax)} TND total`;
+}
+
 function quantityScenarioText(quantityUnits) {
   const labels = copy[currentLanguage];
   return currentLanguage === "fr"
@@ -1664,13 +1735,13 @@ function decisionScoreExplanation(data, scores, recommendation) {
   const retailRange = retail.retail_price_range_tnd || priceRangeTnd(retail.retail_min_tnd, retail.retail_max_tnd);
   const landedCost = tnd(profit.estimated_landed_cost_per_unit_tnd);
   const marginPerUnit = tnd(profit.gross_margin_per_unit_before_marketing_tnd);
-  const campaignBudget = tnd(profit.estimated_meta_campaign_budget_tnd);
+  const campaignBudget = digitalAdvertisingBudgetRange(data);
   if (currentLanguage === "fr") {
     if (recommendation === "go") {
-      return `Le GO est plus élevé car le prix retail observé autour de ${retailRange} reste confortablement au-dessus du scénario de coût rendu à ${landedCost}. La marge brute estimée de ${marginPerUnit} par unité avant marketing, combinée à des prix sourcing visibles, justifie la vérification fournisseur et le test d’échantillon.`;
+      return `Le GO est plus élevé car le prix retail observé autour de ${retailRange} reste confortablement au-dessus du scénario de coût rendu à ${landedCost}. La marge brute estimée de ${marginPerUnit} par unité avant publicité, combinée à des prix sourcing visibles, justifie la vérification fournisseur et le test d’échantillon.`;
     }
     if (recommendation === "no_go") {
-      return `Le NO GO est plus élevé car le potentiel de marge n’est pas suffisamment attractif face au risque d’exécution. La fourchette retail autour de ${retailRange} laisse une marge de sécurité limitée face au coût rendu estimé de ${landedCost} et au budget campagne de ${campaignBudget}.`;
+      return `Le NO GO est plus élevé car le potentiel de marge n’est pas suffisamment attractif face au risque d’exécution. La fourchette retail autour de ${retailRange} laisse une marge de sécurité limitée face au coût rendu estimé de ${landedCost} et au budget publicitaire digital total de ${campaignBudget}.`;
     }
     if (scores.dominant_side === "balanced") {
       return `La décision reste équilibrée : le produit montre un potentiel commercial, mais la marge estimée de ${marginPerUnit} par unité ne crée pas encore un coussin suffisant face à la pression prix, au sourcing et au positionnement marché.`;
@@ -1678,10 +1749,10 @@ function decisionScoreExplanation(data, scores, recommendation) {
     return `VORA recommande d’investiguer davantage car le produit présente un potentiel commercial, mais la marge de sécurité n’est pas encore assez forte. La fourchette retail autour de ${retailRange} face au scénario de coût rendu à ${landedCost} suggère une opportunité possible, sans avantage suffisamment net pour avancer immédiatement.`;
   }
   if (recommendation === "go") {
-    return `GO is higher because retail pricing around ${retailRange} sits comfortably above the landed-cost scenario at ${landedCost}. The estimated gross margin of ${marginPerUnit} per unit before marketing, combined with price-backed sourcing evidence, supports moving into supplier verification and sample testing.`;
+    return `GO is higher because retail pricing around ${retailRange} sits comfortably above the landed-cost scenario at ${landedCost}. The estimated gross margin of ${marginPerUnit} per unit before advertising, combined with price-backed sourcing evidence, supports moving into supplier verification and sample testing.`;
   }
   if (recommendation === "no_go") {
-    return `NO GO is higher because the upside is not attractive enough relative to execution risk. Retail pricing around ${retailRange} leaves limited safety margin against the landed-cost scenario at ${landedCost} and the campaign budget of ${campaignBudget}.`;
+    return `NO GO is higher because the upside is not attractive enough relative to execution risk. Retail pricing around ${retailRange} leaves limited safety margin against the landed-cost scenario at ${landedCost} and the digital advertising budget of ${campaignBudget}.`;
   }
   if (scores.dominant_side === "balanced") {
     return `The decision is balanced: the product shows commercial potential, but the estimated gross margin of ${marginPerUnit} per unit does not yet create a wide enough buffer against resale price pressure, sourcing competitiveness, and execution risk.`;
@@ -1699,7 +1770,7 @@ function decisionGoDrivers(data, scores) {
       signals.push(`Le prix retail estimé d’environ ${tnd(profit.estimated_selling_price_tnd)} reste au-dessus du prix produit source d’environ ${tnd(profit.source_unit_price_tnd)}.`);
     }
     if (profit.gross_margin_per_unit_before_marketing_tnd !== null && profit.gross_margin_per_unit_before_marketing_tnd > 0) {
-      signals.push(`La marge brute estimée avant marketing est d’environ ${tnd(profit.gross_margin_per_unit_before_marketing_tnd)} par unité.`);
+      signals.push(`La marge brute estimée avant publicité est d’environ ${tnd(profit.gross_margin_per_unit_before_marketing_tnd)} par unité.`);
     }
     if (retailOffers) {
       signals.push(`${retailOffers} offre(s) retail en Tunisie soutiennent la lecture de demande et de prix de revente.`);
@@ -1710,7 +1781,7 @@ function decisionGoDrivers(data, scores) {
     signals.push(`Estimated retail selling price around ${tnd(profit.estimated_selling_price_tnd)} stays above the source product price around ${tnd(profit.source_unit_price_tnd)}.`);
   }
   if (profit.gross_margin_per_unit_before_marketing_tnd !== null && profit.gross_margin_per_unit_before_marketing_tnd > 0) {
-    signals.push(`Estimated gross margin before marketing is around ${tnd(profit.gross_margin_per_unit_before_marketing_tnd)} per unit.`);
+    signals.push(`Estimated gross margin before advertising is around ${tnd(profit.gross_margin_per_unit_before_marketing_tnd)} per unit.`);
   }
   if (retailOffers) {
     signals.push(`${retailOffers} Tunisia retail offer(s) support the current demand and resale-price read.`);
@@ -1724,12 +1795,12 @@ function decisionNoGoDrivers(data, scores) {
   const risks = [];
   if (currentLanguage === "fr") {
     if (profit.gross_margin_per_unit_before_marketing_tnd !== null && profit.gross_margin_per_unit_before_marketing_tnd <= 0) {
-      risks.push(`La marge brute estimée avant marketing est de ${tnd(profit.gross_margin_per_unit_before_marketing_tnd)} par unité, ce qui n’est pas suffisamment attractif.`);
+      risks.push(`La marge brute estimée avant publicité est de ${tnd(profit.gross_margin_per_unit_before_marketing_tnd)} par unité, ce qui n’est pas suffisamment attractif.`);
     } else if (profit.gross_margin_per_unit_before_marketing_tnd !== null && profit.gross_margin_per_unit_before_marketing_tnd < 5) {
-      risks.push(`La marge brute estimée avant marketing n’est que de ${tnd(profit.gross_margin_per_unit_before_marketing_tnd)} par unité, ce qui laisse peu de marge de sécurité.`);
+      risks.push(`La marge brute estimée avant publicité n’est que de ${tnd(profit.gross_margin_per_unit_before_marketing_tnd)} par unité, ce qui laisse peu de marge de sécurité.`);
     }
     if (profit.estimated_meta_campaign_budget_tnd !== null && profit.estimated_meta_campaign_budget_tnd !== undefined) {
-      risks.push(`Le scénario inclut déjà un budget campagne Meta total de ${tnd(profit.estimated_meta_campaign_budget_tnd)}, ce qui comprime la marge nette.`);
+      risks.push(`Le scénario inclut déjà un budget publicitaire digital total de ${digitalAdvertisingBudgetRange(data)}, ce qui comprime la marge nette.`);
     }
     if (!sourcing.tunisia_wholesale_found) risks.push("La compétitivité grossiste locale en Tunisie n’est pas encore visible dans les données.");
     if ((profit.risks || []).some((risk) => /equivalent|oem|weak/i.test(risk))) risks.push("Le sourcing Chine repose encore sur des correspondances équivalentes ou faibles, ce qui augmente le risque fournisseur et produit.");
@@ -1737,12 +1808,12 @@ function decisionNoGoDrivers(data, scores) {
     return risks;
   }
   if (profit.gross_margin_per_unit_before_marketing_tnd !== null && profit.gross_margin_per_unit_before_marketing_tnd <= 0) {
-    risks.push(`Estimated gross margin before marketing is ${tnd(profit.gross_margin_per_unit_before_marketing_tnd)} per unit, which is not attractive enough.`);
+    risks.push(`Estimated gross margin before advertising is ${tnd(profit.gross_margin_per_unit_before_marketing_tnd)} per unit, which is not attractive enough.`);
   } else if (profit.gross_margin_per_unit_before_marketing_tnd !== null && profit.gross_margin_per_unit_before_marketing_tnd < 5) {
-    risks.push(`Estimated gross margin before marketing is only ${tnd(profit.gross_margin_per_unit_before_marketing_tnd)} per unit, leaving limited safety margin.`);
+    risks.push(`Estimated gross margin before advertising is only ${tnd(profit.gross_margin_per_unit_before_marketing_tnd)} per unit, leaving limited safety margin.`);
   }
   if (profit.estimated_meta_campaign_budget_tnd !== null && profit.estimated_meta_campaign_budget_tnd !== undefined) {
-    risks.push(`The scenario already includes a total Meta campaign budget of ${tnd(profit.estimated_meta_campaign_budget_tnd)}, which tightens the net margin buffer.`);
+    risks.push(`The scenario already includes a total digital advertising budget of ${digitalAdvertisingBudgetRange(data)}, which tightens the net margin buffer.`);
   }
   if (!sourcing.tunisia_wholesale_found) risks.push("Local Tunisia wholesale competitiveness is still not visible in the evidence.");
   if ((profit.risks || []).some((risk) => /equivalent|oem|weak/i.test(risk))) risks.push("China sourcing still relies on equivalent or weak matching, which raises supplier and product-fit risk.");
@@ -1829,9 +1900,9 @@ function businessReadingText(data) {
   const recommendation = data.recommendation || "investigate_more";
   const reason = data.recommendation_reason || "Evidence quality is not strong enough for a confident decision.";
   if (currentLanguage === "fr") {
-    return `Dans le scénario d’analyse de ${quantityUnits} unités, le profit net estimé après marketing est ${estimate}. La recommandation actuelle est ${recommendationText(recommendation)}. ${reason} Cette lecture reste une aide à la décision et non une garantie de résultat.`;
+    return `Dans le scénario d’analyse de ${quantityUnits} unités, le profit net estimé après publicité est ${estimate}. La recommandation actuelle est ${recommendationText(recommendation)}. ${reason} Cette lecture reste une aide à la décision et non une garantie de résultat.`;
   }
-  return `In the ${quantityUnits}-unit analysis scenario, the estimated net profit after marketing is ${estimate}. The current recommendation is ${recommendationText(recommendation)}. ${reason} This remains a decision aid, not a profit guarantee.`;
+  return `In the ${quantityUnits}-unit analysis scenario, the estimated net profit after advertising is ${estimate}. The current recommendation is ${recommendationText(recommendation)}. ${reason} This remains a decision aid, not a profit guarantee.`;
 }
 
 function sourcingSentence(summary) {
@@ -2087,7 +2158,10 @@ function renderAgentsPage() {
 }
 
 function renderRetailExample(item) {
-  return `<div class="item"><strong>${escapeHtml(item.seller_name || "Retail seller")}</strong><span>${escapeHtml(tndValueOrText(item.price_range_tnd || item.price_tnd))}</span>${item.source_url ? `<a href="${escapeAttribute(item.source_url)}" target="_blank" rel="noopener noreferrer">Product link: ${escapeHtml(item.source_url)}</a>` : ""}</div>`;
+  const pageType = item.source_page_type === "category_or_listing"
+    ? (currentLanguage === "fr" ? "Page catégorie/liste" : "Category/listing page")
+    : (currentLanguage === "fr" ? "Page produit" : "Product page");
+  return `<div class="item"><strong>${escapeHtml(item.seller_name || "Retail seller")}</strong><span>${escapeHtml(tndValueOrText(item.price_range_tnd || item.price_tnd))}</span><span class="hidden-note">${escapeHtml(pageType)}</span>${item.source_url ? `<a href="${escapeAttribute(item.source_url)}" target="_blank" rel="noopener noreferrer">Product link: ${escapeHtml(item.source_url)}</a>` : ""}</div>`;
 }
 
 function renderLinks(links) {
@@ -2308,7 +2382,7 @@ function priceRangeTnd(minValue, maxValue) {
   if (maxValue === null || maxValue === undefined || maxValue === "" || Number(maxValue) === Number(minValue)) {
     return tnd(minValue);
   }
-  return `${formatNumber(Number(minValue))} TND to ${formatNumber(Number(maxValue))} TND`;
+  return `${formatNumber(Number(minValue))}–${formatNumber(Number(maxValue))} TND`;
 }
 
 function normalizePhone(value) {

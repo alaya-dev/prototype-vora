@@ -124,6 +124,8 @@ class TunisiaRetailOffer(StrictModel):
     seller_name: str
     seller_type: Literal["marketplace", "local_shop", "retail_store", "classified", "social_listing", "unknown"] = "unknown"
     product_title: str | None = None
+    source_price_type: Literal["single", "range", "unknown"] = "unknown"
+    source_page_type: Literal["product", "category_or_listing", "unknown"] = "unknown"
     price_range_tnd: str | None = None
     price_min_tnd_numeric: float | None = None
     price_max_tnd_numeric: float | None = None

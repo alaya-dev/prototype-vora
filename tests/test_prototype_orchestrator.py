@@ -14,9 +14,11 @@ from app.benchmark.schemas import (
 from app.prototype.research_orchestrator import PrototypeResearchOrchestrator
 from app.prototype.schemas import (
     CostConfig,
+    ExampleRetailPrice,
     LocalizedClientAnalysis,
     PrototypeAnalysisDraft,
     PrototypeAnalyzeRequest,
+    RetailMarketSummary,
 )
 from app.prototype.storage import PrototypeStore
 from app.schemas import IntentResult, ProductUnderstanding
@@ -267,12 +269,49 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(profit.estimated_landed_cost_per_unit_tnd, 13.82)
         self.assertIn("6.2 TND", profit.landed_cost_breakdown_notes)
         self.assertEqual(profit.estimated_meta_campaign_budget_tnd, 500)
+        self.assertEqual(profit.digital_ad_budget_min_tnd, 300)
+        self.assertEqual(profit.digital_ad_budget_max_tnd, 500)
+        self.assertEqual(profit.digital_ad_budget_default_tnd, 500)
         self.assertEqual(profit.expected_units_sold_from_campaign, 100)
         self.assertEqual(profit.estimated_ad_cost_per_sold_unit_tnd, 5)
-        self.assertIn("500 TND / 100", profit.ad_cost_notes)
+        self.assertIn("Digital advertising allocation: 500 TND total / 100", profit.ad_cost_notes)
         self.assertEqual(profit.estimated_margin_per_unit_tnd, 24.68)
         self.assertIsNone(profit.estimated_profit_for_100_units_tnd)
         self.assertEqual(profit.estimated_profit_for_1000_units_tnd, 24180)
+        self.assertEqual(profit.net_profit_for_1000_after_advertising_min_tnd, 24180)
+        self.assertEqual(profit.net_profit_for_1000_after_advertising_max_tnd, 24380)
+
+    async def test_default_digital_advertising_budget_uses_300_to_500_range_and_400_default(self) -> None:
+        result = await _orchestrator().analyze(
+            PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
+        )
+
+        profit = result.profitability_estimate
+
+        self.assertEqual(profit.digital_ad_budget_min_tnd, 300)
+        self.assertEqual(profit.digital_ad_budget_max_tnd, 500)
+        self.assertEqual(profit.digital_ad_budget_default_tnd, 400)
+        self.assertEqual(profit.estimated_meta_campaign_budget_tnd, 400)
+        self.assertEqual(profit.gross_profit_for_1000_before_marketing_tnd, 25680)
+        self.assertEqual(profit.net_profit_for_1000_after_marketing_tnd, 25280)
+        self.assertEqual(profit.net_profit_for_1000_after_advertising_min_tnd, 25180)
+        self.assertEqual(profit.net_profit_for_1000_after_advertising_max_tnd, 25380)
+
+    async def test_legacy_low_digital_ad_budget_values_fall_back_to_total_budget_defaults(self) -> None:
+        result = await _orchestrator(
+            cost_config=CostConfig(
+                default_meta_campaign_budget_tnd=3,
+                default_digital_ad_budget_min_tnd=3,
+                default_digital_ad_budget_max_tnd=5,
+            )
+        ).analyze(PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer"))
+
+        profit = result.profitability_estimate
+
+        self.assertEqual(profit.digital_ad_budget_min_tnd, 300)
+        self.assertEqual(profit.digital_ad_budget_max_tnd, 500)
+        self.assertEqual(profit.digital_ad_budget_default_tnd, 400)
+        self.assertEqual(profit.net_profit_for_1000_after_marketing_tnd, 25280)
 
     async def test_recommendation_is_conservative_for_equivalent_oem_or_weak_evidence(self) -> None:
         analysis = _analysis()
@@ -583,6 +622,29 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("https://shop1.tn/t9", retail_links)
         self.assertIn("https://shop2.tn/t9", retail_links)
+
+    async def test_retail_summary_falls_back_to_example_prices_when_aggregate_fields_are_missing(self) -> None:
+        draft = PrototypeAnalysisDraft(
+            product_description="Fallback retail summary test.",
+            retail_market_summary=RetailMarketSummary(
+                retail_price_range_tnd="",
+                retail_min_tnd=None,
+                retail_max_tnd=None,
+                retail_avg_tnd=None,
+                example_retail_prices=[
+                    ExampleRetailPrice(seller_name="Wamia", price_tnd=13.9, price_range_tnd="13.9 TND"),
+                    ExampleRetailPrice(seller_name="Best Buy Tunisie", price_tnd=35, price_range_tnd="35 TND"),
+                ],
+            ),
+        )
+        result = await _orchestrator(analysis=draft).analyze(
+            PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
+        )
+
+        self.assertEqual(result.retail_market_summary.retail_min_tnd, 13.9)
+        self.assertEqual(result.retail_market_summary.retail_max_tnd, 35)
+        self.assertEqual(result.retail_market_summary.retail_avg_tnd, 24.45)
+        self.assertEqual(result.retail_market_summary.retail_price_range_tnd, "13.9 to 35 TND")
 
 
 def _orchestrator(

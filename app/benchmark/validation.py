@@ -243,6 +243,10 @@ def _validate_tunisia_retail_offer(
     update: dict[str, str | float | None] = {}
     update.update(_normalize_tnd_price_update(offer.price_range_tnd, offer.price_min_tnd_numeric, offer.price_max_tnd_numeric))
     normalized_url = _normalize_url(offer.source_url)
+    update["source_page_type"] = _infer_retail_page_type(
+        normalized_url or offer.source_url,
+        str(update.get("source_page_type", offer.source_page_type)),
+    )
     if update.get("price_min_tnd_numeric", offer.price_min_tnd_numeric) is None:
         update["price_evidence"] = "not_found"
         update["price_range_tnd"] = offer.price_range_tnd
@@ -273,21 +277,32 @@ def _validate_tunisia_retail_market(
         offer.model_copy(update={"rank": index + 1})
         for index, offer in enumerate(offers)
     ]
-    priced = [
-        offer.price_min_tnd_numeric
+    range_points = [
+        point
         for offer in ranked_offers
-        if offer.price_min_tnd_numeric is not None
+        for point in (
+            offer.price_min_tnd_numeric,
+            offer.price_max_tnd_numeric,
+        )
+        if point is not None
     ]
+    average_points = [_retail_average_value(offer) for offer in ranked_offers if _retail_average_value(offer) is not None]
     unique_sellers = _count_unique_retail_sellers(ranked_offers)
+    range_based = any(offer.source_price_type == "range" for offer in ranked_offers)
+    competition_notes = market.competition_notes
+    if range_based:
+        range_note = "Some prices come from category/listing ranges, not exact product pages."
+        competition_notes = " ".join(filter(None, [competition_notes, range_note])).strip()
     return market.model_copy(
         update={
             "retail_offers": ranked_offers,
-            "price_min_tnd": min(priced) if priced else None,
-            "price_max_tnd": max(priced) if priced else None,
-            "price_avg_tnd": round(sum(priced) / len(priced), 2) if priced else None,
+            "price_min_tnd": min(range_points) if range_points else None,
+            "price_max_tnd": max(range_points) if range_points else None,
+            "price_avg_tnd": round(sum(average_points) / len(average_points), 2) if average_points else None,
             "unique_sellers_count": unique_sellers,
             "retail_sources_count": sum(1 for offer in ranked_offers if offer.source_url),
             "seller_density": _seller_density(unique_sellers),
+            "competition_notes": competition_notes,
         }
     )
 
@@ -632,11 +647,15 @@ def _normalize_tnd_price_update(
         "price_max_tnd_numeric": normalized_max,
         "price_range_tnd": _format_tnd_range(normalized_min, normalized_max),
         "price_normalization_notes": note,
+        "source_price_type": "range" if normalized_max is not None and normalized_max != normalized_min else "single",
+        "source_page_type": _infer_page_type_from_price_text(price_text),
     }
 
 
 def _parse_tnd_price_text(price_text: str) -> tuple[float, float, str] | None:
     text = price_text.replace("\u00a0", " ")
+    if parsed_range := _parse_tnd_range_text(text):
+        return parsed_range
     if match := INTERNATIONAL_DECIMAL_RE.search(text):
         value = float(match.group(1).replace(",", "") + "." + match.group(2))
         return value, value, "Parsed international decimal TND price format."
@@ -669,7 +688,59 @@ def _format_tnd_range(price_min: float | None, price_max: float | None) -> str |
         return None
     if price_max is None or price_max == price_min:
         return f"{price_min:g} TND"
-    return f"{price_min:g} to {price_max:g} TND"
+    return f"{price_min:g}–{price_max:g} TND"
+
+
+def _parse_tnd_range_text(price_text: str) -> tuple[float, float, str] | None:
+    numbers = re.findall(r"\d[\d\s.,]*\d|\d", price_text)
+    if len(numbers) < 2 or not any(separator in price_text for separator in ("-", "–", "to", "à")):
+        return None
+    normalized_values = [_normalize_tnd_number(raw) for raw in numbers[:2]]
+    if any(value is None for value in normalized_values):
+        return None
+    low, high = sorted(normalized_values)
+    return low, high, "TND price range normalized from category/listing interval."
+
+
+def _normalize_tnd_number(raw_value: str) -> float | None:
+    value = raw_value.strip().replace("\u00a0", " ")
+    compact = value.replace(" ", "")
+    if not compact:
+        return None
+    if "." in compact and "," not in compact:
+        parts = compact.split(".")
+        if len(parts) == 2 and len(parts[1]) == 3:
+            return float(f"{parts[0]}.{parts[1].rstrip('0')}" if parts[1].rstrip("0") else parts[0])
+        return float(compact)
+    if "," in compact and "." not in compact:
+        parts = compact.split(",")
+        if len(parts) == 2 and len(parts[1]) == 3:
+            return float(f"{parts[0]}.{parts[1].rstrip('0')}" if parts[1].rstrip("0") else parts[0])
+        return float(compact.replace(",", "."))
+    return float(compact)
+
+
+def _infer_page_type_from_price_text(price_text: str) -> str:
+    lowered = price_text.lower()
+    if any(separator in lowered for separator in (" - ", "-", "–", " to ", " à ")):
+        return "category_or_listing"
+    return "product"
+
+
+def _infer_retail_page_type(source_url: str | None, current: str) -> str:
+    if current == "category_or_listing":
+        return current
+    lowered = (source_url or "").lower()
+    listing_signals = ("/category", "/categorie", "/support-", "/shop/", "/collections/", "/639-", "/list", "?page=")
+    return "category_or_listing" if any(signal in lowered for signal in listing_signals) else "product"
+
+
+def _retail_average_value(offer: TunisiaRetailOffer) -> float | None:
+    if offer.price_min_tnd_numeric is None:
+        return None
+    if offer.price_max_tnd_numeric is None or offer.price_max_tnd_numeric == offer.price_min_tnd_numeric:
+        return offer.price_min_tnd_numeric
+    return round((offer.price_min_tnd_numeric + offer.price_max_tnd_numeric) / 2, 2)
 
 
 def _is_tracking_query_param(key: str) -> bool:

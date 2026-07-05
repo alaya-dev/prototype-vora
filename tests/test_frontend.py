@@ -69,8 +69,11 @@ class FrontendTests(unittest.TestCase):
     def test_analysis_loader_replaces_skeleton_during_client_analysis(self) -> None:
         self.assertIn("analysis-loader", self.html)
         self.assertIn("letter-loader", self.html)
+        self.assertIn("loader-letter", self.html)
+        self.assertIn("white-space: nowrap", self.html)
         self.assertIn("renderAnalysisPendingState()", self.html)
         self.assertIn("Analyzing", self.html)
+        self.assertIn("Analyse en cours", self.html)
         self.assertIn("Analyzing product opportunity", self.html)
         self.assertNotIn("Gener" + "ating", self.html)
         self.assertNotIn('prototypeResult.innerHTML = `<div class="result-band wide loading"><div class="skeleton"', self.html)
@@ -80,6 +83,8 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("evidence-spinner", self.html)
         self.assertIn("Finding product", self.html)
         self.assertIn("Searching evidence", self.html)
+        self.assertIn("Recherche du produit", self.html)
+        self.assertIn("Recherche de preuves", self.html)
         self.assertIn("@media (max-width: 520px)", self.html)
         self.assertIn("prefers-reduced-motion", self.html)
 
@@ -174,12 +179,15 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("Estimated landed cost per unit", self.html)
         self.assertIn("Estimated retail selling price", self.html)
         self.assertIn("Analysis quantity: 1000 units", self.html)
-        self.assertIn("Gross margin per unit before marketing", self.html)
-        self.assertIn("Gross profit for 1000 units before marketing", self.html)
-        self.assertIn("Meta campaign budget total", self.html)
-        self.assertIn("Net profit for 1000 units after marketing", self.html)
+        self.assertIn("Gross margin per unit before advertising", self.html)
+        self.assertIn("Gross profit for 1000 units before advertising", self.html)
+        self.assertIn("Total digital advertising budget for the scenario", self.html)
+        self.assertIn("Net profit for 1000 units after advertising", self.html)
         self.assertNotIn("Estimated profit for 100 units", self.html)
         self.assertNotIn('quantity_scenarios: [100, 1000]', self.html)
+        client_html = self.html.split('<section id="clientPage"', 1)[1].split('<section id="analyticsPage"', 1)[0]
+        self.assertNotIn("Meta campaign", client_html)
+        self.assertNotIn("Meta ads", client_html)
 
     def test_client_ui_has_bilingual_toggle_and_guaranteed_image_fallback(self) -> None:
         self.assertIn("languageToggle", self.html)
@@ -225,3 +233,17 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("mailto:", self.html)
         self.assertIn("Contact a sourcing agent", self.html)
         self.assertIn("Contacter un agent de sourcing", self.html)
+
+    def test_frontend_formats_retail_intervals_with_en_dash(self) -> None:
+        self.assertIn('return `${formatNumber(Number(minValue))}–${formatNumber(Number(maxValue))} TND`;', self.html)
+        self.assertIn("Category/listing page", self.html)
+        self.assertIn("Page catégorie/liste", self.html)
+
+    def test_digital_ad_budget_range_guards_against_legacy_low_values(self) -> None:
+        self.assertIn('const safeMin = Number.isFinite(min) && min >= 50 ? min : 300;', self.html)
+        self.assertIn('const safeMax = Number.isFinite(max) && max >= 50 ? max : 500;', self.html)
+
+    def test_frontend_derives_retail_summary_from_examples_when_summary_fields_are_missing(self) -> None:
+        self.assertIn("function deriveRetailSummary(retail)", self.html)
+        self.assertIn("function retailExampleValues(item)", self.html)
+        self.assertIn("const retail = deriveRetailSummary(data.retail_market_summary || {});", self.html)

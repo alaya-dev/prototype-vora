@@ -464,7 +464,7 @@ def _build_client_analysis_prompt(
         "Keep source product unit price separate from estimated landed cost. Landed "
         "cost must be source product unit price plus explicit shipping/import/customs/"
         "handling/misc assumptions. Do not silently replace a source unit price with "
-        "a landed cost. Model Meta ads as a total campaign budget, not as a direct "
+        "a landed cost. Model digital advertising as a total campaign budget, not as a direct "
         "per-product cost. If expected units sold are available, a per-unit ad allocation "
         "can be derived as campaign budget divided by expected units sold, but label it "
         "as an allocation estimate only. "

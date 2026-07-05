@@ -1,4 +1,5 @@
 import importlib
+import tempfile
 import unittest
 
 from fastapi.testclient import TestClient
@@ -19,6 +20,7 @@ from app.prototype.schemas import (
     RetailMarketSummary,
     SourcingSummary,
 )
+from app.prototype.storage import PrototypeStore
 from app.schemas import IntentResult, ProductAnalysisResponse
 
 
@@ -219,6 +221,7 @@ class ApiTests(unittest.TestCase):
             settings=_settings(tavily_api_key="secret-tvly"),
             benchmark_pipeline=_benchmark_pipeline(),
             provider_infos=ProvidersResponse(providers=[]),
+            prototype_store=PrototypeStore(_temp_db()),
         )
         client = TestClient(app)
 
@@ -306,3 +309,9 @@ def _settings(**overrides) -> Settings:
     return Settings(
         **values
     )
+
+
+def _temp_db() -> str:
+    handle = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    handle.close()
+    return handle.name
