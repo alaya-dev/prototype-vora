@@ -119,6 +119,10 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("decisionGoDrivers", decision_renderer)
         self.assertIn("decisionNoGoDrivers", decision_renderer)
 
+    def test_decision_change_actions_helper_exists(self) -> None:
+        self.assertIn("function decisionChangeActions(data, scores, recommendation)", self.html)
+        self.assertIn("what_would_change_the_decision", self.html)
+
     def test_seller_density_is_not_rendered_in_client_ui(self) -> None:
         result_renderer = self.html.split("function renderPrototypeResult(data)", 1)[1].split("function renderAnalysisPendingState", 1)[0]
 

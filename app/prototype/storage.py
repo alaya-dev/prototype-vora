@@ -22,7 +22,7 @@ from app.prototype.schemas import (
 
 
 class PrototypeStore:
-    def __init__(self, db_path: str | Path = "/tmp/data/vora_prototype.db") -> None:
+    def __init__(self, db_path: str | Path = "data/vora_prototype.db") -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()

@@ -1586,6 +1586,46 @@ function normalizeDecisionScores(rawScores) {
   };
 }
 
+function decisionChangeActions(data, scores, recommendation) {
+  const sources = [
+    ...(Array.isArray(data?.decision_scores?.what_would_change_the_decision) ? data.decision_scores.what_would_change_the_decision : []),
+    ...(Array.isArray(scores?.what_would_change_the_decision) ? scores.what_would_change_the_decision : []),
+    ...(Array.isArray(data?.what_would_change_the_decision) ? data.what_would_change_the_decision : [])
+  ];
+  const actions = Array.from(new Set(sources.map((action) => String(action || "").trim()).filter(Boolean)));
+  if (actions.length) return actions.slice(0, 5);
+
+  if (currentLanguage === "fr") {
+    return recommendation === "go"
+      ? [
+          "Valider rapidement les termes fournisseur et un devis pour 1000 unités.",
+          "Comparer au moins deux options de sourcing pour améliorer le prix.",
+          "Confirmer l’adéquation produit avec un échantillon.",
+          "Tester l’économie de campagne avec un petit budget Meta."
+        ]
+      : [
+          "Obtenir un devis fournisseur exact pour 1000 unités.",
+          "Comparer au moins deux options de sourcing pour améliorer le coût.",
+          "Valider la qualité produit avec un échantillon.",
+          "Tester l’économie de campagne avec un petit budget Meta."
+        ];
+  }
+
+  return recommendation === "go"
+    ? [
+        "Confirm supplier terms and a quote for 1000 units.",
+        "Compare at least two sourcing options to improve price competitiveness.",
+        "Validate product quality and exact product fit with a sample.",
+        "Pressure-test campaign economics with a small Meta test budget."
+      ]
+    : [
+        "Confirm supplier terms and a quote for 1000 units.",
+        "Compare at least two sourcing options to improve price competitiveness.",
+        "Validate product quality and exact product fit with a sample.",
+        "Pressure-test campaign economics with a small Meta test budget."
+      ];
+}
+
 function displayedRecommendation(recommendation, scores) {
   if (recommendation === "go" && scores.go_percent < scores.no_go_percent) return "investigate_more";
   return ["go", "no_go", "investigate_more"].includes(recommendation) ? recommendation : "investigate_more";
