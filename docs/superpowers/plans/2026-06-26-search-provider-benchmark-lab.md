@@ -636,7 +636,7 @@ def build_regional_queries(product: str, max_queries_per_region: int) -> Regiona
         "{product} achat Tunisie",
         "{product} boutique Tunisie",
         "{product} site:mytek.tn",
-        "{product} site:jumia.com.tn",
+"{product} site:mytek.tn",
         "{product} site:tayara.tn",
         "{product} site:spacenet.tn",
         "{product} site:shopiwell.tn",

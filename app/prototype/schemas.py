@@ -10,11 +10,13 @@ from app.benchmark.schemas import ChinaSourcingOffer, TunisiaRetailMarket, Tunis
 
 Recommendation = Literal["go", "no_go", "investigate_more"]
 SellerDensity = Literal["low", "medium", "high", "unknown"]
+DecisionConfidence = Literal["low", "medium", "high"]
+DominantDecisionSide = Literal["go", "no_go", "balanced"]
 
 
 class PrototypeAnalyzeRequest(StrictModel):
     product: str = Field(default="", max_length=300)
-    quantity_scenarios: list[int] = Field(default_factory=lambda: [100, 1000])
+    quantity_scenarios: list[int] = Field(default_factory=lambda: [1000])
 
 
 class PrototypeSourcingLink(StrictModel):
@@ -113,12 +115,37 @@ class ProfitabilityEstimate(StrictModel):
     risks: list[str] = Field(default_factory=list)
 
 
+class DecisionScores(StrictModel):
+    go_percent: int = 0
+    no_go_percent: int = 100
+    confidence: DecisionConfidence = "low"
+    go_reason: str = ""
+    no_go_reason: str = ""
+    score_explanation: str = ""
+    why_go_score: list[str] = Field(default_factory=list)
+    why_no_go_score: list[str] = Field(default_factory=list)
+    dominant_side: DominantDecisionSide = "balanced"
+    what_would_change_the_decision: list[str] = Field(default_factory=list)
+    main_decision_factors: list[str] = Field(default_factory=list)
+
+
 class HiddenSourcingLinks(StrictModel):
     china_sourcing_links: list[PrototypeSourcingLink] = Field(default_factory=list)
     tunisia_sourcing_links: list[PrototypeSourcingLink] = Field(default_factory=list)
     seller_contacts: list[ContactSellerCard] = Field(default_factory=list)
     retail_evidence_debug: dict = Field(default_factory=dict)
     product_image_debug: dict = Field(default_factory=dict)
+
+
+class LocalizedClientAnalysis(StrictModel):
+    product_description_en: str = ""
+    product_description_fr: str = ""
+    price_analysis_en: str = ""
+    price_analysis_fr: str = ""
+    market_analysis_en: str = ""
+    market_analysis_fr: str = ""
+    business_reading_en: str = ""
+    business_reading_fr: str = ""
 
 
 class PrototypeAnalyzeResponse(StrictModel):
@@ -129,9 +156,16 @@ class PrototypeAnalyzeResponse(StrictModel):
     product_image_confidence: Literal["high", "medium", "low", "fallback"] = "fallback"
     product_image_notes: str = "No reliable source-backed product image was found."
     product_description: str = ""
+    localized_analysis: LocalizedClientAnalysis = Field(default_factory=LocalizedClientAnalysis)
     sourcing_summary: SourcingSummary = Field(default_factory=SourcingSummary)
     retail_market_summary: RetailMarketSummary = Field(default_factory=RetailMarketSummary)
     profitability_estimate: ProfitabilityEstimate = Field(default_factory=ProfitabilityEstimate)
+    analysis_quantity_units: int = 1000
+    decision_scores: DecisionScores = Field(default_factory=DecisionScores)
+    decision_summary: str = ""
+    positive_signals: list[str] = Field(default_factory=list)
+    risk_signals: list[str] = Field(default_factory=list)
+    main_decision_factors: list[str] = Field(default_factory=list)
     recommendation: Recommendation = "investigate_more"
     recommendation_reason: str = ""
     go_reveal_available: bool = True
@@ -244,6 +278,7 @@ class AnalyticsSummary(StrictModel):
 
 class PrototypeAnalysisDraft(StrictModel):
     product_description: str = ""
+    localized_analysis: LocalizedClientAnalysis = Field(default_factory=LocalizedClientAnalysis)
     product_image_url: str | None = None
     china_sourcing_offers: list[ChinaSourcingOffer] = Field(default_factory=list)
     tunisia_sourcing_offers: list[TunisiaSourcingOffer] = Field(default_factory=list)
@@ -251,6 +286,7 @@ class PrototypeAnalysisDraft(StrictModel):
     sourcing_summary: SourcingSummary = Field(default_factory=SourcingSummary)
     retail_market_summary: RetailMarketSummary = Field(default_factory=RetailMarketSummary)
     profitability_estimate: ProfitabilityEstimate = Field(default_factory=ProfitabilityEstimate)
+    decision_scores: DecisionScores = Field(default_factory=DecisionScores)
     recommendation: Recommendation = "investigate_more"
     recommendation_reason: str = ""
     warnings: list[str] = Field(default_factory=list)

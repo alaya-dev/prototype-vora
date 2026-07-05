@@ -48,8 +48,13 @@ class ProductIntent:
         return self.french_search_name
 
 
-def build_regional_queries(product: str | ProductUnderstanding, max_queries_per_region: int) -> RegionalQueries:
+def build_regional_queries(
+    product: str | ProductUnderstanding,
+    max_queries_per_region: int,
+    group_limits: dict[str, int] | None = None,
+) -> RegionalQueries:
     limit = max(1, max_queries_per_region)
+    group_limits = group_limits or {}
     intent = infer_product_intent(product)
     china_sourcing_templates = [
         "{product} cheapest wholesale unit price China",
@@ -90,8 +95,6 @@ def build_regional_queries(product: str | ProductUnderstanding, max_queries_per_
         "{original_product} prix Tunisie",
         "{product} site:mytek.tn",
         "{original_product} site:mytek.tn",
-        "{product} site:jumia.com.tn",
-        "{original_product} site:jumia.com.tn",
         "{product} site:tunisianet.com.tn",
         "{original_product} site:tunisianet.com.tn",
         "{product} site:spacenet.tn",
@@ -100,7 +103,6 @@ def build_regional_queries(product: str | ProductUnderstanding, max_queries_per_
         "{product} vente Tunisie",
         "{product} boutique Tunisie",
         "{product} site:.tn",
-        "{product} Jumia Tunisie",
         "{product} boutique en ligne Tunisie",
         "{product} magasin Tunisie",
         "{product} site:.com.tn",
@@ -115,10 +117,29 @@ def build_regional_queries(product: str | ProductUnderstanding, max_queries_per_
         "{product} Tayara Tunisie",
     ]
     return RegionalQueries(
-        china_sourcing=_format_china_queries(china_sourcing_templates, china_equivalent_templates, intent, limit),
-        tunisia_sourcing=_format_queries(tunisia_sourcing_templates, intent.tunisia_search_name, intent.original_product, limit),
-        tunisia_retail=_format_queries(tunisia_retail_templates, intent.tunisia_search_name, intent.original_product, limit),
+        china_sourcing=_format_china_queries(
+            china_sourcing_templates,
+            china_equivalent_templates,
+            intent,
+            _group_limit(group_limits, "china_sourcing", limit),
+        ),
+        tunisia_sourcing=_format_queries(
+            tunisia_sourcing_templates,
+            intent.tunisia_search_name,
+            intent.original_product,
+            _group_limit(group_limits, "tunisia_sourcing", limit),
+        ),
+        tunisia_retail=_format_queries(
+            tunisia_retail_templates,
+            intent.tunisia_search_name,
+            intent.original_product,
+            _group_limit(group_limits, "tunisia_retail", limit),
+        ),
     )
+
+
+def _group_limit(group_limits: dict[str, int], group: str, fallback: int) -> int:
+    return max(1, group_limits.get(group, fallback))
 
 
 def _format_china_queries(

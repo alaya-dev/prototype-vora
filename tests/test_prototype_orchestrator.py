@@ -12,7 +12,12 @@ from app.benchmark.schemas import (
     TunisiaSourcingOffer,
 )
 from app.prototype.research_orchestrator import PrototypeResearchOrchestrator
-from app.prototype.schemas import CostConfig, PrototypeAnalyzeRequest
+from app.prototype.schemas import (
+    CostConfig,
+    LocalizedClientAnalysis,
+    PrototypeAnalysisDraft,
+    PrototypeAnalyzeRequest,
+)
 from app.prototype.storage import PrototypeStore
 from app.schemas import IntentResult, ProductUnderstanding
 
@@ -101,6 +106,78 @@ class SequentialImageProvider(FakeProvider):
 
 
 class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_client_analysis_keeps_bilingual_gemini_narrative(self) -> None:
+        draft = PrototypeAnalysisDraft(
+            product_description="English fallback description.",
+            localized_analysis=LocalizedClientAnalysis(
+                product_description_en="English product description.",
+                product_description_fr="Description produit en français.",
+                price_analysis_en="English price analysis.",
+                price_analysis_fr="Analyse prix en français.",
+                market_analysis_en="English market analysis.",
+                market_analysis_fr="Analyse marché en français.",
+                business_reading_en="English business reading.",
+                business_reading_fr="Lecture business en français.",
+            ),
+            china_sourcing_offers=[
+                ChinaSourcingOffer(
+                    name="CN Factory",
+                    product_title="T9 vintage hair trimmer",
+                    price_range_usd="US$2",
+                    price_min_usd_numeric=2,
+                    moq="100 pcs",
+                    source_url="https://cn.example/t9",
+                    confidence="high",
+                    product_match="exact",
+                )
+            ],
+            tunisia_retail_market=TunisiaRetailMarket(
+                retail_offers=[
+                    TunisiaRetailOffer(
+                        seller_name="Shop 1",
+                        seller_type="local_shop",
+                        price_range_tnd="35 TND",
+                        price_min_tnd_numeric=35,
+                        source_url="https://shop1.tn/t9",
+                        confidence="high",
+                        product_match="exact",
+                    ),
+                    TunisiaRetailOffer(
+                        seller_name="Shop 2",
+                        seller_type="local_shop",
+                        price_range_tnd="42 TND",
+                        price_min_tnd_numeric=42,
+                        source_url="https://shop2.tn/t9",
+                        confidence="high",
+                        product_match="exact",
+                    ),
+                ]
+            ),
+        )
+        firecrawl = FakeProvider(
+            "firecrawl",
+            {
+                "china_sourcing": [_source("CN", "https://cn.example/t9", "US$2 factory price MOQ 100", "china_sourcing")],
+                "tunisia_sourcing": [],
+                "tunisia_retail": [
+                    _source("Retail 1", "https://shop1.tn/t9", "35 TND boutique", "tunisia_retail"),
+                    _source("Retail 2", "https://shop2.tn/t9", "42 TND boutique", "tunisia_retail"),
+                ],
+            },
+        )
+
+        result = await PrototypeResearchOrchestrator(
+            FakeIntentClient(),
+            FakeAnalysisClient(draft),
+            [firecrawl],
+            PrototypeStore(_temp_db()),
+            CostConfig(),
+        ).analyze(PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer"))
+
+        self.assertEqual(result.localized_analysis.product_description_en, "English product description.")
+        self.assertEqual(result.localized_analysis.product_description_fr, "Description produit en français.")
+        self.assertEqual(result.localized_analysis.price_analysis_fr, "Analyse prix en français.")
+
     async def test_product_image_metadata_prefers_source_backed_images(self) -> None:
         firecrawl = FakeProvider(
             "firecrawl",
@@ -182,6 +259,7 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
 
         profit = result.profitability_estimate
 
+        self.assertEqual(result.analysis_quantity_units, 1000)
         self.assertEqual(profit.source_unit_price_tnd, 6.2)
         self.assertEqual(profit.estimated_shipping_per_unit_tnd, 4)
         self.assertEqual(profit.estimated_customs_per_unit_tnd, 0.62)
@@ -211,6 +289,18 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.recommendation, "investigate_more")
         self.assertTrue(any("Equivalent OEM" in risk for risk in result.profitability_estimate.risks))
+        self.assertLessEqual(result.decision_scores.go_percent, 35)
+        self.assertEqual(result.decision_scores.go_percent + result.decision_scores.no_go_percent, 100)
+        self.assertTrue(result.decision_scores.go_reason)
+        self.assertTrue(result.decision_scores.no_go_reason)
+        self.assertTrue(result.decision_scores.score_explanation)
+        self.assertTrue(result.decision_scores.why_go_score)
+        self.assertTrue(result.decision_scores.why_no_go_score)
+        self.assertIn("exact-match supplier option", " ".join(result.decision_scores.what_would_change_the_decision).lower())
+        self.assertTrue(result.decision_summary)
+        self.assertTrue(result.positive_signals)
+        self.assertTrue(result.risk_signals)
+        self.assertTrue(result.main_decision_factors)
 
     async def test_zero_landed_assumptions_do_not_create_confident_landed_cost(self) -> None:
         result = await _orchestrator(
@@ -229,6 +319,61 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(profit.estimated_landed_cost_per_unit_tnd)
         self.assertIsNone(profit.estimated_profit_per_unit_tnd)
         self.assertIn("requires shipping/import/handling assumptions", profit.landed_cost_breakdown_notes)
+        self.assertLessEqual(result.decision_scores.go_percent, 25)
+        self.assertEqual(result.recommendation, "investigate_more")
+        self.assertIn("margin buffer", result.decision_scores.score_explanation.lower())
+
+    async def test_negative_margin_lowers_go_score(self) -> None:
+        analysis = _analysis()
+        analysis.tunisia_retail_market.retail_offers = [
+            offer.model_copy(update={"price_min_tnd_numeric": 5, "price_range_tnd": "5 TND"})
+            for offer in analysis.tunisia_retail_market.retail_offers
+        ]
+
+        result = await _orchestrator(analysis=analysis).analyze(
+            PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
+        )
+
+        self.assertEqual(result.recommendation, "no_go")
+        self.assertLessEqual(result.decision_scores.go_percent, 15)
+        self.assertEqual(result.decision_scores.go_percent + result.decision_scores.no_go_percent, 100)
+        self.assertEqual(result.decision_scores.dominant_side, "no_go")
+        self.assertTrue(any("not attractive enough" in reason.lower() for reason in result.decision_scores.why_no_go_score))
+        self.assertTrue(result.decision_scores.main_decision_factors)
+
+    async def test_seller_density_is_low_for_one_or_two_unique_retail_sellers(self) -> None:
+        result = await _orchestrator(analysis=_analysis_with_retail_sellers(2)).analyze(
+            PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
+        )
+
+        self.assertEqual(result.retail_market_summary.seller_density, "low")
+
+    async def test_seller_density_is_medium_for_three_to_five_unique_retail_sellers(self) -> None:
+        result = await _orchestrator(analysis=_analysis_with_retail_sellers(4)).analyze(
+            PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
+        )
+
+        self.assertEqual(result.retail_market_summary.seller_density, "medium")
+
+    async def test_seller_density_is_high_for_six_or_more_unique_retail_sellers(self) -> None:
+        result = await _orchestrator(analysis=_analysis_with_retail_sellers(6)).analyze(
+            PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
+        )
+
+        self.assertEqual(result.retail_market_summary.seller_density, "high")
+
+    async def test_seller_density_uses_domains_when_seller_names_are_missing(self) -> None:
+        analysis = _analysis_with_retail_sellers(3)
+        analysis.tunisia_retail_market.retail_offers = [
+            offer.model_copy(update={"seller_name": ""})
+            for offer in analysis.tunisia_retail_market.retail_offers
+        ]
+
+        result = await _orchestrator(analysis=analysis).analyze(
+            PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
+        )
+
+        self.assertEqual(result.retail_market_summary.seller_density, "medium")
 
     async def test_firecrawl_sufficient_skips_tavily_and_exa(self) -> None:
         firecrawl = FakeProvider(
@@ -291,6 +436,7 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result.sourcing_summary.tunisia_wholesale_found)
         self.assertIn("No reliable Tunisian wholesale sourcing offer", result.sourcing_summary.tunisia_wholesale_summary)
         self.assertTrue(any("No reliable Tunisian wholesale" in warning for warning in result.warnings))
+        self.assertEqual(result.hidden_sourcing_links.tunisia_sourcing_links, [])
 
     async def test_reveal_returns_cheapest_china_product_links_without_seller_contacts(self) -> None:
         store = PrototypeStore(_temp_db())
@@ -534,6 +680,30 @@ def _analysis(include_tunisia_sourcing: bool = True) -> ProviderAnalysisResult:
             ]
         ),
     )
+
+
+def _analysis_with_retail_sellers(count: int) -> ProviderAnalysisResult:
+    analysis = _analysis()
+    offers = []
+    for index in range(count):
+        price = 35 + index
+        offers.append(
+            TunisiaRetailOffer(
+                seller_name=f"Shop {index + 1}",
+                seller_type="local_shop",
+                price_range_tnd=f"{price} TND",
+                price_min_tnd_numeric=price,
+                source_url=f"https://shop{index + 1}.tn/t9",
+                evidence_level="direct",
+                price_evidence="direct",
+                product_match="exact",
+                confidence="high",
+            )
+        )
+    analysis.tunisia_retail_market = analysis.tunisia_retail_market.model_copy(
+        update={"retail_offers": offers}
+    )
+    return analysis
 
 
 def _source(

@@ -34,7 +34,6 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("Tunisia sourcing prices", self.html)
         self.assertIn("Tunisia retail market", self.html)
         self.assertIn("Product offer", self.html)
-        self.assertIn("seller_density", self.html)
         self.assertIn("unique_sellers_count", self.html)
         self.assertIn("product_match", self.html)
         self.assertIn("match_notes", self.html)
@@ -66,6 +65,70 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("Sourcia product opportunity report", self.html)
         self.assertIn("product_image_confidence", self.html)
         self.assertIn("No reliable source-backed product image was found.", self.html)
+
+    def test_analysis_loader_replaces_skeleton_during_client_analysis(self) -> None:
+        self.assertIn("analysis-loader", self.html)
+        self.assertIn("letter-loader", self.html)
+        self.assertIn("renderAnalysisPendingState()", self.html)
+        self.assertIn("Analyzing", self.html)
+        self.assertIn("Analyzing product opportunity", self.html)
+        self.assertNotIn("Gener" + "ating", self.html)
+        self.assertNotIn('prototypeResult.innerHTML = `<div class="result-band wide loading"><div class="skeleton"', self.html)
+
+    def test_product_image_area_has_search_loader(self) -> None:
+        self.assertIn("renderImageLoader()", self.html)
+        self.assertIn("evidence-spinner", self.html)
+        self.assertIn("Finding product", self.html)
+        self.assertIn("Searching evidence", self.html)
+        self.assertIn("@media (max-width: 520px)", self.html)
+        self.assertIn("prefers-reduced-motion", self.html)
+
+    def test_css_media_rules_do_not_leak_into_script(self) -> None:
+        script = self.html.split("<script>", 1)[1].split("</script>", 1)[0]
+
+        self.assertNotIn("@media", script)
+        self.assertNotIn("prefers-reduced-motion", script)
+
+    def test_decision_illustration_and_translation_keys_exist(self) -> None:
+        self.assertIn("renderDecisionIllustration(data)", self.html)
+        self.assertIn("decision_scores", self.html)
+        self.assertIn("decision-meter", self.html)
+        self.assertIn("GO score", self.html)
+        self.assertIn("NO GO score", self.html)
+        self.assertIn("Decision confidence", self.html)
+        self.assertIn("Recommendation", self.html)
+        self.assertIn("Score explanation", self.html)
+        self.assertIn("GO drivers", self.html)
+        self.assertIn("NO GO drivers", self.html)
+        self.assertIn("What would change the decision", self.html)
+        self.assertIn("Main decision factors", self.html)
+        self.assertIn("Investigate more", self.html)
+        self.assertIn("Score GO", self.html)
+        self.assertIn("Score NO GO", self.html)
+        self.assertIn("Recommandation", self.html)
+        self.assertIn("Explication du score", self.html)
+        self.assertIn("Facteurs en faveur du GO", self.html)
+        self.assertIn("Facteurs en faveur du NO GO", self.html)
+
+    def test_decision_renderer_does_not_render_repeated_reason_fields(self) -> None:
+        decision_renderer = self.html.split("function renderDecisionIllustration(data)", 1)[1].split("function normalizeDecisionScores", 1)[0]
+
+        self.assertNotIn("scores.go_reason", decision_renderer)
+        self.assertNotIn("scores.no_go_reason", decision_renderer)
+        self.assertIn("decisionScoreExplanation", decision_renderer)
+        self.assertIn("decisionGoDrivers", decision_renderer)
+        self.assertIn("decisionNoGoDrivers", decision_renderer)
+
+    def test_seller_density_is_not_rendered_in_client_ui(self) -> None:
+        result_renderer = self.html.split("function renderPrototypeResult(data)", 1)[1].split("function renderAnalysisPendingState", 1)[0]
+
+        self.assertNotIn("seller_density", result_renderer)
+        self.assertNotIn("Seller density", self.html)
+        self.assertNotIn("Densité vendeurs", self.html)
+
+    def test_favicon_is_referenced_from_logo_folder(self) -> None:
+        self.assertIn('<link rel="icon" href="/logo/favicon.ico">', self.html)
+        self.assertTrue(Path("logo/favicon.ico").exists())
 
     def test_analytics_ui_is_present(self) -> None:
         self.assertIn("/api/analytics/runs", self.html)
@@ -106,13 +169,13 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("China product unit price", self.html)
         self.assertIn("Estimated landed cost per unit", self.html)
         self.assertIn("Estimated retail selling price", self.html)
-        self.assertIn("Estimated profit after campaign", self.html)
-        self.assertNotIn("Estimated Meta campaign budget", self.html)
-        self.assertNotIn("Gross margin per unit before marketing", self.html)
-        self.assertNotIn("Gross profit for 1000 before marketing", self.html)
+        self.assertIn("Analysis quantity: 1000 units", self.html)
+        self.assertIn("Gross margin per unit before marketing", self.html)
+        self.assertIn("Gross profit for 1000 units before marketing", self.html)
+        self.assertIn("Meta campaign budget total", self.html)
+        self.assertIn("Net profit for 1000 units after marketing", self.html)
         self.assertNotIn("Estimated profit for 100 units", self.html)
-        self.assertNotIn("Meta ads cost</strong>", self.html)
-        self.assertNotIn("Expected units sold from campaign", self.html)
+        self.assertNotIn('quantity_scenarios: [100, 1000]', self.html)
 
     def test_client_ui_has_bilingual_toggle_and_guaranteed_image_fallback(self) -> None:
         self.assertIn("languageToggle", self.html)
@@ -129,6 +192,10 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("Analyser le produit", self.html)
         self.assertIn("renderProductImage(data)", self.html)
         self.assertIn("fallbackProductImage(productLabel)", self.html)
+        self.assertIn("localizedText(data.localized_analysis", self.html)
+        self.assertIn("price_analysis", self.html)
+        self.assertIn("market_analysis", self.html)
+        self.assertIn("business_reading", self.html)
 
     def test_analytics_is_url_only_and_password_gated_in_ui(self) -> None:
         self.assertNotIn("<aside class=\"sidebar\">", self.html)
@@ -138,3 +205,19 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("x-admin-password", self.html)
         self.assertIn("unlockAnalytics", self.html)
         self.assertIn("sourcia_admin_password", self.html)
+
+    def test_frontend_has_no_removed_marketplace_reference(self) -> None:
+        removed_marketplace = "Ju" + "mia"
+        self.assertNotIn(removed_marketplace, self.html)
+        self.assertNotIn(removed_marketplace.lower(), self.html)
+
+    def test_sourcing_agent_email_composer_is_present(self) -> None:
+        self.assertIn("renderSourcingAgentComposer", self.html)
+        self.assertIn("generateSourcingEmail()", self.html)
+        self.assertIn("copyGeneratedEmail('body')", self.html)
+        self.assertIn("copyGeneratedEmail('subject')", self.html)
+        self.assertIn("Open mail client", self.html)
+        self.assertIn("renderOpenMailClientButton", self.html)
+        self.assertIn("mailto:", self.html)
+        self.assertIn("Contact a sourcing agent", self.html)
+        self.assertIn("Contacter un agent de sourcing", self.html)

@@ -1,53 +1,115 @@
-# VORA AI Prototype - Search Provider Benchmark Lab
+# VORA AI Prototype
 
-FastAPI prototype for benchmarking multiple search and research providers side by side before selecting a production sourcing stack.
+FastAPI prototype for client-facing product opportunity analysis, sourcing research, provider benchmarking, and internal analytics.
 
-## Purpose
+The current primary flow is the VORA/Sourcia client prototype:
 
-The Benchmark Lab answers two questions for the same product:
+- One Gemini intent/product-understanding call.
+- Firecrawl primary research provider.
+- Tavily fallback.
+- Exa fallback.
+- One Gemini analysis call.
+- Client-facing `/prototype/analyze`.
+- GO reveal flow for hidden sourcing links and sourcing agents.
+- Separate analytics/admin area.
 
-- Which providers can find the 3 cheapest Tunisian supplier or source options?
-- Which providers can find the 3 cheapest Chinese supplier or source options with usable price, MOQ, URL, confidence, and evidence data?
+The benchmark lab routes are still available for comparing provider behavior, but the main browser experience is the client analysis flow at `/`.
 
-It also tracks latency, provider API usage, Gemini usage, raw query counts, and production risk so the decision is not based on result quality alone.
+## What It Does
 
-## Primary Endpoints
+For a product candidate, the prototype researches:
 
-- `GET /providers`
-- `POST /benchmark/analyze`
+- China sourcing/manufacturer/wholesale evidence.
+- Tunisia wholesale/importer/distributor/manufacturer evidence.
+- Tunisia retail market prices with client-facing retail evidence cards.
+- Source-backed product image evidence when available.
+- Estimated landed cost and campaign-adjusted profitability.
+- Conservative GO / NO GO / investigate-more decision scores.
 
-## Compatibility Endpoint
+Client responses hide direct China product offer links until the GO reveal endpoint is called. Raw provider search output stays out of the client-facing report.
 
-`POST /analyze` remains available only for compatibility with the earlier prototype flow. The Benchmark Lab UI does not use it.
+## Main Routes
+
+- `GET /` - client prototype UI.
+- `POST /prototype/analyze` - client-facing product opportunity analysis.
+- `GET /prototype/runs/{run_id}/reveal` - GO reveal for hidden sourcing links and configured sourcing agents.
+- `GET /analytics` - internal analytics/admin UI.
+- `GET /api/analytics/summary` - analytics summary.
+- `GET /api/analytics/runs` - run list.
+- `GET /api/analytics/runs/{run_id}` - run detail.
+- `GET /api/analytics/cost-config` - current cost assumptions.
+- `POST /api/analytics/cost-config` - update cost assumptions.
+- `GET /api/sourcing-agents` - configured sourcing agents.
+- `POST /api/sourcing-agents` - add sourcing agent.
+- `PUT /api/sourcing-agents/{agent_id}` - update sourcing agent.
+- `DELETE /api/sourcing-agents/{agent_id}` - deactivate sourcing agent.
+- `GET /providers` - benchmark provider configuration status without secrets.
+- `POST /benchmark/analyze` - provider benchmark analysis.
+- `POST /analyze` - legacy compatibility route.
+- `GET /health` - health check.
+
+## Provider Stack
+
+The prototype client flow uses this fixed provider order:
+
+1. Firecrawl
+2. Tavily
+3. Exa
+
+Do not add new required providers or required environment variables for the prototype flow.
+
+The benchmark registry still includes additional providers for comparison work:
+
+- Serper + Gemini
+- Brave Search + Gemini
+- Exa + Gemini
+- Firecrawl + Gemini
+- SearXNG + Gemini
+- Perplexity Sonar
+- Scavio + Gemini
+- DataForSEO + Gemini
+
+## Search Query Defaults
+
+For each configured provider in the current default setup, research uses:
+
+- 3 China sourcing / wholesale / manufacturer queries.
+- 1 Tunisia wholesale / importer / distributor / manufacturer query.
+- 3 Tunisia retail market queries.
+
+That is 7 searches per provider by default. Existing `SEARCH_QUERIES_PER_GROUP` and `SEARCH_QUERIES_PER_REGION` behavior remains backward compatible when explicitly configured.
+
+Tunisia wholesale evidence is intentionally strict. Retail results are not inserted into Tunisia wholesale. If no reliable Tunisian wholesale/importer/distributor/manufacturer offer is found, the response uses a clean not-found message.
 
 ## Environment Variables
 
-Benchmark Lab:
+Minimal client prototype setup:
 
 ```env
 GEMINI_INTENT_API_KEY=
-GEMINI_INTENT_MODEL=gemini-3.1-flash-lite
 GEMINI_ANALYSIS_API_KEY=
-GEMINI_ANALYSIS_MODEL=gemini-3.1-flash-lite
 
-SERPER_API_KEY=
-BRAVE_SEARCH_API_KEY=
-EXA_API_KEY=
 FIRECRAWL_API_KEY=
-PERPLEXITY_API_KEY=
-SEARXNG_BASE_URL=
-SCAVIO_API_KEY=
-DATAFORSEO_LOGIN=
-DATAFORSEO_PASSWORD=
-
-BENCHMARK_PROVIDER_TIMEOUT_SECONDS=45
-BENCHMARK_MAX_PROVIDERS_PARALLEL=8
-SEARCH_RESULTS_PER_QUERY=10
-SEARCH_QUERIES_PER_REGION=4
-MAX_RAW_SOURCES_PER_PROVIDER=20
+TAVILY_API_KEY=
+EXA_API_KEY=
 ```
 
-Legacy compatibility route:
+Optional prototype/admin settings:
+
+```env
+GEMINI_INTENT_MODEL=gemini-3.1-flash-lite
+GEMINI_ANALYSIS_MODEL=gemini-3.1-flash-lite
+ADMIN_DASHBOARD_PASSWORD=
+
+SEARCH_RESULTS_PER_QUERY=10
+SEARCH_QUERIES_PER_REGION=4
+SEARCH_QUERIES_PER_GROUP=4
+MAX_RAW_SOURCES_PER_PROVIDER=20
+BENCHMARK_PROVIDER_TIMEOUT_SECONDS=45
+BENCHMARK_MAX_PROVIDERS_PARALLEL=8
+```
+
+Legacy `/analyze` route:
 
 ```env
 GEMINI_API_KEY=
@@ -55,7 +117,20 @@ GEMINI_MODEL=gemini-3.1-flash-lite
 ANALYSIS_TIMEOUT_SECONDS=45
 ```
 
-If the same physical Gemini key is used for both intent and analysis during testing, copy the same value into both `GEMINI_INTENT_API_KEY` and `GEMINI_ANALYSIS_API_KEY`.
+Optional benchmark-only provider keys:
+
+```env
+SERPER_API_KEY=
+BRAVE_SEARCH_API_KEY=
+PERPLEXITY_API_KEY=
+SEARXNG_BASE_URL=
+SCAVIO_API_KEY=
+SCAVIO_BASE_URL=
+DATAFORSEO_LOGIN=
+DATAFORSEO_PASSWORD=
+```
+
+If the same Gemini key is used for development, copy it into both `GEMINI_INTENT_API_KEY` and `GEMINI_ANALYSIS_API_KEY`.
 
 ## Run Locally
 
@@ -64,84 +139,114 @@ pip install -r requirements.txt
 uvicorn server:app --reload --port 8000
 ```
 
-Open `http://localhost:8000`.
+Open:
 
-## Configure Providers
+- Client UI: `http://localhost:8000`
+- Analytics UI: `http://localhost:8000/analytics`
+- Provider status: `http://localhost:8000/providers`
 
-- `Serper + Gemini`: set `SERPER_API_KEY` and Gemini intent/analysis keys.
-- `Brave Search + Gemini`: set `BRAVE_SEARCH_API_KEY` and Gemini intent/analysis keys.
-- `Exa + Gemini`: set `EXA_API_KEY` and Gemini intent/analysis keys.
-- `Firecrawl + Gemini`: set `FIRECRAWL_API_KEY` and Gemini intent/analysis keys. This uses Firecrawl's official `POST /v2/search` endpoint and can include markdown content in raw evidence.
-- `DataForSEO + Gemini`: set `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD`, and Gemini intent/analysis keys. This uses Google Organic Live Regular SERP with one task per query and conservative generic regional queries first.
-- `SearXNG + Gemini`: set `SEARXNG_BASE_URL` and Gemini intent/analysis keys.
-- `Perplexity Sonar`: set `PERPLEXITY_API_KEY`; this provider does not use Gemini analysis by default.
-- `Scavio + Gemini`: set `SCAVIO_API_KEY` and Gemini intent/analysis keys. This uses the documented `POST https://api.scavio.dev/api/v1/google` Google Search API in light mode. `SCAVIO_BASE_URL` is not required.
+The app stores prototype run data in `data/vora_prototype.db` by default.
 
-`GET /providers` reports configuration state without exposing secrets.
+## API Examples
 
-## Run One Provider or All Providers
+Client prototype analysis:
 
-From the UI:
+```json
+POST /prototype/analyze
+{
+  "product": "Vintage T9 hair trimmer",
+  "quantity_scenarios": [1000]
+}
+```
 
-- Enter a product once.
-- Use `Run provider` on an individual card for isolated tests.
-- Use `Run all configured providers` to benchmark every configured and enabled provider together.
-
-From the API:
+Benchmark analysis:
 
 ```json
 POST /benchmark/analyze
 {
-  "product": "Vintage T9",
-  "providers": ["serper", "brave", "exa", "searxng", "perplexity"]
+  "product": "Vintage T9 hair trimmer",
+  "providers": ["firecrawl", "tavily", "exa"]
 }
 ```
 
-If the product is invalid, the API returns HTTP 200 with `intent.is_valid_product=false` and skips all provider calls.
+If `providers` is empty in `/benchmark/analyze`, the benchmark pipeline runs all configured and enabled benchmark providers.
 
-## Interpret Results
+## Client Response Notes
 
-Each provider run reports:
+`/prototype/analyze` returns a client-safe report with:
 
-- `latency_ms`: end-to-end elapsed time for that provider.
-- `raw_sources_count`: number of raw evidence items returned before validation.
-- `provider_api_calls`: provider-side request count.
-- `gemini_intent_calls`: benchmark-level intent classification calls.
-- `gemini_analysis_calls`: evidence extraction calls; this stays `0` for Perplexity by default.
-- `raw_queries_count`: generated search queries used by that provider.
-- `production_risk`: directional operational risk label, not a final production verdict.
-- `cost_notes`: plain-language notes about likely usage shape and pricing uncertainty.
+- `product_understanding`
+- source-backed image metadata, if found
+- localized English/French analysis text
+- `sourcing_summary`
+- `retail_market_summary`
+- `profitability_estimate`
+- `analysis_quantity_units`
+- `decision_scores`
+- `recommendation`
+- `recommendation_reason`
+- `links_hidden=true`
 
-Validated supplier results also show evidence level, confidence, price evidence, MOQ evidence, warnings, and source URLs. Raw evidence is expandable in the UI so provider output can be inspected without overwhelming the main result surface.
+`analysis_quantity_units` defaults to `1000` for the client-facing profitability scenario. `decision_scores.go_percent + decision_scores.no_go_percent` must equal 100. Scores are conservative: weak evidence, missing landed cost, negative margin, or broad/weak product equivalence lowers GO confidence.
 
-The raw-evidence cap is China-aware. When a provider returns more sources than `MAX_RAW_SOURCES_PER_PROVIDER`, the benchmark preserves Chinese evidence first so the cheapest-China path is less likely to be dropped before Gemini extraction and backend validation.
+Direct China offer URLs and hidden sourcing links are excluded from the client response and are available only through the GO reveal route.
 
-The comparison summary is metric-based. It can highlight the fastest provider, the provider with the most Tunisian or Chinese results, the most source-backed prices, the most complete result set, and the lowest cost risk. It should not be read as an automatic "best production provider" decision.
+## Frontend Status
 
-## Placeholder and Limited Providers
+The static UI in `static/index.html` includes:
 
-- Firecrawl, DataForSEO, and Scavio are real benchmark providers now, but their pricing, field coverage, and search behavior can still change.
+- Branded client analysis page.
+- Animated `Analyzing` loader during full analysis.
+- Product image/evidence loader while product evidence is being found.
+- Source-backed image fallback card.
+- Bilingual English/French labels using the local translation map.
+- GO / NO GO decision score illustration.
+- GO reveal buttons.
+- Print/export support.
+- Hidden benchmark compatibility block used by tests/manual access.
 
-These providers must not block the rest of the benchmark.
+## Analytics and Admin
 
-## Automated Tests
+The analytics UI is available only at `/analytics`. It is not linked from the client page.
+
+If `ADMIN_DASHBOARD_PASSWORD` is set, analytics and sourcing-agent API routes require the `x-admin-password` header. If it is unset, local development can access analytics without a password.
+
+Analytics tracks provider attempts, fallback path, API usage counts, estimated research cost, image evidence status, retail coverage, hidden sourcing URL counts, and sourcing agent configuration.
+
+## Tests
+
+Run the full suite:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-The test suite uses fake Gemini and provider responses and does not consume live API quota.
+The test suite uses fake Gemini/provider responses and does not consume live API quota.
+
+Current coverage includes:
+
+- Prototype API contract and GO reveal behavior.
+- Provider fallback behavior.
+- Query distribution and query generation.
+- Tunisia wholesale strict not-found behavior.
+- Decision-score conservation rules.
+- Frontend loader, decision, i18n, and hidden-link checks.
+- Benchmark providers and validation.
+- Analytics/admin separation.
+
+## Security and Data Rules
+
+- Do not commit API keys.
+- Do not expose secrets in logs, responses, frontend text, README examples, or screenshots.
+- Do not expose raw provider search results to the client report.
+- Do not expose direct China product links on the client side before GO reveal.
+- Do not invent prices, images, contacts, MOQ, stock, ratings, availability, or profit guarantees.
+- Do not use scraping bypasses, proxies, CAPTCHA solving, or browser automation.
 
 ## Limitations
 
-- Provider pricing, free tiers, rate limits, supported models, and endpoint behavior may change.
-- Search and AI outputs can be incomplete, stale, duplicated, or commercially misleading.
-- Benchmark validation reduces risk but does not guarantee supplier correctness.
-- Supplier identity, price, MOQ, stock, certifications, and availability still require direct verification.
-- Scavio now uses the documented Google Search API contract, but provider pricing, credit rules, and response fields can still change.
-- `Perplexity Sonar` returns a web-grounded answer directly, but its output still passes through backend validation and ranking rules.
-
-## Security Notes
-
-- API keys must never be committed.
-- Do not expose secrets in logs, responses, frontend text, README examples, or screenshots.
+- Search provider results can be incomplete, stale, duplicated, or commercially misleading.
+- Supplier identity, price, MOQ, stock, certifications, and availability require direct verification.
+- Profitability is an estimate based on source evidence plus admin assumptions, not a guarantee.
+- Provider pricing, rate limits, free tiers, and response fields can change.
+- Benchmark comparison is directional and should not be treated as an automatic production-provider decision.

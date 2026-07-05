@@ -381,7 +381,7 @@ def _is_french_source_about_tunisia(url: str, raw_source: ProviderRawSource | No
 def _is_retail_source(url: str, raw_source: ProviderRawSource | None) -> bool:
     text = _source_text(raw_source)
     hostname = (urlparse(url).hostname or "").lower()
-    retail_domains = ("jumia", "mytek", "spacenet", "tayara")
+    retail_domains = ("mytek", "tunisianet", "spacenet", "tayara", "wikishop", "shopiwell", "keyshop", "affariyet")
     retail_signals = (
         "boutique",
         "achat",

@@ -192,12 +192,20 @@ class ApiTests(unittest.TestCase):
 
         analyze_response = TestClient(app).post(
             "/prototype/analyze",
-            json={"product": "Vintage T9 hair trimmer", "quantity_scenarios": [100, 1000]},
+            json={"product": "Vintage T9 hair trimmer", "quantity_scenarios": [1000]},
         )
         reveal_response = TestClient(app).get("/prototype/runs/run_1/reveal")
 
         self.assertEqual(analyze_response.status_code, 200)
         self.assertTrue(analyze_response.json()["links_hidden"])
+        self.assertIn("decision_scores", analyze_response.json())
+        scores = analyze_response.json()["decision_scores"]
+        self.assertEqual(scores["go_percent"] + scores["no_go_percent"], 100)
+        self.assertIn("decision_summary", analyze_response.json())
+        self.assertIn("positive_signals", analyze_response.json())
+        self.assertIn("risk_signals", analyze_response.json())
+        self.assertIn("main_decision_factors", analyze_response.json())
+        self.assertEqual(analyze_response.json()["analysis_quantity_units"], 1000)
         self.assertNotIn("china_sourcing_links", analyze_response.text)
         self.assertNotIn("cn.example", analyze_response.text.lower())
         self.assertEqual(reveal_response.status_code, 200)

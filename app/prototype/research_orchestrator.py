@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 import time
 from typing import Iterable
@@ -16,8 +17,10 @@ from app.benchmark.schemas import (
 from app.benchmark.validation import validate_provider_result
 from app.prototype.schemas import (
     CostConfig,
+    DecisionScores,
     ExampleRetailPrice,
     HiddenSourcingLinks,
+    LocalizedClientAnalysis,
     ProfitabilityEstimate,
     PrototypeAnalyzeRequest,
     PrototypeAnalyzeResponse,
@@ -32,10 +35,21 @@ from app.schemas import IntentResult, ProductUnderstanding
 
 EVIDENCE_GROUPS = ("china_sourcing", "tunisia_sourcing", "tunisia_retail")
 TUNISIA_WHOLESALE_NOT_FOUND = "No reliable Tunisian wholesale sourcing offer was found for this product."
+ANALYSIS_QUANTITY_UNITS = 1000
 IMAGE_MARKDOWN_RE = re.compile(r"!\[[^\]]*\]\((https?://[^)\s]+)\)", re.IGNORECASE)
 IMAGE_HTML_RE = re.compile(r"""<img[^>]+src=["'](https?://[^"']+)["']""", re.IGNORECASE)
 META_IMAGE_RE = re.compile(r"""(?:og:image|twitter:image)[^"'=:\n\r>]*[:=]\s*["']?(https?://[^"'\s>]+)""", re.IGNORECASE)
 IMAGE_URL_RE = re.compile(r"""https?://[^\s"'()<>]+\.(?:png|jpe?g|webp|gif|svg)(?:\?[^\s"'()<>]*)?""", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class DecisionScoreContext:
+    model_recommendation: str
+    final_recommendation: str
+    recommendation_reason: str
+    gross_margin: float | None
+    validated: ProviderAnalysisResult
+    profitability: ProfitabilityEstimate | None
 
 
 class PrototypeResearchOrchestrator:
@@ -283,7 +297,7 @@ def _has_tunisia_sourcing_signal(source: ProviderRawSource) -> bool:
 
 def _has_tunisia_retail_signal(source: ProviderRawSource) -> bool:
     text = _source_text(source)
-    return source.region_hint == "tunisia_retail" or any(signal in text for signal in ("boutique", "achat", "vente", "livraison", "magasin", "jumia", "tayara", "mytek", "wamia", "spacenet", "wikishop", "shopiwell", "keyshop", "affariyet"))
+    return source.region_hint == "tunisia_retail" or any(signal in text for signal in ("boutique", "achat", "vente", "livraison", "magasin", "tayara", "mytek", "wamia", "tunisianet", "spacenet", "wikishop", "shopiwell", "keyshop", "affariyet"))
 
 
 def _looks_retail_or_foreign(source: ProviderRawSource) -> bool:
@@ -291,7 +305,7 @@ def _looks_retail_or_foreign(source: ProviderRawSource) -> bool:
     url = source.url.lower()
     return any(marker in url for marker in (".dz", ".ma", ".fr")) or any(
         signal in text
-        for signal in ("algerie", "algérie", "algeria", "maroc", "morocco", "france", "boutique", "panier", "jumia", "mytek", "tayara")
+        for signal in ("algerie", "algérie", "algeria", "maroc", "morocco", "france", "boutique", "panier", "mytek", "tayara")
     )
 
 
@@ -342,6 +356,10 @@ def _to_client_response(
             update={
                 **_image_payload(_valid_image_or_none(draft.product_image_url, evidence), evidence, product),
                 "product_description": draft.product_description or computed.product_description,
+                "localized_analysis": _localized_analysis_with_fallbacks(
+                    draft.localized_analysis,
+                    draft.product_description or computed.product_description,
+                ),
                 "retail_market_summary": draft_retail if validated.tunisia_retail_market.retail_offers else draft.retail_market_summary,
                 "recommendation": draft.recommendation,
                 "recommendation_reason": draft.recommendation_reason,
@@ -381,10 +399,33 @@ def _to_client_response(
         validated,
         profitability,
     )
+    decision_scores = _decision_scores(
+        DecisionScoreContext(
+            model_recommendation=base.recommendation,
+            final_recommendation=recommendation,
+            recommendation_reason=recommendation_reason,
+            gross_margin=profitability.gross_margin_per_unit_before_marketing_tnd,
+            validated=validated,
+            profitability=profitability,
+        )
+    )
+    decision_fields = _client_decision_fields(
+        DecisionScoreContext(
+            model_recommendation=base.recommendation,
+            final_recommendation=recommendation,
+            recommendation_reason=recommendation_reason,
+            gross_margin=profitability.gross_margin_per_unit_before_marketing_tnd,
+            validated=validated,
+            profitability=profitability,
+        ),
+        decision_scores,
+    )
     return base.model_copy(
         update={
             "sourcing_summary": sourcing_summary,
             "profitability_estimate": profitability,
+            "decision_scores": decision_scores,
+            **decision_fields,
             "recommendation": recommendation,
             "recommendation_reason": recommendation_reason,
             "hidden_sourcing_links": hidden_links,
@@ -414,7 +455,11 @@ def _response_from_validated(
     gross_margin = None
     if landed_cost is not None and selling_price is not None:
         gross_margin = round(selling_price - landed_cost, 2)
-    gross_profit_1000 = round(gross_margin * 1000, 2) if gross_margin is not None else None
+    gross_profit_1000 = (
+        round(gross_margin * ANALYSIS_QUANTITY_UNITS, 2)
+        if gross_margin is not None
+        else None
+    )
     campaign_budget = cost_config.default_meta_campaign_budget_tnd
     net_profit_1000 = (
         round(gross_profit_1000 - float(campaign_budget), 2)
@@ -427,12 +472,25 @@ def _response_from_validated(
         validated,
         None,
     )
+    decision_context = DecisionScoreContext(
+        model_recommendation="investigate_more",
+        final_recommendation=recommendation,
+        recommendation_reason=recommendation_reason,
+        gross_margin=gross_margin,
+        validated=validated,
+        profitability=None,
+    )
+    decision_scores = _decision_scores(decision_context)
 
     return PrototypeAnalyzeResponse(
         run_id=run_id,
         product_understanding=product,
         **_image_payload(_first_source_image(evidence), evidence, product),
         product_description=validated.market_summary or product.normalized_product,
+        localized_analysis=_localized_analysis_with_fallbacks(
+            None,
+            validated.market_summary or product.normalized_product,
+        ),
         sourcing_summary=SourcingSummary(
             china_price_range=_range_text("US$", china_prices),
             china_price_min_tnd_estimate=min(china_tnd) if china_tnd else None,
@@ -443,6 +501,7 @@ def _response_from_validated(
             evidence_confidence=_overall_confidence(validated),
         ),
         retail_market_summary=_retail_summary_from_validated(validated),
+        analysis_quantity_units=ANALYSIS_QUANTITY_UNITS,
         profitability_estimate=ProfitabilityEstimate(
             source_unit_price_tnd=source_unit_price,
             estimated_shipping_per_unit_tnd=landed_parts["shipping"],
@@ -467,6 +526,7 @@ def _response_from_validated(
             estimated_profit_for_1000_units_tnd=net_profit_1000,
             assumptions=[
                 "Profitability is an estimate, not a guarantee.",
+                f"Analysis quantity scenario: {ANALYSIS_QUANTITY_UNITS} units.",
                 f"USD to TND rate assumed at {cost_config.usd_to_tnd_rate}.",
                 landed_notes,
                 ad_notes,
@@ -475,7 +535,22 @@ def _response_from_validated(
         ),
         recommendation=recommendation,
         recommendation_reason=recommendation_reason,
+        decision_scores=decision_scores,
+        **_client_decision_fields(decision_context, decision_scores),
         warnings=warnings,
+    )
+
+
+def _localized_analysis_with_fallbacks(
+    localized: LocalizedClientAnalysis | None,
+    product_description: str,
+) -> LocalizedClientAnalysis:
+    base = localized or LocalizedClientAnalysis()
+    return base.model_copy(
+        update={
+            "product_description_en": base.product_description_en or product_description,
+            "product_description_fr": base.product_description_fr or product_description,
+        }
     )
 
 
@@ -697,12 +772,13 @@ def _range_text(prefix: str, values: list[float | None], suffix: str = "") -> st
 
 def _retail_summary_from_validated(validated: ProviderAnalysisResult) -> RetailMarketSummary:
     retail = validated.tunisia_retail_market
+    seller_density = _computed_seller_density(retail.retail_offers)
     return RetailMarketSummary(
         retail_price_range_tnd=_range_text("", [retail.price_min_tnd, retail.price_max_tnd], suffix=" TND"),
         retail_min_tnd=retail.price_min_tnd,
         retail_max_tnd=retail.price_max_tnd,
         retail_avg_tnd=retail.price_avg_tnd,
-        seller_density=retail.seller_density,
+        seller_density=seller_density,
         example_retail_prices=[
             ExampleRetailPrice(
                 seller_name=offer.seller_name,
@@ -745,20 +821,341 @@ def _conservative_recommendation(
     profitability: ProfitabilityEstimate | None,
 ) -> tuple[str, str]:
     if gross_margin is not None and gross_margin <= 0:
-        return "no_go", "Estimated gross margin is weak or negative based on available source and retail evidence."
+        return "no_go", "The opportunity does not currently show an attractive enough margin buffer once sourcing, resale price pressure, and execution risk are considered."
     if profitability and profitability.estimated_landed_cost_per_unit_tnd is None:
-        return "investigate_more", "Landed cost assumptions are missing, so VORA cannot produce a confident GO recommendation."
+        return "investigate_more", "The product shows some commercial potential, but the current cost scenario does not yet leave enough margin buffer for a confident GO."
     if not validated.tunisia_retail_market.retail_offers:
-        return "investigate_more", "Tunisia retail evidence is missing, so the selling-price assumption needs more validation."
+        return "investigate_more", "The opportunity needs more market validation because Tunisia resale price pressure is still not visible enough."
     if _has_equivalent_or_weak_china_sourcing(validated):
-        return "investigate_more", "China sourcing appears to rely on equivalent OEM or weak evidence, not a fully verified exact product match."
+        return "investigate_more", "The sourcing side still needs validation because the current supplier evidence is more equivalent-OEM than exact-match."
     if gross_margin is None:
-        return "investigate_more", "Evidence is incomplete or margin confidence is not strong enough for a clear GO."
+        return "investigate_more", "The product may have potential, but the current evidence does not yet show a margin buffer strong enough for a clear GO."
     if current == "go" or gross_margin >= 5:
-        return "go", "Evidence suggests positive gross margin before marketing, but logistics and ad performance still need confirmation."
+        return "go", "The opportunity shows a workable margin buffer and enough price-backed sourcing evidence to move into supplier verification and sample testing."
     if not validated.tunisia_sourcing_offers:
-        return "investigate_more", "China sourcing and Tunisia retail evidence may be useful, but Tunisian wholesale sourcing was not found."
-    return "investigate_more", "Evidence is incomplete or margin confidence is not strong enough for a clear GO."
+        return "investigate_more", "The opportunity has some traction, but sourcing competitiveness and market positioning still need to be strengthened before a clear GO."
+    return "investigate_more", "The opportunity shows some potential, but the current margin buffer is not yet strong enough to justify an immediate GO."
+
+
+def _decision_scores(context: DecisionScoreContext) -> DecisionScores:
+    confidence = _overall_confidence(context.validated)
+    factors = _decision_factors(context, confidence)
+    go_percent = _bounded_go_percent(context, confidence)
+    if context.final_recommendation != "go" and go_percent > 40:
+        go_percent = 40
+    no_go_percent = 100 - go_percent
+    dominant_side = _dominant_side(go_percent, no_go_percent)
+    return DecisionScores(
+        go_percent=go_percent,
+        no_go_percent=no_go_percent,
+        confidence=confidence,
+        go_reason=_go_score_reason(context, confidence),
+        no_go_reason=_no_go_score_reason(context, factors),
+        score_explanation=_score_explanation(context, go_percent, no_go_percent, dominant_side),
+        why_go_score=_why_go_score(context, go_percent),
+        why_no_go_score=_why_no_go_score(context, confidence),
+        dominant_side=dominant_side,
+        what_would_change_the_decision=_what_would_change_the_decision(context),
+        main_decision_factors=list(dict.fromkeys(factors))[:5],
+    )
+
+
+def _client_decision_fields(context: DecisionScoreContext, scores: DecisionScores) -> dict:
+    return {
+        "decision_summary": _decision_summary(context, scores),
+        "positive_signals": _positive_signals(context),
+        "risk_signals": _risk_signals(context),
+        "main_decision_factors": _main_decision_factors(context),
+    }
+
+
+def _decision_summary(context: DecisionScoreContext, scores: DecisionScores) -> str:
+    if context.final_recommendation == "go":
+        return (
+            "The opportunity shows enough price-backed margin buffer to support a cautious GO "
+            "and move into supplier verification and sample testing."
+        )
+    if context.final_recommendation == "no_go":
+        return (
+            "The risks dominate because the current opportunity does not show enough margin "
+            "buffer versus execution risk."
+        )
+    if scores.go_percent < scores.no_go_percent:
+        return (
+            "The opportunity shows some potential, but the margin buffer is not yet wide "
+            "enough to justify an immediate GO."
+        )
+    return (
+        "The product has positive signals, but the business case is still balanced and "
+        "needs stronger validation before scaling."
+    )
+
+
+def _positive_signals(context: DecisionScoreContext) -> list[str]:
+    signals: list[str] = []
+    retail = context.validated.tunisia_retail_market
+    if retail.retail_offers and context.gross_margin is not None and context.gross_margin > 0:
+        signals.append("Retail prices appear higher than the estimated source price.")
+        signals.append("There may be room for margin before marketing and logistics.")
+    elif retail.retail_offers:
+        signals.append("Tunisia retail price evidence is available for comparison.")
+    if context.validated.china_sourcing_offers:
+        signals.append("China sourcing price evidence is available.")
+    return signals[:3]
+
+
+def _risk_signals(context: DecisionScoreContext) -> list[str]:
+    signals: list[str] = []
+    if not context.validated.tunisia_sourcing_offers:
+        signals.append("Local Tunisia wholesale competitiveness is not visible in the evidence.")
+    if context.profitability and context.profitability.estimated_landed_cost_per_unit_tnd is None:
+        signals.append("The current cost scenario does not yet leave a strong enough safety buffer.")
+    if context.gross_margin is None:
+        signals.append("The current business case does not yet show a margin buffer strong enough to scale confidently.")
+    elif context.gross_margin <= 0:
+        signals.append("Estimated margin is weak or negative.")
+    elif context.gross_margin < 5:
+        signals.append("Estimated margin is thin once campaign and fulfillment pressure are considered.")
+    if _has_equivalent_or_weak_china_sourcing(context.validated):
+        signals.append("Supplier evidence still relies on equivalent or weak matching.")
+    signals.append("Campaign economics still need market validation.")
+    return list(dict.fromkeys(signals))[:5]
+
+
+def _main_decision_factors(context: DecisionScoreContext) -> list[str]:
+    factors = [
+        "Tunisia retail price range",
+        "Landed-cost scenario",
+        "Campaign economics",
+        "Sourcing competitiveness",
+        "Market differentiation",
+    ]
+    if not context.validated.tunisia_retail_market.retail_offers:
+        factors[0] = "Missing Tunisia retail evidence"
+    if not context.validated.china_sourcing_offers:
+        factors[3] = "Missing China sourcing evidence"
+    return factors
+
+
+def _computed_seller_density(retail_offers) -> str:
+    seller_keys = {
+        _seller_density_key(offer)
+        for offer in retail_offers
+        if offer.price_min_tnd_numeric is not None or offer.price_range_tnd
+    }
+    seller_keys.discard("")
+    unique_count = len(seller_keys)
+    if unique_count == 0:
+        return "unknown"
+    if unique_count <= 2:
+        return "low"
+    if unique_count <= 5:
+        return "medium"
+    return "high"
+
+
+def _seller_density_key(offer) -> str:
+    seller_name = (offer.seller_name or "").strip().lower()
+    if seller_name and seller_name not in {"retail seller", "unknown", "seller"}:
+        return seller_name
+    return _hostname(offer.source_url)
+
+
+def _bounded_go_percent(context: DecisionScoreContext, confidence: str) -> int:
+    go_percent = _starting_go_percent(context)
+    for cap in _go_score_caps(context, confidence):
+        go_percent = min(go_percent, cap)
+    return max(0, min(100, round(go_percent)))
+
+
+def _dominant_side(go_percent: int, no_go_percent: int) -> str:
+    if abs(go_percent - no_go_percent) <= 10:
+        return "balanced"
+    return "go" if go_percent > no_go_percent else "no_go"
+
+
+def _starting_go_percent(context: DecisionScoreContext) -> int:
+    if context.model_recommendation == "no_go":
+        return 20
+    if context.final_recommendation == "go":
+        return 60 if context.model_recommendation != "go" else 65
+    return 35 if context.model_recommendation != "go" else 40
+
+
+def _go_score_caps(context: DecisionScoreContext, confidence: str) -> list[int]:
+    caps: list[int] = []
+    if context.final_recommendation == "no_go":
+        caps.append(15)
+    if context.gross_margin is None:
+        caps.append(30)
+    elif context.gross_margin <= 0:
+        caps.append(10)
+    elif context.gross_margin < 5:
+        caps.append(35)
+    if context.profitability and context.profitability.estimated_landed_cost_per_unit_tnd is None:
+        caps.append(25)
+    if not context.validated.tunisia_retail_market.retail_offers:
+        caps.append(20)
+    if not context.validated.china_sourcing_offers:
+        caps.append(25)
+    if not context.validated.tunisia_sourcing_offers:
+        caps.append(45)
+    if _has_equivalent_or_weak_china_sourcing(context.validated):
+        caps.append(35)
+    if confidence == "low":
+        caps.append(30)
+    return caps
+
+
+def _decision_factors(context: DecisionScoreContext, confidence: str) -> list[str]:
+    factors = _margin_decision_factors(context.gross_margin)
+    if context.profitability and context.profitability.estimated_landed_cost_per_unit_tnd is None:
+        factors.append("Estimated landed cost is missing or incomplete.")
+    if not context.validated.tunisia_retail_market.retail_offers:
+        factors.append("Tunisia retail evidence is missing.")
+    if not context.validated.china_sourcing_offers:
+        factors.append("China sourcing price evidence is missing.")
+    if not context.validated.tunisia_sourcing_offers:
+        factors.append(TUNISIA_WHOLESALE_NOT_FOUND)
+    if _has_equivalent_or_weak_china_sourcing(context.validated):
+        factors.append("China sourcing evidence relies on broad, weak, or equivalent OEM matching.")
+    if confidence == "low":
+        factors.append("Evidence confidence is low.")
+    return factors or [context.recommendation_reason or "Available evidence supports a conservative decision."]
+
+
+def _margin_decision_factors(gross_margin: float | None) -> list[str]:
+    if gross_margin is None:
+        return ["Gross margin could not be calculated from source-backed landed cost and retail price."]
+    if gross_margin <= 0:
+        return ["Estimated gross margin is negative or too close to zero."]
+    if gross_margin < 5:
+        return ["Estimated gross margin is positive but thin before marketing and logistics variance."]
+    return ["Estimated gross margin is positive before marketing."]
+
+
+def _go_score_reason(context: DecisionScoreContext, confidence: str) -> str:
+    if context.gross_margin is not None and context.gross_margin > 0 and confidence in {"medium", "high"}:
+        return "Available evidence shows positive estimated gross margin before marketing."
+    return "Positive margin and stronger source-backed evidence would support GO."
+
+
+def _no_go_score_reason(context: DecisionScoreContext, factors: list[str]) -> str:
+    if context.recommendation_reason:
+        return context.recommendation_reason
+    return factors[0] if factors else "Evidence quality or margin is not strong enough for a confident GO."
+
+
+def _score_explanation(
+    context: DecisionScoreContext,
+    go_percent: int,
+    no_go_percent: int,
+    dominant_side: str,
+) -> str:
+    retail = context.validated.tunisia_retail_market
+    profitability = context.profitability
+    retail_range = _range_text("", [retail.price_min_tnd, retail.price_max_tnd], suffix=" TND") or "the visible retail range"
+    landed_cost = (
+        f"{profitability.estimated_landed_cost_per_unit_tnd:g} TND/unit"
+        if profitability and profitability.estimated_landed_cost_per_unit_tnd is not None
+        else "the current landed-cost scenario"
+    )
+    margin_text = (
+        f"{context.gross_margin:g} TND per unit before marketing"
+        if context.gross_margin is not None
+        else "the current margin scenario"
+    )
+    campaign_budget = (
+        f"{profitability.estimated_meta_campaign_budget_tnd:g} TND total campaign budget"
+        if profitability and profitability.estimated_meta_campaign_budget_tnd is not None
+        else "the current campaign economics"
+    )
+    if dominant_side == "go":
+        return (
+            f"GO is higher because retail pricing around {retail_range} sits comfortably above {landed_cost}, "
+            f"leaving an estimated gross margin of {margin_text}. The sourcing evidence is price-backed enough "
+            "to justify supplier verification and sample testing."
+        )
+    if context.final_recommendation == "no_go":
+        return (
+            f"NO GO is higher because the opportunity does not currently show a strong enough margin buffer. "
+            f"Retail pricing around {retail_range} leaves limited room versus {landed_cost}, while {campaign_budget} "
+            "and execution risk reduce the attractiveness of moving forward now."
+        )
+    if dominant_side == "balanced":
+        return (
+            f"The score is balanced because the opportunity shows commercial potential, but the margin buffer around "
+            f"{margin_text} is not yet wide enough to outweigh sourcing competitiveness and execution risk."
+        )
+    return (
+        f"NO GO is higher because the estimated upside is still modest relative to execution risk. "
+        f"Retail pricing around {retail_range} versus {landed_cost} suggests a possible opportunity, but the margin "
+        "buffer is not yet strong enough to support an immediate GO."
+    )
+
+
+def _why_go_score(context: DecisionScoreContext, go_percent: int) -> list[str]:
+    retail = context.validated.tunisia_retail_market
+    profitability = context.profitability
+    reasons: list[str] = []
+    if profitability and profitability.estimated_selling_price_tnd is not None and profitability.source_unit_price_tnd is not None:
+        reasons.append(
+            f"Estimated retail selling price is around {profitability.estimated_selling_price_tnd:g} TND versus "
+            f"a source product price around {profitability.source_unit_price_tnd:g} TND."
+        )
+    if context.gross_margin is not None and context.gross_margin > 0:
+        reasons.append(
+            f"The current scenario leaves an estimated gross margin of {context.gross_margin:g} TND per unit before marketing."
+        )
+    if retail.retail_offers:
+        reasons.append(
+            f"{len(retail.retail_offers)} Tunisia retail offer(s) support visible market demand and resale price benchmarking."
+        )
+    if context.validated.china_sourcing_offers:
+        reasons.append(
+            f"{len(context.validated.china_sourcing_offers)} China sourcing offer(s) provide price-backed sourcing evidence."
+        )
+    return reasons[:4] or [f"GO retains {go_percent}% because the market still shows some resale potential."]
+
+
+def _why_no_go_score(context: DecisionScoreContext, confidence: str) -> list[str]:
+    profitability = context.profitability
+    reasons: list[str] = []
+    if context.gross_margin is None:
+        reasons.append("The current margin buffer is not strong enough to support a confident launch decision.")
+    elif context.gross_margin <= 0:
+        reasons.append(
+            f"The estimated gross margin is {context.gross_margin:g} TND per unit before marketing, which is not attractive enough."
+        )
+    elif context.gross_margin < 5:
+        reasons.append(
+            f"The estimated gross margin is only {context.gross_margin:g} TND per unit before marketing, leaving limited safety margin."
+        )
+    if profitability and profitability.estimated_meta_campaign_budget_tnd is not None:
+        reasons.append(
+            f"The scenario already includes a total Meta campaign budget of {profitability.estimated_meta_campaign_budget_tnd:g} TND, which tightens the margin buffer."
+        )
+    if not context.validated.tunisia_sourcing_offers:
+        reasons.append("Local wholesale competitiveness in Tunisia is still not visible in the evidence.")
+    if _has_equivalent_or_weak_china_sourcing(context.validated):
+        reasons.append("China sourcing relies on equivalent or weak matching, which raises supplier and product-fit risk.")
+    if confidence == "low":
+        reasons.append("Supplier verification and market differentiation signals are still too soft for an immediate GO.")
+    return reasons[:5] or ["Execution risk is still higher than the available upside."]
+
+
+def _what_would_change_the_decision(context: DecisionScoreContext) -> list[str]:
+    actions = [
+        f"Confirm supplier terms and a quote for {ANALYSIS_QUANTITY_UNITS} units.",
+        "Compare at least two sourcing options to improve price competitiveness.",
+        "Validate product quality and exact product fit with a sample.",
+        "Pressure-test campaign economics with a small Meta test budget.",
+    ]
+    if not context.validated.tunisia_sourcing_offers:
+        actions.append("Verify whether the product can be positioned above current Tunisia retail competitors without local wholesale support.")
+    if _has_equivalent_or_weak_china_sourcing(context.validated):
+        actions.append("Secure a closer exact-match supplier option before committing to volume.")
+    return actions[:5]
 
 
 def _profitability_with_evidence_risks(
@@ -821,7 +1218,6 @@ def _retail_evidence_debug(evidence: ProviderEvidence, validated: ProviderAnalys
             for source in retail_sources
             for domain in (
                 "mytek.tn",
-                "jumia.com.tn",
                 "tunisianet.com.tn",
                 "spacenet.tn",
                 "wikishop.tn",

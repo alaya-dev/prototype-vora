@@ -77,7 +77,6 @@ class SearchProviderAdapter:
 
 KNOWN_TUNISIAN_RETAIL_DOMAINS = {
     "mytek.tn",
-    "jumia.com.tn",
     "tunisianet.com.tn",
     "spacenet.tn",
     "wikishop.tn",
@@ -103,7 +102,21 @@ def prioritized_query_groups(
     product: str,
     settings: Settings,
 ) -> list[tuple[str, list[str]]]:
-    queries = build_regional_queries(product, settings.effective_search_queries_per_group)
+    query_limit = settings.effective_search_queries_per_group
+    prototype_default_limits = (
+        {
+            "china_sourcing": 3,
+            "tunisia_sourcing": 1,
+            "tunisia_retail": 3,
+        }
+        if query_limit == 4
+        else None
+    )
+    queries = build_regional_queries(
+        product,
+        query_limit,
+        group_limits=prototype_default_limits,
+    )
     return [
         ("china_sourcing", queries.china_sourcing),
         ("tunisia_sourcing", queries.tunisia_sourcing),

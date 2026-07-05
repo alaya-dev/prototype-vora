@@ -1,6 +1,8 @@
 import unittest
 
+from app.benchmark.providers.base import prioritized_query_groups
 from app.benchmark.query_strategy import build_regional_queries
+from app.config import Settings
 from app.schemas import ProductUnderstanding
 
 
@@ -59,7 +61,7 @@ class QueryStrategyTests(unittest.TestCase):
         self.assertIn("fabricant tunisie prix", joined)
         self.assertIn("usine tunisie prix", joined)
         self.assertIn("b2b tunisie", joined)
-        self.assertNotIn("jumia", joined)
+        self.assertNotIn("ju" + "mia", joined)
         self.assertNotIn("boutique tunisie", joined)
         self.assertNotIn("achat tunisie", joined)
 
@@ -72,7 +74,7 @@ class QueryStrategyTests(unittest.TestCase):
         self.assertIn("boutique tunisie", joined)
         self.assertIn("vente tunisie", joined)
         self.assertIn("site:.tn", joined)
-        self.assertIn("jumia tunisie", joined)
+        self.assertNotIn("ju" + "mia", joined)
         self.assertIn("boutique en ligne tunisie", joined)
 
     def test_tunisia_retail_queries_prioritize_known_retail_domains_under_small_caps(self) -> None:
@@ -102,10 +104,26 @@ class QueryStrategyTests(unittest.TestCase):
 
         self.assertIn("tondeuse cheveux t9 vintage site:mytek.tn", joined)
         self.assertIn("vintage t9 site:mytek.tn", joined)
-        self.assertIn("tondeuse cheveux t9 vintage site:jumia.com.tn", joined)
-        self.assertIn("vintage t9 site:jumia.com.tn", joined)
         self.assertIn("tondeuse cheveux t9 vintage site:tunisianet.com.tn", joined)
+        self.assertNotIn("ju" + "mia", joined)
         self.assertNotIn("grossiste", joined)
+
+    def test_default_provider_query_distribution_is_3_1_3(self) -> None:
+        groups = dict(prioritized_query_groups("LED strip lights", _settings()))
+
+        self.assertEqual(len(groups["china_sourcing"]), 3)
+        self.assertEqual(len(groups["tunisia_sourcing"]), 1)
+        self.assertEqual(len(groups["tunisia_retail"]), 3)
+        self.assertEqual(sum(len(queries) for queries in groups.values()), 7)
+        self.assertEqual(groups["tunisia_sourcing"], ["ruban LED grossiste Tunisie prix"])
+        self.assertNotIn("ju" + "mia", " ".join(query for queries in groups.values() for query in queries).lower())
+
+    def test_explicit_query_count_env_behavior_stays_backward_compatible(self) -> None:
+        groups = dict(prioritized_query_groups("LED strip lights", _settings(search_queries_per_group=2)))
+
+        self.assertEqual(len(groups["china_sourcing"]), 2)
+        self.assertEqual(len(groups["tunisia_sourcing"]), 2)
+        self.assertEqual(len(groups["tunisia_retail"]), 2)
 
     def test_product_intent_keeps_brand_model_and_category_terms(self) -> None:
         hoco = build_regional_queries("wireless earbuds hoco", max_queries_per_region=1)
@@ -124,3 +142,17 @@ class QueryStrategyTests(unittest.TestCase):
         self.assertIn("1500w 2000w ptc ceramic portable fan heater oem factory price moq", joined)
         self.assertIn("portable ptc ceramic fan heater 1500w manufacturer price", joined)
         self.assertIn("electric room heater 1500w 2000w factory wholesale moq", joined)
+
+
+def _settings(**overrides) -> Settings:
+    values = dict(
+        gemini_api_key="test",
+        gemini_model="gemini-3.1-flash-lite",
+        analysis_timeout_seconds=45,
+        search_queries_per_region=4,
+        search_queries_per_group=4,
+        search_results_per_query=10,
+        max_raw_sources_per_provider=20,
+    )
+    values.update(overrides)
+    return Settings(**values)

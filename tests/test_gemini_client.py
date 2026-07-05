@@ -7,6 +7,7 @@ from app.benchmark.schemas import (
     ProviderRawSource,
 )
 from app.schemas import ProductUnderstanding
+from app.prototype.schemas import CostConfig, PrototypeAnalysisDraft
 from app.services.gemini_client import (
     GeminiAnalysisClient,
     GeminiIntentClient,
@@ -236,3 +237,44 @@ class GeminiRoleWrapperTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("equivalent OEM", prompt)
         self.assertIn("Content: Portable blender available now", prompt)
         self.assertIs(response_model, ProviderAnalysisResult)
+
+    async def test_client_analysis_prompt_requests_bilingual_output(self) -> None:
+        expected = PrototypeAnalysisDraft()
+        base = RecordingStructuredClient(expected)
+        client = GeminiAnalysisClient(base)
+        evidence = ProviderEvidence(
+            provider_id="firecrawl",
+            sources=[
+                ProviderRawSource(
+                    title="T9 listing",
+                    url="https://example.com/t9",
+                    snippet="US$2 factory price MOQ 100",
+                    content="T9 vintage hair trimmer",
+                    region_hint="china_sourcing",
+                    source_type="product_page",
+                )
+            ],
+        )
+        product = ProductUnderstanding(
+            original_product="Vintage T9",
+            normalized_product="T9 vintage hair trimmer",
+            english_search_name="T9 vintage hair trimmer",
+            french_search_name="tondeuse cheveux T9 vintage",
+        )
+
+        result = await client.extract_client_analysis(product, evidence, CostConfig(), [1000])
+
+        self.assertIs(result, expected)
+        prompt, response_model = base.calls[0]
+        self.assertIs(response_model, PrototypeAnalysisDraft)
+        self.assertIn("localized_analysis", prompt)
+        self.assertIn("decision_scores", prompt)
+        self.assertIn("go_percent", prompt)
+        self.assertIn("no_go_percent", prompt)
+        removed_marketplace = "Ju" + "mia"
+        self.assertNotIn(removed_marketplace, prompt)
+        self.assertNotIn(removed_marketplace.lower(), prompt)
+        self.assertIn("product_description_en", prompt)
+        self.assertIn("product_description_fr", prompt)
+        self.assertIn("price_analysis_en/fr", prompt)
+        self.assertIn("Do not mix languages", prompt)
