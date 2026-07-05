@@ -62,6 +62,8 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("window.print()", self.html)
         self.assertIn("Client Analysis", self.html)
         self.assertIn("Analytics", self.html)
+        self.assertIn("/logo/sourcia_logo_transparent_clean_cropped.png", self.html)
+        self.assertIn("Sourcia product opportunity report", self.html)
         self.assertIn("product_image_confidence", self.html)
         self.assertIn("No reliable source-backed product image was found.", self.html)
 
@@ -123,7 +125,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("applyStaticTranslations()", self.html)
         self.assertIn("data-i18n=\"clientEyebrow\"", self.html)
         self.assertIn("data-i18n-placeholder=\"productPlaceholder\"", self.html)
-        self.assertIn("Rapport d'opportunité produit VORA", self.html)
+        self.assertIn("Rapport d'opportunité produit Sourcia", self.html)
         self.assertIn("Analyser le produit", self.html)
         self.assertIn("renderProductImage(data)", self.html)
         self.assertIn("fallbackProductImage(productLabel)", self.html)
@@ -135,3 +137,4 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("adminPasswordInput", self.html)
         self.assertIn("x-admin-password", self.html)
         self.assertIn("unlockAnalytics", self.html)
+        self.assertIn("sourcia_admin_password", self.html)

@@ -3,24 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VORA Product Analysis</title>
+<title>Sourcia Product Analysis</title>
 <style>
   :root {
-    --bg: #f2efe7;
-    --panel: rgba(255, 250, 242, 0.9);
-    --panel-strong: #fffdf8;
-    --line: rgba(31, 41, 55, 0.12);
-    --line-strong: rgba(31, 41, 55, 0.22);
-    --text: #1d2430;
-    --muted: #5e6875;
-    --accent: #0d5c63;
-    --accent-soft: #d5ece9;
-    --accent-strong: #083d42;
-    --warm: #b86a1b;
-    --danger: #b23a30;
-    --success: #24704c;
-    --warning: #8f5a13;
-    --shadow: 0 18px 48px rgba(34, 40, 49, 0.1);
+    --primary: #030927;
+    --secondary: #164698;
+    --accent: #30ab90;
+    --accent-transition: #258090;
+    --bg: #eef4fb;
+    --panel: rgba(255, 255, 255, 0.92);
+    --panel-strong: #f9fbff;
+    --line: rgba(3, 9, 39, 0.08);
+    --line-strong: rgba(22, 70, 152, 0.2);
+    --text: #030927;
+    --muted: #4c5f82;
+    --accent-soft: rgba(48, 171, 144, 0.12);
+    --accent-strong: #0c2f74;
+    --danger: #cf4f63;
+    --success: #2a947f;
+    --warning: #b57b2a;
+    --shadow: 0 24px 60px rgba(8, 26, 74, 0.12);
     --radius: 8px;
   }
 
@@ -29,22 +31,21 @@
   body {
     margin: 0;
     min-height: 100vh;
-    font-family: "Segoe UI", system-ui, sans-serif;
+    font-family: Inter, "Segoe UI", system-ui, sans-serif;
     color: var(--text);
     background:
-      radial-gradient(circle at top left, rgba(13, 92, 99, 0.18), transparent 28%),
-      radial-gradient(circle at top right, rgba(184, 106, 27, 0.14), transparent 24%),
-      linear-gradient(180deg, #f6f2e9 0%, #f1ede3 45%, #ece7dc 100%);
+      radial-gradient(circle at top left, rgba(22, 70, 152, 0.18), transparent 30%),
+      radial-gradient(circle at top right, rgba(48, 171, 144, 0.16), transparent 26%),
+      linear-gradient(180deg, #f5f9ff 0%, #eef4fb 52%, #e8f0fa 100%);
   }
 
   .shell {
-    width: min(1180px, calc(100% - 28px));
-    margin: 18px auto 56px;
+    width: min(1220px, calc(100% - 28px));
+    margin: 22px auto 56px;
     display: grid;
-    gap: 16px;
+    gap: 18px;
   }
 
-  .topbar,
   .analysis-hero,
   .panel,
   .result-band,
@@ -61,8 +62,14 @@
     justify-content: space-between;
     align-items: center;
     gap: 12px;
-    padding: 16px 18px;
+    padding: 18px 20px;
     flex-wrap: wrap;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+      radial-gradient(circle at right top, rgba(48, 171, 144, 0.18), transparent 30%),
+      linear-gradient(135deg, rgba(3, 9, 39, 0.98), rgba(22, 70, 152, 0.94));
+    box-shadow: 0 20px 48px rgba(3, 9, 39, 0.24);
+    border-radius: var(--radius);
   }
 
   .topbar-actions {
@@ -76,17 +83,26 @@
     display: flex;
     gap: 12px;
     align-items: center;
+    min-width: 0;
   }
 
-  .brand-mark {
-    width: 40px;
-    height: 40px;
+  .brand-logo {
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: inset 0 0 0 1px rgba(3, 9, 39, 0.06);
+    flex: 0 0 auto;
+  }
+
+  .brand-logo img {
+    display: block;
+    width: clamp(128px, 22vw, 176px);
+    height: auto;
+  }
+
+  .brand-copy {
     display: grid;
-    place-items: center;
-    background: linear-gradient(135deg, var(--accent-strong), var(--warm));
-    color: #fff;
-    border-radius: 10px;
-    font-weight: 800;
+    gap: 4px;
   }
 
   h1, h2, h3, p { margin: 0; }
@@ -95,14 +111,26 @@
   h3 { font-size: 15px; }
   p { color: var(--muted); line-height: 1.55; }
 
+  .topbar h1,
+  .topbar h2,
+  .topbar h3,
+  .topbar p,
+  .topbar .eyebrow {
+    color: #f8fbff;
+  }
+
+  .topbar p {
+    color: rgba(248, 251, 255, 0.78);
+  }
+
   .pill {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border-radius: 999px;
     padding: 7px 10px;
-    background: var(--accent-soft);
-    color: var(--accent-strong);
+    background: rgba(22, 70, 152, 0.08);
+    color: var(--secondary);
     font-size: 12px;
     font-weight: 800;
   }
@@ -114,7 +142,8 @@
     gap: 18px;
     align-items: stretch;
     background:
-      linear-gradient(135deg, rgba(255, 253, 248, 0.94), rgba(213, 236, 233, 0.44)),
+      radial-gradient(circle at right top, rgba(48, 171, 144, 0.12), transparent 26%),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(228, 240, 252, 0.94)),
       var(--panel);
   }
 
@@ -147,14 +176,14 @@
     padding: 14px 16px;
     border: 1px solid var(--line-strong);
     border-radius: var(--radius);
-    background: rgba(255, 255, 255, 0.86);
+    background: rgba(255, 255, 255, 0.94);
     color: var(--text);
   }
 
   input:focus {
     outline: none;
-    border-color: rgba(13, 92, 99, 0.48);
-    box-shadow: 0 0 0 3px rgba(13, 92, 99, 0.1);
+    border-color: rgba(48, 171, 144, 0.52);
+    box-shadow: 0 0 0 3px rgba(48, 171, 144, 0.12);
   }
 
   .action-row {
@@ -176,18 +205,24 @@
   button:disabled { cursor: wait; opacity: 0.62; transform: none; }
 
   .button-primary {
-    background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+    background: linear-gradient(135deg, var(--secondary), var(--accent-transition));
     color: #fff;
   }
 
   .button-secondary {
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.94);
     border: 1px solid var(--line-strong);
     color: var(--text);
   }
 
-  .button-go { background: var(--success); color: #fff; min-width: 132px; }
-  .button-nogo { background: var(--danger); color: #fff; min-width: 132px; }
+  .topbar .button-secondary {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #f8fbff;
+  }
+
+  .button-go { background: linear-gradient(135deg, var(--accent-transition), var(--accent)); color: #fff; min-width: 132px; }
+  .button-nogo { background: linear-gradient(135deg, #8f2437, var(--danger)); color: #fff; min-width: 132px; }
 
   .photo-slot {
     min-height: 260px;
@@ -234,7 +269,7 @@
   }
 
   .metric {
-    border: 1px solid rgba(31, 41, 55, 0.08);
+    border: 1px solid rgba(22, 70, 152, 0.1);
     background: var(--panel-strong);
     border-radius: var(--radius);
     padding: 11px 12px;
@@ -260,7 +295,7 @@
   }
 
   .item {
-    border: 1px solid rgba(31, 41, 55, 0.08);
+    border: 1px solid rgba(22, 70, 152, 0.08);
     background: var(--panel-strong);
     border-radius: var(--radius);
     padding: 12px;
@@ -268,7 +303,7 @@
     gap: 6px;
   }
 
-  a { color: var(--accent-strong); text-decoration: none; word-break: break-word; }
+  a { color: var(--secondary); text-decoration: none; word-break: break-word; }
 
   .hidden-note {
     color: var(--muted);
@@ -284,7 +319,7 @@
   .skeleton {
     height: 18px;
     border-radius: 999px;
-    background: linear-gradient(90deg, rgba(13,92,99,0.08), rgba(13,92,99,0.2), rgba(13,92,99,0.08));
+    background: linear-gradient(90deg, rgba(22, 70, 152, 0.08), rgba(37, 128, 144, 0.2), rgba(22, 70, 152, 0.08));
     background-size: 220% 100%;
     animation: shimmer 1.1s ease-in-out infinite;
   }
@@ -300,7 +335,7 @@
   }
 
   details {
-    border: 1px solid rgba(31, 41, 55, 0.08);
+    border: 1px solid rgba(22, 70, 152, 0.08);
     background: rgba(255, 255, 255, 0.72);
     border-radius: var(--radius);
     padding: 10px 12px;
@@ -327,12 +362,12 @@
     width: 100%;
     text-align: left;
     background: var(--panel-strong);
-    border: 1px solid rgba(31, 41, 55, 0.08);
+    border: 1px solid rgba(22, 70, 152, 0.08);
   }
 
   .run-button.selected {
-    border-color: rgba(13, 92, 99, 0.38);
-    box-shadow: 0 0 0 2px rgba(13, 92, 99, 0.08);
+    border-color: rgba(48, 171, 144, 0.44);
+    box-shadow: 0 0 0 2px rgba(48, 171, 144, 0.12);
   }
 
   .detail-columns {
@@ -341,7 +376,7 @@
   }
 
   .detail-section {
-    border: 1px solid rgba(31, 41, 55, 0.08);
+    border: 1px solid rgba(22, 70, 152, 0.08);
     border-radius: var(--radius);
     background: var(--panel-strong);
     padding: 12px;
@@ -388,7 +423,7 @@
     position: static;
     top: 18px;
     border: 1px solid var(--line);
-    background: rgba(255, 250, 242, 0.94);
+    background: rgba(255, 255, 255, 0.94);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
     padding: 14px;
@@ -411,10 +446,15 @@
 
   .nav-button.active {
     background: var(--accent-soft);
-    border-color: rgba(13, 92, 99, 0.28);
-    color: var(--accent-strong);
+    border-color: rgba(48, 171, 144, 0.28);
+    color: var(--secondary);
   }
-
+.flag-icon {
+  width: 20px;
+  height: auto;
+  border-radius: 2px; /* Optional: slightly rounds the flag corners */
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15); /* Optional: gives the flag a subtle pop */
+}
   .language-toggle {
     position: relative;
     display: inline-grid;
@@ -422,10 +462,10 @@
     gap: 6px;
     min-width: 190px;
     padding: 4px;
-    border: 1px solid rgba(31, 41, 55, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 999px;
-    background: rgba(255, 253, 248, 0.78);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 28px rgba(31,41,55,0.08);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 10px 28px rgba(3, 9, 39, 0.18);
   }
 
   .language-toggle button {
@@ -436,15 +476,15 @@
     border-radius: 999px;
     border: 0;
     background: transparent;
-    color: var(--text);
+    color: rgba(248, 251, 255, 0.86);
     box-shadow: none;
     font-size: 13px;
   }
 
   .language-toggle button.active {
-    background: var(--accent-strong);
-    color: #fffdf8;
-    box-shadow: 0 8px 18px rgba(8, 61, 66, 0.18);
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--primary);
+    box-shadow: 0 8px 18px rgba(3, 9, 39, 0.18);
   }
 
   .language-toggle button:hover { box-shadow: none; }
@@ -464,8 +504,8 @@
   }
 
   .report-card {
-    background: #fffdf8;
-    border-color: rgba(13, 92, 99, 0.2);
+    background: #fbfdff;
+    border-color: rgba(48, 171, 144, 0.22);
   }
 
   .report-header {
@@ -538,10 +578,11 @@
     position: sticky;
     bottom: 10px;
     z-index: 5;
-    background: rgba(255, 250, 242, 0.96);
+    background: rgba(255, 255, 255, 0.98);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 10px;
+    box-shadow: 0 18px 38px rgba(8, 26, 74, 0.12);
   }
 
   .decision-bar button {
@@ -563,7 +604,7 @@
     border-radius: var(--radius);
     padding: 10px 12px;
     background: var(--accent-soft);
-    color: var(--accent-strong);
+    color: var(--secondary);
     font-weight: 800;
   }
 
@@ -646,17 +687,39 @@
       <section id="clientPage" class="page active">
         <section class="topbar">
           <div class="brand">
-            <div class="brand-mark">V</div>
-            <div>
+            <div class="brand-logo">
+              <img src="/logo/sourcia_logo_transparent_clean_cropped.png" alt="Sourcia logo">
+            </div>
+            <div class="brand-copy">
               <div class="eyebrow" data-i18n="clientEyebrow">Client Analysis</div>
-              <h2 data-i18n="clientTitle">VORA product opportunity report</h2>
+              <h2 data-i18n="clientTitle">Sourcia product opportunity report</h2>
               <p data-i18n="clientSubtitle">Production-style sourcing, Tunisia retail market, and profitability estimate.</p>
             </div>
           </div>
           <div class="topbar-actions">
             <div id="languageToggle" class="language-toggle language-segment" aria-label="Language">
-              <button id="languageEnButton" class="language-option active" type="button" aria-pressed="true" aria-label="English" title="English" onclick='setLanguage("en")'>EN</button>
-              <button id="languageFrButton" class="language-option" type="button" aria-pressed="false" aria-label="Français" title="Français" onclick='setLanguage("fr")'>FR</button>
+                                <button id="languageEnButton" class="language-option active" type="button" aria-pressed="true" aria-label="English" title="English" onclick='setLanguage("en")'>
+                    <svg class="flag-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 30">
+                      <clipPath id="a"><path d="M0 0v30h60V0z"/></clipPath>
+                      <g clip-path="url(#a)">
+                        <path d="M0 0v30h60V0z" fill="#012169"/>
+                        <path d="M0 0l60 30M60 0L0 30" stroke="#fff" stroke-width="6"/>
+                        <path d="M0 0l60 30M60 0L0 30" stroke="#c8102e" stroke-width="4"/>
+                        <path d="M30 0v30M0 15h60" stroke="#fff" stroke-width="10"/>
+                        <path d="M30 0v30M0 15h60" stroke="#c8102e" stroke-width="6"/>
+                      </g>
+                    </svg>
+                    EN
+                  </button>
+
+                  <button id="languageFrButton" class="language-option" type="button" aria-pressed="false" aria-label="Français" title="Français" onclick='setLanguage("fr")'>
+                  <svg class="flag-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3 2">
+                    <rect width="1" height="2" fill="#002395"/>
+                    <rect x="1" width="1" height="2" fill="#ffffff"/>
+                    <rect x="2" width="1" height="2" fill="#ed2939"/>
+                  </svg>
+                  FR
+                </button>
             </div>
             <button id="exportPdfButton" class="button-secondary" type="button" data-i18n="exportPdf">Export PDF</button>
           </div>
@@ -665,7 +728,7 @@
         <section class="analysis-hero">
           <div class="hero-copy">
             <div class="eyebrow" data-i18n="heroEyebrow">Client analysis flow</div>
-            <h2 data-i18n="heroTitle">Enter a specific product and VORA will research source cost, Tunisia market price, and estimated margin.</h2>
+            <h2 data-i18n="heroTitle">Enter a specific product and Sourcia will research source cost, Tunisia market price, and estimated margin.</h2>
             <div class="field">
               <label for="prototypeProductInput" data-i18n="productInputLabel">Product</label>
               <input id="prototypeProductInput" type="text" placeholder="Vintage T9 hair trimmer" data-i18n-placeholder="productPlaceholder">
@@ -689,8 +752,8 @@
 
       <section id="analyticsPage" class="page">
         <section class="topbar">
-          <div>
-            <div class="eyebrow">Analytics</div>
+          <div class="brand-copy">
+            <div class="eyebrow">Sourcia Ops</div>
             <h2>Internal prototype operations</h2>
             <p>Monitor fallback provider behavior, estimated research cost, and sourcing agent contacts.</p>
           </div>
@@ -801,17 +864,17 @@ let agentsPage = 1;
 const agentsPageSize = 5;
 let analyticsRunsCache = [];
 let selectedAnalyticsRunId = null;
-let adminPassword = localStorage.getItem("vora_admin_password") || "";
+let adminPassword = localStorage.getItem("sourcia_admin_password") || "";
 let currentLanguage = "en";
 let currentPrototypeData = null;
 const copy = {
   en: {
     clientEyebrow: "Client Analysis",
-    clientTitle: "VORA product opportunity report",
+    clientTitle: "Sourcia product opportunity report",
     clientSubtitle: "Production-style sourcing, Tunisia retail market, and profitability estimate.",
     exportPdf: "Export PDF",
     heroEyebrow: "Client analysis flow",
-    heroTitle: "Enter a specific product and VORA will research source cost, Tunisia market price, and estimated margin.",
+    heroTitle: "Enter a specific product and Sourcia will research source cost, Tunisia market price, and estimated margin.",
     productInputLabel: "Product",
     productPlaceholder: "Vintage T9 hair trimmer",
     analyzeButton: "Analyze product",
@@ -852,11 +915,11 @@ const copy = {
   },
   fr: {
     clientEyebrow: "Analyse client",
-    clientTitle: "Rapport d'opportunité produit VORA",
+    clientTitle: "Rapport d'opportunité produit Sourcia",
     clientSubtitle: "Recherche sourcing, marché retail tunisien et estimation de rentabilité.",
     exportPdf: "Exporter PDF",
     heroEyebrow: "Flux d'analyse client",
-    heroTitle: "Entrez un produit précis et VORA analysera le coût source, le prix du marché tunisien et la marge estimée.",
+    heroTitle: "Entrez un produit précis et Sourcia analysera le coût source, le prix du marché tunisien et la marge estimée.",
     productInputLabel: "Produit",
     productPlaceholder: "Tondeuse cheveux T9 vintage",
     analyzeButton: "Analyser le produit",
@@ -940,7 +1003,7 @@ function adminHeaders(extra = {}) {
 
 async function unlockAnalytics() {
   adminPassword = adminPasswordInput.value.trim();
-  localStorage.setItem("vora_admin_password", adminPassword);
+  localStorage.setItem("sourcia_admin_password", adminPassword);
   await loadAnalytics();
 }
 
@@ -1470,11 +1533,11 @@ function normalizeTndDisplayText(text) {
 function fallbackProductImage(productLabel = "Product image") {
   const safeLabel = String(productLabel || "Product image").slice(0, 46);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="520" viewBox="0 0 720 520">
-    <rect width="720" height="520" fill="#fffdf8"/>
-    <rect x="80" y="70" width="560" height="380" rx="22" fill="#d5ece9" stroke="#0d5c63" stroke-width="3"/>
-    <rect x="210" y="135" width="300" height="210" rx="28" fill="#fffdf8" stroke="#083d42" stroke-width="8"/>
-    <circle cx="286" cy="216" r="36" fill="#b86a1b"/>
-    <path d="M342 260h96M342 218h96" stroke="#0d5c63" stroke-width="18" stroke-linecap="round"/>
+    <rect width="720" height="520" fill="#f9fbff"/>
+    <rect x="80" y="70" width="560" height="380" rx="22" fill="#dbf2ed" stroke="#164698" stroke-width="3"/>
+    <rect x="210" y="135" width="300" height="210" rx="28" fill="#f9fbff" stroke="#030927" stroke-width="8"/>
+    <circle cx="286" cy="216" r="36" fill="#30ab90"/>
+    <path d="M342 260h96M342 218h96" stroke="#258090" stroke-width="18" stroke-linecap="round"/>
     <text x="360" y="395" text-anchor="middle" font-family="Segoe UI, Arial" font-size="26" fill="#1d2430">${escapeSvgText(safeLabel)}</text>
     <text x="360" y="430" text-anchor="middle" font-family="Segoe UI, Arial" font-size="20" fill="#5e6875">Illustrative image unavailable</text>
   </svg>`;

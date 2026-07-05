@@ -208,6 +208,7 @@ def create_app(
         with open("static/index.html", "r", encoding="utf-8") as file:
             return file.read()
 
+    app.mount("/logo", StaticFiles(directory="logo"), name="logo")
     app.mount("/", StaticFiles(directory="static", html=True), name="static")
     return app
 
