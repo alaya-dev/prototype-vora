@@ -240,8 +240,8 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("Page catégorie/liste", self.html)
 
     def test_digital_ad_budget_range_guards_against_legacy_low_values(self) -> None:
-        self.assertIn('const safeMin = Number.isFinite(min) && min >= 50 ? min : 300;', self.html)
-        self.assertIn('const safeMax = Number.isFinite(max) && max >= 50 ? max : 500;', self.html)
+        self.assertIn('? "300-500 TND total"', self.html)
+        self.assertIn(': "300-500 TND total";', self.html)
 
     def test_frontend_derives_retail_summary_from_examples_when_summary_fields_are_missing(self) -> None:
         self.assertIn("function deriveRetailSummary(retail)", self.html)

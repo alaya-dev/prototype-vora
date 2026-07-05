@@ -877,23 +877,14 @@ def _tunisia_wholesale_summary(offers: list[TunisiaSourcingOffer]) -> str:
 
 
 def _digital_ad_budget_min(cost_config: CostConfig) -> float:
-    configured = cost_config.default_digital_ad_budget_min_tnd
-    if configured is None or configured < 50:
-        return DIGITAL_AD_BUDGET_MIN_TND
-    return float(configured)
+    return DIGITAL_AD_BUDGET_MIN_TND
 
 
 def _digital_ad_budget_max(cost_config: CostConfig) -> float:
-    configured = cost_config.default_digital_ad_budget_max_tnd
-    if configured is None or configured < 50:
-        return DIGITAL_AD_BUDGET_MAX_TND
-    return float(configured)
+    return DIGITAL_AD_BUDGET_MAX_TND
 
 
 def _digital_ad_budget_default(cost_config: CostConfig) -> float:
-    configured = cost_config.default_meta_campaign_budget_tnd
-    if configured is not None and configured >= _digital_ad_budget_min(cost_config) and configured <= _digital_ad_budget_max(cost_config):
-        return float(configured)
     return DIGITAL_AD_BUDGET_DEFAULT_TND
 
 
