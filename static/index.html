@@ -1530,10 +1530,7 @@ agentsNextButton.addEventListener("click", () => {
   agentsPage = Math.min(maxPage, agentsPage + 1);
   renderAgentsPage();
 });
-exportPdfButton.addEventListener("click", () => {
-  document.querySelectorAll("details").forEach((details) => { details.open = true; });
-  window.print();
-});
+exportPdfButton.addEventListener("click", exportOpportunityPdf);
 applyStaticTranslations();
 if (window.location.pathname === "/analytics") {
   showPage("analyticsPage");
@@ -1942,6 +1939,54 @@ function deriveProfitability(data) {
     net_profit_for_1000_after_advertising_min_tnd: Number.isFinite(grossProfit) ? Number((grossProfit - budgetMax).toFixed(2)) : profit.net_profit_for_1000_after_advertising_min_tnd,
     net_profit_for_1000_after_advertising_max_tnd: Number.isFinite(grossProfit) ? Number((grossProfit - budgetMin).toFixed(2)) : profit.net_profit_for_1000_after_advertising_max_tnd,
   };
+}
+
+async function exportOpportunityPdf() {
+  if (!currentPrototypeData?.run_id) return;
+  const originalLabel = exportPdfButton.textContent;
+  exportPdfButton.disabled = true;
+  exportPdfButton.textContent = currentLanguage === "fr" ? "Génération du PDF…" : "Generating PDF…";
+  try {
+    const report = { ...currentPrototypeData };
+    report.product_image_url = dashboardImageUrlForPdf(report);
+    const response = await fetch(`/prototype/runs/${encodeURIComponent(report.run_id)}/pdf`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ report, language: currentLanguage })
+    });
+    const pdfBlob = await readBlob(response);
+    const downloadUrl = URL.createObjectURL(pdfBlob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = filenameFromContentDisposition(response.headers.get("Content-Disposition")) || "NEXORA_Analyse.pdf";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
+  } catch (error) {
+    prototypeResult.insertAdjacentHTML("afterbegin", `<div class="result-band wide"><p>${escapeHtml(error.message)}</p></div>`);
+  } finally {
+    exportPdfButton.disabled = false;
+    exportPdfButton.textContent = originalLabel;
+  }
+}
+
+function dashboardImageUrlForPdf(report) {
+  const image = productPhoto.querySelector("img");
+  if (!image || !report.product_image_url || report.product_image_confidence === "fallback") return null;
+  if (image.alt.includes("Illustrative product image unavailable")) return null;
+  if (image.src.startsWith("data:image/")) return image.src;
+  return report.product_image_url;
+}
+
+async function readBlob(response) {
+  if (!response.ok) throw new Error(await response.text() || `PDF export failed (${response.status})`);
+  return response.blob();
+}
+
+function filenameFromContentDisposition(header) {
+  const match = header?.match(/filename="([^"]+)"/i);
+  return match ? match[1] : "";
 }
 
 function deriveRetailSummary(retail) {

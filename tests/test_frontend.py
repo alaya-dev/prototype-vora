@@ -58,7 +58,10 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("No reliable product image found.", self.html)
         self.assertIn("links are hidden until GO", self.html)
         self.assertIn("Export PDF", self.html)
-        self.assertIn("window.print()", self.html)
+        self.assertIn("exportOpportunityPdf", self.html)
+        self.assertIn("/prototype/runs/${encodeURIComponent(report.run_id)}/pdf", self.html)
+        self.assertIn("dashboardImageUrlForPdf(report)", self.html)
+        self.assertIn("Illustrative product image unavailable", self.html)
         self.assertIn("Client Analysis", self.html)
         self.assertIn("Analytics", self.html)
         self.assertIn("/logo/Nexora_logo_transparent_clean_cropped.png", self.html)
@@ -75,7 +78,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("Analyzing", self.html)
         self.assertIn("Analyse en cours", self.html)
         self.assertIn("Analyzing product opportunity", self.html)
-        self.assertNotIn("Gener" + "ating", self.html)
+        self.assertIn("Generating PDF", self.html)
         self.assertNotIn('prototypeResult.innerHTML = `<div class="result-band wide loading"><div class="skeleton"', self.html)
 
     def test_product_image_area_has_search_loader(self) -> None:

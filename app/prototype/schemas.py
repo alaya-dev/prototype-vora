@@ -278,6 +278,11 @@ class PrototypeAnalyzeResponse(StrictModel):
     hidden_sourcing_links: HiddenSourcingLinks = Field(default_factory=HiddenSourcingLinks, exclude=True)
 
 
+class PrototypePdfRequest(StrictModel):
+    report: PrototypeAnalyzeResponse
+    language: Literal["en", "fr"] = "fr"
+
+
 class PrototypeRevealResponse(StrictModel):
     run_id: str
     china_sourcing_links: list[PrototypeSourcingLink] = Field(default_factory=list)

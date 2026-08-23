@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -28,6 +28,7 @@ from app.prototype.schemas import (
     CostConfig,
     PrototypeAnalyzeRequest,
     PrototypeAnalyzeResponse,
+    PrototypePdfRequest,
     PrototypeRevealResponse,
     SourcingAgent,
 )
@@ -40,6 +41,7 @@ from app.services.gemini_client import (
     GeminiIntentClient,
 )
 from app.services.gemini_search_client import GeminiSearchClient, GeminiSearchClientError
+from app.services.pdf_report import build_opportunity_pdf, opportunity_pdf_filename
 
 
 def create_app(
@@ -136,6 +138,22 @@ def create_app(
             return await resolved_prototype_orchestrator.reveal(run_id)
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Prototype run not found.") from error
+
+    @app.post("/prototype/runs/{run_id}/pdf")
+    async def prototype_pdf(run_id: str, request: PrototypePdfRequest) -> Response:
+        if request.report.run_id != run_id:
+            raise HTTPException(status_code=400, detail="PDF report does not match the requested run.")
+        try:
+            pdf_bytes = build_opportunity_pdf(request.report, request.language)
+        except (OSError, ValueError) as error:
+            raise HTTPException(status_code=500, detail="PDF generation failed.") from error
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{opportunity_pdf_filename(request.report)}"',
+            },
+        )
 
     @app.get("/api/analytics/runs", response_model=list[AnalyticsRunSummary])
     async def analytics_runs(_: None = Depends(require_admin_password)) -> list[AnalyticsRunSummary]:
