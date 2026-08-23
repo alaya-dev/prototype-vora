@@ -7,7 +7,7 @@ import html
 import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 import httpx
 from PIL import Image as PillowImage
@@ -27,6 +27,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 from reportlab.lib.utils import ImageReader
+from svglib.svglib import svg2rlg
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFError, TTFont
 
@@ -169,6 +170,7 @@ def _build_story(report: PrototypeAnalyzeResponse, language: str, styles: dict[s
     story.extend(_sourcing_section(report, language, styles))
     story.extend(_landed_cost_section(report, language, styles))
     story.extend(_market_section(report, language, styles))
+    story.extend(_comparability_section(report, language, styles))
     story.extend(_competition_section(report, language, styles))
     story.extend(_profitability_section(report, language, styles))
     story.extend(_commercial_section(report, language, styles))
@@ -182,11 +184,11 @@ def _build_story(report: PrototypeAnalyzeResponse, language: str, styles: dict[s
 def _cover(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
     labels = _labels(language)
     product = _product_name(report)
-    decision = _decision(report.recommendation, language)
+    decision = _decision_for_pdf(report, language)
     confidence = _confidence(report.decision_scores.confidence, language)
     metadata = [
         [_p(labels["product"], styles["kpi_label"]), _p(product, styles["kpi_value"])],
-        [_p(labels["market"], styles["kpi_label"]), _p(report.target_market, styles["kpi_value"])],
+        [_p(labels["market"], styles["kpi_label"]), _p(_market_name(report.target_market, language), styles["kpi_value"])],
         [_p(labels["date"], styles["kpi_label"]), _p(date.today().isoformat(), styles["kpi_value"])],
         [_p(labels["decision"], styles["kpi_label"]), _p(decision, styles["kpi_value"])],
         [_p(labels["score"], styles["kpi_label"]), _p(f"{report.detailed_scoring.total}/100", styles["kpi_value"])],
@@ -204,7 +206,7 @@ def _cover(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, Pa
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
     product_image = _product_image(report.product_image_url, styles, language)
-    summary = _localized(report.localized_analysis, "business_reading", language)
+    summary = _executive_summary(report, language)
     left = [
         Image(str(NEXORA_LOGO), width=46 * mm, height=12 * mm, kind="proportional"),
         Spacer(1, 5),
@@ -233,11 +235,11 @@ def _product_section(report: PrototypeAnalyzeResponse, language: str, styles: di
     rows = [
         (labels["requested_product"], _value(product, "original_product") or _product_name(report)),
         (labels["normalized_product"], _value(product, "normalized_product") or labels["unavailable"]),
-        (labels["category"], _value(product, "product_category") or labels["unavailable"]),
+        (labels["category"], _category_name(_value(product, "product_category"), language)),
         (labels["variant"], _value(product, "brand_or_model") or labels["unavailable"]),
         (labels["specifications"], ", ".join(_value(product, "technical_specs") or []) or labels["unavailable"]),
-        (labels["market"], report.target_market),
-        (labels["sourcing_country"], report.sourcing_country),
+        (labels["market"], _market_name(report.target_market, language)),
+        (labels["sourcing_country"], _country_name(report.sourcing_country, language)),
     ]
     description = _localized(report.localized_analysis, "product_description", language) or report.product_description
     return _section(labels["product_section"], [_p(_escape(description), styles["body"])], _key_value_table(rows, styles), styles)
@@ -248,7 +250,7 @@ def _sourcing_section(report: PrototypeAnalyzeResponse, language: str, styles: d
     china_rows = [
         [offer.name or labels["unavailable"], offer.product_title or labels["unavailable"],
          _price_range(offer.price_min, offer.price_max, offer.currency or "USD"),
-         _tnd_range(offer.price_min_tnd, offer.price_max_tnd), offer.moq or labels["unavailable"],
+         _tnd_range(offer.price_min_tnd, offer.price_max_tnd), _format_moq(offer.moq, language, labels),
          _source_link(offer.source_url, offer.name or labels["source"], styles, language)]
         for offer in report.china_offers
     ]
@@ -298,11 +300,30 @@ def _market_section(report: PrototypeAnalyzeResponse, language: str, styles: dic
     blocks = [_p(labels["market_section"], styles["section"]), _p(labels["retail_prices"], styles["subsection"])]
     blocks.append(_table(
         [labels["seller"], labels["brand"], labels["product"], labels["volume"], labels["price"], labels["normalized"], labels["city"], labels["source"]],
-        retail_rows or [[labels["unavailable"]] * 8], [27, 22, 42, 18, 23, 35, 22, 26], styles,
+        retail_rows or [[labels["unavailable"]] * 8], [22, 19, 36, 14, 21, 27, 18, 21], styles,
     ))
     blocks.append(_p(labels["wholesale_prices"], styles["subsection"]))
     blocks.append(_p(_escape(labels["wholesale_observed"] if report.tunisia_wholesale_offers else labels["no_wholesale"]), styles["body"]))
     return blocks
+
+
+def _comparability_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
+    labels = _labels(language)
+    level = _level(report.comparability.level, language)
+    reasons = _comparability_reasons(report, language)
+    normalization = _market_price_basis(report, language)
+    body = f"{labels['market_comparability']}: {level}. " + " ".join(reasons) + f" {normalization}"
+    return _section(labels["comparability_section"], [_p(_escape(body), styles["body"])], None, styles)
+
+
+def _comparability_reasons(report: PrototypeAnalyzeResponse, language: str) -> list[str]:
+    if language != "fr":
+        return report.comparability.reasons or ["Comparability could not be established."]
+    if report.comparability.level == "high":
+        return ["Les produits observés partagent une catégorie et des caractéristiques suffisamment proches."]
+    if report.comparability.level == "medium":
+        return ["Les produits sont comparables pour une première lecture, mais les marques, spécifications ou conditionnements diffèrent."]
+    return ["Les produits comparés ne sont pas suffisamment équivalents pour soutenir une marge ferme."]
 
 
 def _competition_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
@@ -316,19 +337,26 @@ def _competition_section(report: PrototypeAnalyzeResponse, language: str, styles
 def _profitability_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
     labels = _labels(language)
     profit = report.profitability_estimate
+    selling_price = _comparable_market_price(report)
+    landed_cost = profit.estimated_landed_cost_per_unit_tnd
+    margin = round(selling_price - landed_cost, 2) if selling_price is not None and landed_cost is not None else None
+    quantity = report.analysis_quantity_units
+    gross_profit = round(margin * quantity, 2) if margin is not None else None
+    ad_budget = profit.digital_ad_budget_default_tnd
+    profit_after_ads = round(gross_profit - ad_budget, 2) if gross_profit is not None and ad_budget is not None else None
     rows = [
-        [labels["quantity"], str(report.analysis_quantity_units)],
+        [labels["quantity"], str(quantity)],
         [labels["purchase_price"], _tnd(profit.source_unit_price_tnd, labels)],
-        [labels["landed_cost"], _tnd(profit.estimated_landed_cost_per_unit_tnd, labels)],
-        [labels["selling_price"], _tnd(profit.estimated_selling_price_tnd, labels)],
-        [labels["gross_margin"], _tnd(profit.gross_margin_per_unit_before_marketing_tnd, labels)],
-        [labels["margin_percent"], _margin_percent(profit)],
-        [labels["gross_profit"], _tnd(profit.gross_profit_for_1000_before_marketing_tnd, labels)],
+        [labels["landed_cost"], _tnd(landed_cost, labels)],
+        [labels["selling_price"], _tnd(selling_price, labels)],
+        [labels["gross_margin"], _tnd(margin, labels)],
+        [labels["margin_percent"], _margin_percent_values(margin, selling_price)],
+        [labels["gross_profit"], _tnd(gross_profit, labels)],
         [labels["ad_budget"], _budget(profit)],
-        [labels["profit_after_ads"], _tnd(profit.net_profit_for_1000_after_marketing_tnd, labels)],
+        [labels["profit_after_ads"], _tnd(profit_after_ads, labels)],
     ]
-    notes = _profitability_notes(profit, language)
-    flowables = [_p(labels["profitability_section"], styles["section"]), _table([labels["metric"], labels["value"]], rows, [85, 90], styles)]
+    notes = _profitability_notes(report, profit, language)
+    flowables = [_p(labels["profitability_section"], styles["section"]), _p(_market_price_basis(report, language), styles["muted"]), _table([labels["metric"], labels["value"]], rows, [85, 90], styles)]
     if notes:
         flowables.append(_p("<br/>".join(_escape(note) for note in dict.fromkeys(filter(None, notes))), styles["muted"]))
     return flowables
@@ -347,7 +375,6 @@ def _ads_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[s
 
 def _risks_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
     labels = _labels(language)
-    risks = list(dict.fromkeys([*report.profitability_estimate.risks, *report.warnings]))
     content = [_p(f"• {_escape(risk)}", styles["body"]) for risk in _pdf_risks(report, language)] or [_p(labels["unavailable"], styles["body"])]
     return _section(labels["risks_section"], content, None, styles)
 
@@ -355,7 +382,7 @@ def _risks_section(report: PrototypeAnalyzeResponse, language: str, styles: dict
 def _decision_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
     labels = _labels(language)
     scores = [[_criterion_label(item.key, language), f"{item.score}/{item.max_score}", _criterion_justification(item, language)] for item in report.detailed_scoring.criteria]
-    blocks = [_p(labels["decision_section"], styles["section"]), _p(_decision(report.recommendation, language), styles["decision"]), _p(
+    blocks = [_p(labels["decision_section"], styles["section"]), _p(_decision_for_pdf(report, language), styles["decision"]), _p(
         f"{labels['score']}: {report.detailed_scoring.total}/100 · {labels['confidence']}: {_confidence(report.decision_scores.confidence, language)}", styles["center"],
     )]
     decision_reason = _decision_reason(report, language)
@@ -368,7 +395,7 @@ def _decision_section(report: PrototypeAnalyzeResponse, language: str, styles: d
 
 def _sources_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
     labels = _labels(language)
-    rows = [[_source_link(source.url, source.title or labels["source"], styles, language), _source_data_used(source.data_used, language), _confidence(source.confidence, language)] for source in report.sources]
+    rows = [[_source_link(source.url, _source_display_name(source, labels["source"]), styles, language), _source_data_used(source.data_used, language), _confidence(source.confidence, language)] for source in _relevant_sources(report)]
     return _section(labels["sources_section"], [_p(labels["sources_intro"], styles["muted"])], _table(
         [labels["source"], labels["data_used"], labels["confidence"]], rows or [[labels["unavailable"]] * 3], [80, 70, 25], styles,
     ), styles)
@@ -395,11 +422,11 @@ def _landed_cost_note(report: PrototypeAnalyzeResponse, language: str) -> str:
     return " + ".join(parts) + f" = coût rendu estimé {_tnd(report.landed_cost.total_tnd, _labels(language))}. " + _labels(language)["partial_estimate"]
 
 
-def _profitability_notes(profit: Any, language: str) -> list[str]:
+def _profitability_notes(report: PrototypeAnalyzeResponse, profit: Any, language: str) -> list[str]:
     if language != "fr":
         return [profit.pricing_basis, *profit.assumptions]
     basis = profit.pricing_basis
-    if "normalized" in basis.lower():
+    if "normalized" in basis.lower() or report.retail_offers:
         basis = "Les prix ont été normalisés par litre ou par kilogramme car les conditionnements diffèrent."
     elif basis:
         basis = "Les prix des conditionnements comparables ont été utilisés sans conversion supplémentaire."
@@ -472,15 +499,178 @@ def _source_data_used(value: str, language: str) -> str:
     return translations.get(value, "Donnée source") if value else "Non disponible"
 
 
+def _comparable_market_price(report: PrototypeAnalyzeResponse) -> float | None:
+    target_volume, target_unit = _target_volume(report)
+    normalized_values = []
+    raw_values = []
+    for offer in report.retail_offers:
+        normalized = _retail_normalized_value(offer)
+        volume, unit = _volume_value(offer.volume_text or offer.product_title or "")
+        if normalized is not None and unit == target_unit:
+            normalized_values.append(normalized)
+        if offer.price_tnd is not None:
+            raw_values.append(offer.price_tnd)
+    if normalized_values and target_volume:
+        return round(sum(normalized_values) / len(normalized_values) * target_volume, 2)
+    if raw_values:
+        return round(sum(raw_values) / len(raw_values), 2)
+    return None
+
+
+def _target_volume(report: PrototypeAnalyzeResponse) -> tuple[float | None, str | None]:
+    product = report.product_understanding
+    text = " ".join([
+        _value(product, "original_product") or "",
+        _value(product, "normalized_product") or "",
+        " ".join(_value(product, "technical_specs") or []),
+    ])
+    return _volume_value(text)
+
+
+def _volume_value(text: str) -> tuple[float | None, str | None]:
+    match = re.search(r"(\d+(?:[.,]\d+)?)\s*(ml|l|litre?s?|kg|g)\b", text, re.IGNORECASE)
+    if not match:
+        return None, None
+    quantity = float(match.group(1).replace(",", "."))
+    unit = match.group(2).lower()
+    if unit == "ml":
+        return quantity / 1000, "L"
+    if unit in {"l", "litre", "litres"}:
+        return quantity, "L"
+    if unit == "g":
+        return quantity / 1000, "kg"
+    return quantity, "kg"
+
+
+def _market_price_basis(report: PrototypeAnalyzeResponse, language: str) -> str:
+    labels = _labels(language)
+    target_volume, target_unit = _target_volume(report)
+    comparable_price = _comparable_market_price(report)
+    values = [
+        _retail_normalized_value(offer)
+        for offer in report.retail_offers
+        if _retail_normalized_value(offer) is not None and _volume_value(offer.volume_text or offer.product_title or "")[1] == target_unit
+    ]
+    if values and target_volume and comparable_price is not None:
+        unit = "L" if target_unit == "L" else "kg"
+        average = sum(values) / len(values)
+        return f"{labels['market_reference']}: {average:.3f} TND/{unit} × {target_volume:g} {unit} = {comparable_price:g} TND."
+    return labels["market_reference_unavailable"]
+
+
+def _margin_percent_values(margin: float | None, selling_price: float | None) -> str:
+    if margin is None or not selling_price:
+        return "Non disponible"
+    return f"{margin / selling_price * 100:.1f}%"
+
+
+def _executive_summary(report: PrototypeAnalyzeResponse, language: str) -> str:
+    decision = _decision_for_pdf(report, language)
+    score = report.detailed_scoring.total
+    market_price = _comparable_market_price(report)
+    landed = report.profitability_estimate.estimated_landed_cost_per_unit_tnd
+    margin = round(market_price - landed, 2) if market_price is not None and landed is not None else None
+    if language == "fr":
+        if market_price is None or landed is None:
+            return f"La décision finale est {decision} avec un score de {score}/100. Le prix marché comparable ou le coût rendu ne peut pas être confirmé avec les données disponibles."
+        return f"La décision finale est {decision} avec un score de {score}/100. Le prix marché comparable est de {market_price:g} TND pour le conditionnement cible, contre un coût rendu estimé de {landed:g} TND et une marge brute indicative de {margin:g} TND. La décision reste soumise aux vérifications indiquées dans ce rapport."
+    if market_price is None or landed is None:
+        return f"The final decision is {decision} with a score of {score}/100. Comparable market price or landed cost could not be confirmed from the available data."
+    return f"The final decision is {decision} with a score of {score}/100. The comparable market price is {market_price:g} TND for the target package, against an estimated landed cost of {landed:g} TND and an indicative gross margin of {margin:g} TND. The decision remains subject to the verification conditions shown in this report."
+
+
+def _decision_for_pdf(report: PrototypeAnalyzeResponse, language: str) -> str:
+    if report.recommendation == "go" and (
+        report.decision_scores.confidence != "high"
+        or report.landed_cost.partial_estimate
+        or report.comparability.level in {"medium", "low", "unknown"}
+    ):
+        return "GO SOUS CONDITIONS" if language == "fr" else "GO WITH CONDITIONS"
+    return _decision(report.recommendation, language)
+
+
+def _market_name(value: str, language: str) -> str:
+    return "Tunisie" if language == "fr" and value.strip().lower() == "tunisia" else value
+
+
+def _country_name(value: str, language: str) -> str:
+    return "Chine" if language == "fr" and value.strip().lower() == "china" else value
+
+
+def _category_name(value: str | None, language: str) -> str:
+    if not value:
+        return "Non disponible" if language == "fr" else "Not available"
+    if language == "fr" and value.strip().lower() in {"automotive fluids", "automotive fluid"}:
+        return "Fluides automobiles"
+    return value
+
+
+def _format_moq(value: str | None, language: str, labels: dict[str, str]) -> str:
+    if not value:
+        return labels["unavailable"]
+    if language != "fr":
+        return value
+    match = re.fullmatch(r"(\d+(?:[.,]\d+)?)\s*(.*)", value.strip())
+    if not match:
+        return f"{value} — unité non précisée"
+    quantity, unit = match.groups()
+    translations = {"piece": "pièce", "pieces": "pièces", "pcs": "pièces", "unit": "unité", "units": "unités", "carton": "carton", "cartons": "cartons"}
+    return f"{quantity} {translations.get(unit.lower(), unit)}" if unit else f"{quantity} — unité non précisée"
+
+
+def _relevant_sources(report: PrototypeAnalyzeResponse) -> list[Any]:
+    used_urls = {
+        offer.source_url for offer in [*report.china_offers, *report.tunisia_wholesale_offers, *report.retail_offers]
+        if offer.source_url
+    }
+    product_text = " ".join([
+        _value(report.product_understanding, "original_product") or "",
+        _value(report.product_understanding, "normalized_product") or "",
+        _value(report.product_understanding, "product_category") or "",
+        " ".join(_value(report.product_understanding, "technical_specs") or []),
+    ]).lower()
+    terms = set(re.findall(r"[a-z0-9]+", product_text))
+    if terms.intersection({"huile", "oil", "moteur", "engine", "automotive"}):
+        terms.update({"huile", "oil", "moteur", "engine", "motor", "automotive", "lubricant", "5w30"})
+    terms = {term for term in terms if len(term) > 2}
+    selected, related = [], []
+    for source in report.sources:
+        if source.url in used_urls:
+            selected.append(source)
+            continue
+        haystack = f"{source.title} {source.url}".lower().replace("-", "").replace(" ", "")
+        if any(term.replace("-", "") in haystack for term in terms):
+            related.append(source)
+    unique = []
+    seen_urls = set()
+    for source in [*selected, *related]:
+        if source.url in seen_urls:
+            continue
+        seen_urls.add(source.url)
+        unique.append(source)
+    return unique[:6]
+
+
 def _normalized_retail_price(offer: Any, language: str, labels: dict[str, str]) -> str:
-    if offer.normalized_price_per_unit_tnd is not None:
+    normalized = _retail_normalized_value(offer)
+    if normalized is not None:
+        volume_unit = _volume_value(offer.volume_text or offer.product_title or "")[1]
+        if volume_unit:
+            return f"{normalized:g} TND/{volume_unit}"
         unit = "unité" if language == "fr" else "unit"
-        return f"{offer.normalized_price_per_unit_tnd:g} TND/{unit}"
+        return f"{normalized:g} TND/{unit}"
     if not offer.normalized_price_text:
         return labels["unavailable"]
     if language == "fr":
         return "Prix normalisé disponible"
     return offer.normalized_price_text
+
+
+def _retail_normalized_value(offer: Any) -> float | None:
+    volume, unit = _volume_value(offer.volume_text or offer.product_title or "")
+    if offer.price_tnd is not None and volume and unit in {"L", "kg"}:
+        return round(offer.price_tnd / volume, 3)
+    return offer.normalized_price_per_unit_tnd
 
 
 def _table(headers: list[str], rows: list[list[Any]], widths_mm: list[float], styles: dict[str, ParagraphStyle]) -> LongTable:
@@ -518,6 +708,22 @@ def _key_value_table(rows: list[tuple[str, str]], styles: dict[str, ParagraphSty
 
 
 def _product_image(url: str | None, styles: dict[str, ParagraphStyle], language: str) -> Any:
+    try:
+        raw = _read_image_source(url) if url else None
+    except (OSError, ValueError, httpx.HTTPError):
+        raw = None
+    if raw and _is_svg(raw):
+        try:
+            drawing = svg2rlg(BytesIO(raw))
+        except (OSError, ValueError, TypeError):
+            drawing = None
+        if drawing and drawing.width and drawing.height:
+            max_width, max_height = 55 * mm, 78 * mm
+            scale = min(max_width / drawing.width, max_height / drawing.height)
+            drawing.scale(scale, scale)
+            drawing.width *= scale
+            drawing.height *= scale
+            return drawing
     image_bytes = _load_image(url)
     if image_bytes:
         reader = ImageReader(BytesIO(image_bytes))
@@ -550,11 +756,20 @@ def _load_image(url: str | None) -> bytes | None:
         return None
 
 
+def _is_svg(raw: bytes) -> bool:
+    return raw.lstrip().lower().startswith(b"<svg") or b"<svg" in raw[:512].lower()
+
+
 def _read_image_source(url: str) -> bytes | None:
     if url.startswith("data:"):
         header, encoded = url.split(",", 1)
         return b64decode(encoded) if ";base64" in header else unquote(encoded).encode()
-    response = httpx.get(url, timeout=8, follow_redirects=True)
+    response = httpx.get(
+        url,
+        timeout=8,
+        follow_redirects=True,
+        headers={"User-Agent": "NEXORA-PDF/1.0"},
+    )
     response.raise_for_status()
     return response.content
 
@@ -575,6 +790,14 @@ def _source_link(url: str, label: str, styles: dict[str, ParagraphStyle], langua
     if not url:
         return _p(_labels(language)["unavailable"], styles["table_cell"])
     return Paragraph(f'<link href="{html.escape(url, quote=True)}" color="#164698"><u>{_escape(label)}</u><br/>{_escape(_labels(language)["view_source"])}</link>', styles["table_cell"])
+
+
+def _source_display_name(source: Any, fallback: str) -> str:
+    title = (source.title or "").strip()
+    if title.lower().startswith(("http://", "https://")):
+        hostname = urlsplit(title).netloc or urlsplit(source.url or "").netloc
+        return hostname.removeprefix("www.") or fallback
+    return title or urlsplit(source.url or "").netloc.removeprefix("www.") or fallback
 
 
 def _p(text: str, style: ParagraphStyle) -> Paragraph:
@@ -613,14 +836,6 @@ def _price_range(minimum: float | None, maximum: float | None, currency: str) ->
     if maximum is None or maximum == minimum:
         return f"{minimum:g} {currency}"
     return f"{minimum:g}–{maximum:g} {currency}"
-
-
-def _margin_percent(profit: Any) -> str:
-    margin = _value(profit, "gross_margin_per_unit_before_marketing_tnd")
-    selling = _value(profit, "estimated_selling_price_tnd")
-    if margin is None or not selling:
-        return "Non disponible"
-    return f"{margin / selling * 100:.1f}%"
 
 
 def _budget(profit: Any) -> str:
@@ -668,7 +883,7 @@ def _criterion_label(key: str, language: str) -> str:
         "market_demand": ("Demande marché", "Market demand"), "margin": ("Marge", "Margin"),
         "sourcing": ("Sourcing", "Sourcing"), "competition": ("Concurrence", "Competition"),
         "ads_potential": ("Potentiel Ads", "Ads potential"), "recurrence": ("Récurrence", "Recurrence"),
-        "differentiation": ("Différenciation", "Differentiation"), "risk": ("Risque", "Risk"),
+        "differentiation": ("Différenciation", "Differentiation"), "risk": ("Maîtrise du risque", "Risk management"),
     }
     return labels.get(key, (key, key))[0 if language == "fr" else 1]
 
@@ -693,11 +908,11 @@ def _labels(language: str) -> dict[str, str]:
             "ad_budget": "Budget publicitaire hypothétique", "profit_after_ads": "Profit après Ads", "commercial_section": "Potentiel commercial", "ads_section": "Potentiel Ads / marketing",
             "ads_qualitative": "Analyse qualitative : aucune valeur CPC, CPA, ROAS ou volume de recherche n’est inventée.", "risks_section": "Risques principaux",
             "decision_section": "Décision GO / NO GO", "scoring": "Scoring détaillé", "criterion": "Critère", "justification": "Justification",
-            "sources_section": "Sources & preuves", "sources_intro": "Les données importantes proviennent des sources ci-dessous ou de calculs explicitement indiqués.",
+            "comparability_section": "Comparabilité marché", "market_comparability": "Comparabilité marché", "comparability_unavailable": "Comparabilité non disponible.", "market_reference": "Référence marché comparable", "market_reference_unavailable": "Référence marché comparable non disponible.", "sources_section": "Sources & preuves", "sources_intro": "Les données importantes proviennent des sources ci-dessous ou de calculs explicitement indiqués.",
             "data_used": "Donnée utilisée", "view_source": "Voir la source", "unavailable": "Non disponible",
         }
     return {
-        "report_title": "Product opportunity report", "product": "Product", "market": "Market", "date": "Date", "decision": "Decision", "score": "Score", "confidence": "Confidence", "summary": "Executive summary", "summary_unavailable": "Summary unavailable.", "product_image": "Product image", "image_unavailable": "Product image unavailable", "product_section": "Product analyzed", "requested_product": "Requested product", "normalized_product": "Normalized product", "category": "Category", "variant": "Variant / model", "specifications": "Format / specifications", "sourcing_country": "Sourcing country", "international_sourcing": "International sourcing", "suppliers": "Suppliers", "supplier": "Supplier", "product": "Product", "price": "Price", "tnd_conversion": "TND conversion", "moq": "MOQ", "source": "Source", "wholesale_prices": "Wholesale prices", "wholesale_observed": "Tunisian wholesale offers were observed.", "no_wholesale": "No reliable public wholesale price found.", "landed_cost_section": "Landed cost in Tunisia", "landed_cost": "Estimated landed cost", "partial_estimate": "Partial estimate — some import charges are not included.", "component": "Component", "supplier_price": "Supplier price", "shipping": "Estimated shipping", "customs": "Import duties / taxes", "handling": "Handling", "misc": "Other charges", "value": "Value", "data_quality": "Data quality", "market_section": "Tunisia market", "retail_prices": "Retail prices", "seller": "Seller", "brand": "Brand", "volume": "Volume", "normalized": "Normalized price", "city": "City", "competition_section": "Competitive analysis", "competition_level": "Competition level", "brands": "Brands", "sellers": "Sellers", "profitability_section": "Profitability analysis", "metric": "Metric", "quantity": "Analyzed quantity", "purchase_price": "Unit purchase price", "selling_price": "Recommended selling price", "gross_margin": "Gross margin / unit", "margin_percent": "Margin %", "gross_profit": "Gross profit", "ad_budget": "Hypothetical ad budget", "profit_after_ads": "Profit after Ads", "commercial_section": "Commercial potential", "ads_section": "Ads / marketing potential", "ads_qualitative": "Qualitative analysis: no CPC, CPA, ROAS or search-volume values are invented.", "risks_section": "Main risks", "decision_section": "GO / NO GO decision", "scoring": "Detailed scoring", "criterion": "Criterion", "justification": "Justification", "sources_section": "Sources & evidence", "sources_intro": "Key data comes from the sources below or from explicitly labeled calculations.", "data_used": "Data used", "view_source": "View source", "unavailable": "Not available",
+        "comparability_section": "Market comparability", "market_comparability": "Market comparability", "comparability_unavailable": "Comparability unavailable.", "market_reference": "Comparable market reference", "market_reference_unavailable": "Comparable market reference unavailable.", "report_title": "Product opportunity report", "product": "Product", "market": "Market", "date": "Date", "decision": "Decision", "score": "Score", "confidence": "Confidence", "summary": "Executive summary", "summary_unavailable": "Summary unavailable.", "product_image": "Product image", "image_unavailable": "Product image unavailable", "product_section": "Product analyzed", "requested_product": "Requested product", "normalized_product": "Normalized product", "category": "Category", "variant": "Variant / model", "specifications": "Format / specifications", "sourcing_country": "Sourcing country", "international_sourcing": "International sourcing", "suppliers": "Suppliers", "supplier": "Supplier", "product": "Product", "price": "Price", "tnd_conversion": "TND conversion", "moq": "MOQ", "source": "Source", "wholesale_prices": "Wholesale prices", "wholesale_observed": "Tunisian wholesale offers were observed.", "no_wholesale": "No reliable public wholesale price found.", "landed_cost_section": "Landed cost in Tunisia", "landed_cost": "Estimated landed cost", "partial_estimate": "Partial estimate — some import charges are not included.", "component": "Component", "supplier_price": "Supplier price", "shipping": "Estimated shipping", "customs": "Import duties / taxes", "handling": "Handling", "misc": "Other charges", "value": "Value", "data_quality": "Data quality", "market_section": "Tunisia market", "retail_prices": "Retail prices", "seller": "Seller", "brand": "Brand", "volume": "Volume", "normalized": "Normalized price", "city": "City", "competition_section": "Competitive analysis", "competition_level": "Competition level", "brands": "Brands", "sellers": "Sellers", "profitability_section": "Profitability analysis", "metric": "Metric", "quantity": "Analyzed quantity", "purchase_price": "Unit purchase price", "selling_price": "Recommended selling price", "gross_margin": "Gross margin / unit", "margin_percent": "Margin %", "gross_profit": "Gross profit", "ad_budget": "Hypothetical ad budget", "profit_after_ads": "Profit after Ads", "commercial_section": "Commercial potential", "ads_section": "Ads / marketing potential", "ads_qualitative": "Qualitative analysis: no CPC, CPA, ROAS or search-volume values are invented.", "risks_section": "Main risks", "decision_section": "GO / NO GO decision", "scoring": "Detailed scoring", "criterion": "Criterion", "justification": "Justification", "sources_section": "Sources & evidence", "sources_intro": "Key data comes from the sources below or from explicitly labeled calculations.", "data_used": "Data used", "view_source": "View source", "unavailable": "Not available",
     }
 
 

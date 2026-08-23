@@ -1973,10 +1973,11 @@ async function exportOpportunityPdf() {
 
 function dashboardImageUrlForPdf(report) {
   const image = productPhoto.querySelector("img");
-  if (!image || !report.product_image_url || report.product_image_confidence === "fallback") return null;
+  if (!image) return null;
   if (image.alt.includes("Illustrative product image unavailable")) return null;
-  if (image.src.startsWith("data:image/")) return image.src;
-  return report.product_image_url;
+  const displayedSource = image.currentSrc || image.src;
+  if (displayedSource.startsWith("data:image/") || displayedSource.startsWith("http")) return displayedSource;
+  return report.product_image_url || null;
 }
 
 async function readBlob(response) {
@@ -2191,7 +2192,7 @@ function applyStaticTranslations() {
 function renderProductImage(data) {
   const productLabel = data.product_understanding?.normalized_product || data.product_description || "Product image";
   const imageUrl = String(data.product_image_url || "").trim();
-  if (!imageUrl || data.product_image_confidence === "fallback") {
+  if (!imageUrl) {
     return `<div class="placeholder"><img src="${fallbackProductImage(productLabel)}" alt="${escapeAttribute(copy[currentLanguage].noReliableProductImageFound)}"><p>${copy[currentLanguage].noReliableProductImageFound}</p></div>`;
   }
   return `<img src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(productLabel)}" onerror="handleProductImageError(this, '${escapeAttribute(productLabel)}')">`;
