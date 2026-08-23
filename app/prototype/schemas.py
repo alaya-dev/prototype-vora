@@ -16,6 +16,8 @@ DominantDecisionSide = Literal["go", "no_go", "balanced"]
 
 class PrototypeAnalyzeRequest(StrictModel):
     product: str = Field(default="", max_length=300)
+    target_market: str = Field(default="Tunisia", max_length=80)
+    sourcing_country: str = Field(default="China", max_length=80)
     quantity_scenarios: list[int] = Field(default_factory=lambda: [1000])
 
 
@@ -108,6 +110,7 @@ class ProfitabilityEstimate(StrictModel):
     ad_cost_notes: str = ""
     estimated_source_cost_tnd: float | None = None
     estimated_selling_price_tnd: float | None = None
+    pricing_basis: str = ""
     estimated_meta_ads_cost_per_sale_tnd: float | None = None
     gross_margin_per_unit_before_marketing_tnd: float | None = None
     gross_profit_for_1000_before_marketing_tnd: float | None = None
@@ -136,14 +139,6 @@ class DecisionScores(StrictModel):
     main_decision_factors: list[str] = Field(default_factory=list)
 
 
-class HiddenSourcingLinks(StrictModel):
-    china_sourcing_links: list[PrototypeSourcingLink] = Field(default_factory=list)
-    tunisia_sourcing_links: list[PrototypeSourcingLink] = Field(default_factory=list)
-    seller_contacts: list[ContactSellerCard] = Field(default_factory=list)
-    retail_evidence_debug: dict = Field(default_factory=dict)
-    product_image_debug: dict = Field(default_factory=dict)
-
-
 class LocalizedClientAnalysis(StrictModel):
     product_description_en: str = ""
     product_description_fr: str = ""
@@ -155,8 +150,100 @@ class LocalizedClientAnalysis(StrictModel):
     business_reading_fr: str = ""
 
 
+ProvenanceLevel = Literal["observed", "computed", "estimate", "unavailable"]
+ComparabilityLevel = Literal["high", "medium", "low", "unknown"]
+
+
+class SourcingOfferView(StrictModel):
+    name: str = ""
+    supplier_type: str = ""
+    product_title: str | None = None
+    price_text: str | None = None
+    price_min: float | None = None
+    price_max: float | None = None
+    currency: str = ""
+    price_min_tnd: float | None = None
+    price_max_tnd: float | None = None
+    moq: str | None = None
+    source_url: str = ""
+    confidence: str = "low"
+    product_match: str = "broad"
+    match_notes: str = ""
+
+
+class RetailOfferView(StrictModel):
+    seller_name: str = ""
+    brand: str = ""
+    product_title: str | None = None
+    volume_text: str = ""
+    price_tnd: float | None = None
+    price_range_tnd: str | None = None
+    normalized_price_text: str = ""
+    normalized_price_per_unit_tnd: float | None = None
+    availability: str = ""
+    city: str = ""
+    price_type: str = "unknown"
+    page_type: str = "unknown"
+    source_url: str = ""
+    confidence: str = "low"
+    product_match: str = "broad"
+
+
+class LandedCostComponentView(StrictModel):
+    label_key: str = ""
+    value_tnd: float | None = None
+    provenance: ProvenanceLevel = "unavailable"
+    note: str = ""
+
+
+class LandedCostView(StrictModel):
+    total_tnd: float | None = None
+    components: list[LandedCostComponentView] = Field(default_factory=list)
+    partial_estimate: bool = True
+    note: str = ""
+
+
+class ComparabilityAssessment(StrictModel):
+    level: ComparabilityLevel = "unknown"
+    score: int = 0
+    reasons: list[str] = Field(default_factory=list)
+    normalization_note: str = ""
+    margin_is_indicative_only: bool = False
+
+
+class ScoreCriterion(StrictModel):
+    key: str = ""
+    score: int = 0
+    max_score: int = 0
+    justification: str = ""
+
+
+class DetailedScoring(StrictModel):
+    total: int = 0
+    criteria: list[ScoreCriterion] = Field(default_factory=list)
+
+
+class SourceReference(StrictModel):
+    title: str = ""
+    url: str = ""
+    data_used: str = ""
+    date: str = ""
+    type: str = "source"
+    confidence: str = "low"
+
+
+class HiddenSourcingLinks(StrictModel):
+    china_sourcing_links: list[PrototypeSourcingLink] = Field(default_factory=list)
+    tunisia_sourcing_links: list[PrototypeSourcingLink] = Field(default_factory=list)
+    seller_contacts: list[ContactSellerCard] = Field(default_factory=list)
+    retail_evidence_debug: dict = Field(default_factory=dict)
+    product_image_debug: dict = Field(default_factory=dict)
+
+
 class PrototypeAnalyzeResponse(StrictModel):
     run_id: str
+    target_market: str = "Tunisia"
+    sourcing_country: str = "China"
     product_understanding: ProductUnderstanding | dict = Field(default_factory=dict)
     product_image_url: str | None = None
     product_image_source_url: str | None = None
@@ -165,7 +252,17 @@ class PrototypeAnalyzeResponse(StrictModel):
     product_description: str = ""
     localized_analysis: LocalizedClientAnalysis = Field(default_factory=LocalizedClientAnalysis)
     sourcing_summary: SourcingSummary = Field(default_factory=SourcingSummary)
+    china_offers: list[SourcingOfferView] = Field(default_factory=list)
+    tunisia_wholesale_offers: list[SourcingOfferView] = Field(default_factory=list)
     retail_market_summary: RetailMarketSummary = Field(default_factory=RetailMarketSummary)
+    retail_offers: list[RetailOfferView] = Field(default_factory=list)
+    landed_cost: LandedCostView = Field(default_factory=LandedCostView)
+    comparability: ComparabilityAssessment = Field(default_factory=ComparabilityAssessment)
+    competition_level: Literal["low", "medium", "high", "unknown"] = "unknown"
+    detailed_scoring: DetailedScoring = Field(default_factory=DetailedScoring)
+    commercial_potential_score: int = 0
+    ads_potential_score: int = 0
+    sources: list[SourceReference] = Field(default_factory=list)
     profitability_estimate: ProfitabilityEstimate = Field(default_factory=ProfitabilityEstimate)
     analysis_quantity_units: int = 1000
     decision_scores: DecisionScores = Field(default_factory=DecisionScores)

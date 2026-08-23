@@ -1,0 +1,9 @@
+INFO:     127.0.0.1:52447 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52447 - "GET /logo/Nexora_logo_transparent_clean_cropped.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52449 - "GET /report.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52449 - "GET /logo/favicon.ico HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52599 - "POST /prototype/analyze HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53476 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53476 - "GET /logo/Nexora_logo_transparent_clean_cropped.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53477 - "GET /report.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53477 - "POST /prototype/analyze HTTP/1.1" 200 OK

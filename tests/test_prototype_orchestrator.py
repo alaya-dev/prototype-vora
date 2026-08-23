@@ -11,7 +11,7 @@ from app.benchmark.schemas import (
     TunisiaRetailOffer,
     TunisiaSourcingOffer,
 )
-from app.prototype.research_orchestrator import PrototypeResearchOrchestrator
+from app.prototype.research_orchestrator import PrototypeResearchOrchestrator, _comparable_prices
 from app.prototype.schemas import (
     CostConfig,
     ExampleRetailPrice,
@@ -312,6 +312,52 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(profit.digital_ad_budget_max_tnd, 500)
         self.assertEqual(profit.digital_ad_budget_default_tnd, 400)
         self.assertEqual(profit.net_profit_for_1000_after_marketing_tnd, 25280)
+
+    async def test_profitability_is_recomputed_from_margin_and_fixed_1000_unit_scenario(self) -> None:
+        result = await _orchestrator().analyze(
+            PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
+        )
+
+        profit = result.profitability_estimate
+
+        self.assertEqual(profit.gross_margin_per_unit_before_marketing_tnd, 25.68)
+        self.assertEqual(profit.gross_profit_for_1000_before_marketing_tnd, 25680)
+        self.assertEqual(profit.net_profit_for_1000_after_marketing_tnd, 25280)
+        self.assertEqual(profit.estimated_profit_for_1000_units_tnd, 25280)
+
+    def test_comparable_prices_normalize_different_package_volumes(self) -> None:
+        analysis = ProviderAnalysisResult(
+            china_sourcing_offers=[
+                ChinaSourcingOffer(
+                    name="Oil supplier",
+                    product_title="5W-30 engine oil 1L",
+                    price_min_usd_numeric=2,
+                    source_url="https://cn.example/oil",
+                )
+            ],
+            tunisia_retail_market=TunisiaRetailMarket(
+                retail_offers=[
+                    TunisiaRetailOffer(
+                        seller_name="Retail 1",
+                        product_title="5W-30 engine oil 4L",
+                        price_min_tnd_numeric=40,
+                        source_url="https://tn.example/oil-1",
+                    ),
+                    TunisiaRetailOffer(
+                        seller_name="Retail 2",
+                        product_title="5W-30 engine oil 4L",
+                        price_min_tnd_numeric=44,
+                        source_url="https://tn.example/oil-2",
+                    ),
+                ]
+            ),
+        )
+
+        source_price, retail_price, basis = _comparable_prices(analysis, CostConfig())
+
+        self.assertEqual(source_price, 6.2)
+        self.assertEqual(retail_price, 10.5)
+        self.assertIn("TND/L", basis)
 
     async def test_recommendation_is_conservative_for_equivalent_oem_or_weak_evidence(self) -> None:
         analysis = _analysis()
@@ -645,6 +691,28 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.retail_market_summary.retail_max_tnd, 35)
         self.assertEqual(result.retail_market_summary.retail_avg_tnd, 24.45)
         self.assertEqual(result.retail_market_summary.retail_price_range_tnd, "13.9 to 35 TND")
+
+    async def test_localized_analysis_fallback_stays_product_and_evidence_specific(self) -> None:
+        seeded = _analysis()
+        draft = PrototypeAnalysisDraft(
+            product_description="",
+            china_sourcing_offers=seeded.china_sourcing_offers,
+            tunisia_sourcing_offers=seeded.tunisia_sourcing_offers,
+            tunisia_retail_market=seeded.tunisia_retail_market,
+            recommendation="investigate_more",
+            recommendation_reason="Supplier validation is still required before committing to this product.",
+        )
+
+        result = await _orchestrator(analysis=draft).analyze(
+            PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
+        )
+
+        self.assertIn("T9 vintage hair trimmer", result.localized_analysis.product_description_en)
+        self.assertIn("US$2 to US$3", result.localized_analysis.price_analysis_en)
+        self.assertIn("35 to 42 TND", result.localized_analysis.price_analysis_en)
+        self.assertIn("2 seller reference(s)", result.localized_analysis.market_analysis_en)
+        self.assertIn("investigate more", result.localized_analysis.business_reading_en)
+        self.assertIn("Supplier validation is still required", result.localized_analysis.business_reading_en)
 
 
 def _orchestrator(

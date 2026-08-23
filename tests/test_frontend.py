@@ -61,8 +61,8 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("window.print()", self.html)
         self.assertIn("Client Analysis", self.html)
         self.assertIn("Analytics", self.html)
-        self.assertIn("/logo/sourcia_logo_transparent_clean_cropped.png", self.html)
-        self.assertIn("Sourcia product opportunity report", self.html)
+        self.assertIn("/logo/Nexora_logo_transparent_clean_cropped.png", self.html)
+        self.assertIn("Nexora product opportunity report", self.html)
         self.assertIn("product_image_confidence", self.html)
         self.assertIn("No reliable source-backed product image was found.", self.html)
 
@@ -200,7 +200,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("applyStaticTranslations()", self.html)
         self.assertIn("data-i18n=\"clientEyebrow\"", self.html)
         self.assertIn("data-i18n-placeholder=\"productPlaceholder\"", self.html)
-        self.assertIn("Rapport d'opportunité produit Sourcia", self.html)
+        self.assertIn("Rapport d'opportunité produit Nexora", self.html)
         self.assertIn("Analyser le produit", self.html)
         self.assertIn("renderProductImage(data)", self.html)
         self.assertIn("fallbackProductImage(productLabel)", self.html)
@@ -216,7 +216,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("adminPasswordInput", self.html)
         self.assertIn("x-admin-password", self.html)
         self.assertIn("unlockAnalytics", self.html)
-        self.assertIn("sourcia_admin_password", self.html)
+        self.assertIn("Nexora_admin_password", self.html)
 
     def test_frontend_has_no_removed_marketplace_reference(self) -> None:
         removed_marketplace = "Ju" + "mia"
@@ -240,10 +240,27 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("Page catégorie/liste", self.html)
 
     def test_digital_ad_budget_range_guards_against_legacy_low_values(self) -> None:
-        self.assertIn('? "300-500 TND total"', self.html)
-        self.assertIn(': "300-500 TND total";', self.html)
+        self.assertIn("digital_ad_budget_min_tnd", self.html)
+        self.assertIn("digital_ad_budget_max_tnd", self.html)
+        self.assertIn("finiteOrNull", self.html)
 
     def test_frontend_derives_retail_summary_from_examples_when_summary_fields_are_missing(self) -> None:
         self.assertIn("function deriveRetailSummary(retail)", self.html)
         self.assertIn("function retailExampleValues(item)", self.html)
         self.assertIn("const retail = deriveRetailSummary(data.retail_market_summary || {});", self.html)
+
+    def test_frontend_derives_profitability_from_margin_and_1000_unit_scenario(self) -> None:
+        self.assertIn("function deriveProfitability(data)", self.html)
+        self.assertIn("grossMargin * quantityUnits", self.html)
+        self.assertIn("grossProfit - campaignBudget", self.html)
+        self.assertIn("const profit = deriveProfitability(data);", self.html)
+
+    def test_report_renderer_keeps_market_tables_separate_and_uses_real_row_variable(self) -> None:
+        report = Path("static/report.js").read_text(encoding="utf-8")
+        self.assertNotIn("retailRows", report)
+        self.assertIn("const wholesaleRows", report)
+        self.assertIn("labels.availabilityCol", report)
+        self.assertIn("labels.cityCol", report)
+        self.assertIn("pricing_basis", report)
+        self.assertIn("provenanceText(\"estimate\")", report)
+        self.assertNotIn("detailPair(labels.landedCost, landed != null ? `${tnd(landed)} ${provenanceBadge", report)

@@ -278,3 +278,5 @@ class GeminiRoleWrapperTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("product_description_fr", prompt)
         self.assertIn("price_analysis_en/fr", prompt)
         self.assertIn("Do not mix languages", prompt)
+        self.assertIn("Avoid generic filler such as 'insufficient data'", prompt)
+        self.assertIn("say exactly which evidence is missing", prompt)

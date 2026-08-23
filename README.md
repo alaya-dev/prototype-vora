@@ -2,7 +2,7 @@
 
 FastAPI prototype for client-facing product opportunity analysis, sourcing research, provider benchmarking, and internal analytics.
 
-The current primary flow is the VORA/Sourcia client prototype:
+The current primary flow is the VORA/Nexora client prototype:
 
 - One Gemini intent/product-understanding call.
 - Firecrawl primary research provider.

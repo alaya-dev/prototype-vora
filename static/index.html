@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sourcia Product Analysis</title>
+<title>Nexora Product Analysis</title>
 <link rel="icon" href="/logo/favicon.ico">
 <style>
   :root {
@@ -621,8 +621,33 @@
     justify-content: space-between;
     gap: 12px;
     align-items: start;
+    flex-wrap: wrap;
     border-bottom: 1px solid var(--line);
     padding-bottom: 12px;
+  }
+
+  .report-cover-image {
+    width: 112px;
+    height: 82px;
+    object-fit: cover;
+    border-radius: var(--radius);
+    border: 1px solid var(--line-strong);
+    background: var(--panel-strong);
+    flex: 0 0 auto;
+  }
+
+  .report-cover-logo {
+    display: block;
+    width: 132px;
+    height: auto;
+    margin-bottom: 8px;
+  }
+
+  .report-tagline {
+    color: var(--secondary);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
   }
 
   .analysis-copy {
@@ -825,6 +850,123 @@
     font-weight: 800;
   }
 
+  .hero-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .badge-observed { background: rgba(42, 148, 127, 0.14); color: #1d6f5f; }
+  .badge-computed { background: rgba(22, 70, 152, 0.12); color: var(--secondary); }
+  .badge-estimate { background: rgba(181, 123, 42, 0.14); color: #8a5c1e; }
+  .badge-unavailable { background: rgba(76, 95, 130, 0.12); color: var(--muted); }
+  .badge-source { background: rgba(22, 70, 152, 0.08); color: var(--secondary); }
+  .badge-deduction { background: rgba(48, 171, 144, 0.14); color: #1d6f5f; }
+
+  .confidence-high { color: var(--success); }
+  .confidence-medium { color: var(--warning); }
+  .confidence-low { color: var(--danger); }
+
+  .section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .section-confidence {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .comparability-banner {
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    display: grid;
+    gap: 6px;
+  }
+
+  .comparability-high { border: 1px solid rgba(42, 148, 127, 0.35); background: rgba(42, 148, 127, 0.08); }
+  .comparability-medium { border: 1px solid rgba(181, 123, 42, 0.35); background: rgba(181, 123, 42, 0.07); }
+  .comparability-low, .comparability-unknown { border: 1px solid rgba(207, 79, 99, 0.35); background: rgba(207, 79, 99, 0.06); }
+
+  .margin-warning {
+    border: 1px solid rgba(207, 79, 99, 0.4);
+    background: rgba(207, 79, 99, 0.07);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    font-weight: 700;
+    color: var(--danger);
+  }
+
+  .progress-steps {
+    display: grid;
+    gap: 7px;
+    max-width: 420px;
+    margin: 0 auto;
+    text-align: left;
+  }
+
+  .progress-step {
+    display: flex;
+    gap: 9px;
+    align-items: center;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .progress-step .step-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    border: 2px solid var(--line-strong);
+    flex: 0 0 auto;
+    transition: background 200ms ease, border-color 200ms ease;
+  }
+
+  .progress-step.active { color: var(--text); font-weight: 700; }
+  .progress-step.active .step-dot { border-color: var(--accent-transition); background: var(--accent-soft); animation: signalPulse 1s ease-in-out infinite; }
+  .progress-step.done { color: var(--success); }
+  .progress-step.done .step-dot { border-color: var(--success); background: var(--success); }
+
+  .score-bar-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 180px) 1fr 60px;
+    gap: 10px;
+    align-items: center;
+    font-size: 13px;
+  }
+
+  .score-bar-track {
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(22, 70, 152, 0.1);
+    overflow: hidden;
+  }
+
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--secondary), var(--accent));
+  }
+
   @media (min-width: 760px) {
     .analysis-hero {
       grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
@@ -882,6 +1024,22 @@
     .evidence-spinner { width: 44px; height: 44px; }
   }
 
+  @media (max-width: 760px) {
+    .report-table {
+      display: block;
+      max-width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .report-table thead,
+    .report-table tbody {
+      display: table;
+      min-width: 720px;
+      width: 100%;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -902,10 +1060,15 @@
     .topbar,
     .analysis-hero,
     .action-row,
+    .decision-bar,
+    .composer-card,
     .benchmark-compat,
-    #analyticsPage {
+    #analyticsPage,
+    .no-print {
       display: none !important;
     }
+
+    html, body { font-size: 11.5px; }
 
     .app-layout,
     .shell,
@@ -915,12 +1078,35 @@
       display: block;
     }
 
-    .result-band {
-      box-shadow: none;
-      break-inside: avoid;
+     .result-band {
+       box-shadow: none;
+       break-inside: auto;
+       page-break-inside: auto;
       margin-bottom: 12px;
-      border-color: #d7d7d7;
+      border: 1px solid #c9d4e4;
+      background: #fff !important;
+      animation: none !important;
     }
+
+     .result-band.wide.report-cover {
+       border: 2px solid var(--secondary);
+       padding: 18px;
+       break-inside: avoid;
+       page-break-inside: avoid;
+     }
+
+     .report-table { font-size: 10.5px; }
+     .report-table th, .report-table td { padding: 6px 8px; }
+     .report-table { display: table; max-width: none; overflow: visible; }
+     .report-table thead { display: table-header-group; }
+     .report-table tr { break-inside: avoid; page-break-inside: avoid; }
+
+    h2 { font-size: 15px; }
+    h3 { font-size: 13px; }
+
+    .badge { border: 1px solid currentColor; background: transparent; }
+
+    a { color: #164698; text-decoration: underline; word-break: break-all; }
   }
 </style>
 </head>
@@ -931,11 +1117,11 @@
         <section class="topbar">
           <div class="brand">
             <div class="brand-logo">
-              <img src="/logo/sourcia_logo_transparent_clean_cropped.png" alt="Sourcia logo">
+              <img src="/logo/Nexora_logo_transparent_clean_cropped.png" alt="Nexora logo">
             </div>
             <div class="brand-copy">
               <div class="eyebrow" data-i18n="clientEyebrow">Client Analysis</div>
-              <h2 data-i18n="clientTitle">Sourcia product opportunity report</h2>
+              <h2 data-i18n="clientTitle">Nexora product opportunity report</h2>
               <p data-i18n="clientSubtitle">Production-style sourcing, Tunisia retail market, and profitability estimate.</p>
             </div>
           </div>
@@ -971,10 +1157,20 @@
         <section class="analysis-hero">
           <div class="hero-copy">
             <div class="eyebrow" data-i18n="heroEyebrow">Client analysis flow</div>
-            <h2 data-i18n="heroTitle">Enter a specific product and Sourcia will research source cost, Tunisia market price, and estimated margin.</h2>
+            <h2 data-i18n="heroTitle">Enter a specific product and Nexora will research source cost, Tunisia market price, and estimated margin.</h2>
             <div class="field">
               <label for="prototypeProductInput" data-i18n="productInputLabel">Product</label>
-              <input id="prototypeProductInput" type="text" placeholder="Vintage T9 hair trimmer" data-i18n-placeholder="productPlaceholder">
+              <input id="prototypeProductInput" type="text" placeholder="Huile moteur 5W-30 4L" data-i18n-placeholder="productPlaceholder">
+            </div>
+            <div class="hero-options">
+              <div class="field">
+                <label for="targetMarketInput" data-i18n="targetMarketLabel">Target market</label>
+                <input id="targetMarketInput" type="text" value="Tunisia" placeholder="Tunisia" data-i18n-placeholder="targetMarketPlaceholder">
+              </div>
+              <div class="field">
+                <label for="sourcingCountryInput" data-i18n="sourcingCountryLabel">Sourcing priority</label>
+                <input id="sourcingCountryInput" type="text" value="China" placeholder="China" data-i18n-placeholder="sourcingCountryPlaceholder">
+              </div>
             </div>
             <div class="action-row">
               <button id="prototypeAnalyzeButton" class="button-primary" type="button" data-i18n="analyzeButton">Analyze product</button>
@@ -996,7 +1192,7 @@
       <section id="analyticsPage" class="page">
         <section class="topbar">
           <div class="brand-copy">
-            <div class="eyebrow">Sourcia Ops</div>
+            <div class="eyebrow">Nexora Ops</div>
             <h2>Internal prototype operations</h2>
             <p>Monitor fallback provider behavior, estimated research cost, and sourcing agent contacts.</p>
           </div>
@@ -1083,6 +1279,8 @@
 
 <script>
 const prototypeProductInput = document.getElementById("prototypeProductInput");
+const targetMarketInput = document.getElementById("targetMarketInput");
+const sourcingCountryInput = document.getElementById("sourcingCountryInput");
 const prototypeAnalyzeButton = document.getElementById("prototypeAnalyzeButton");
 const prototypeResult = document.getElementById("prototypeResult");
 const productPhoto = document.getElementById("productPhoto");
@@ -1108,17 +1306,17 @@ let agentsPage = 1;
 const agentsPageSize = 5;
 let analyticsRunsCache = [];
 let selectedAnalyticsRunId = null;
-let adminPassword = localStorage.getItem("sourcia_admin_password") || "";
+let adminPassword = localStorage.getItem("Nexora_admin_password") || "";
 let currentLanguage = "en";
 let currentPrototypeData = null;
 const copy = {
   en: {
     clientEyebrow: "Client Analysis",
-    clientTitle: "Sourcia product opportunity report",
+    clientTitle: "Nexora product opportunity report",
     clientSubtitle: "Production-style sourcing, Tunisia retail market, and profitability estimate.",
     exportPdf: "Export PDF",
     heroEyebrow: "Client analysis flow",
-    heroTitle: "Enter a specific product and Sourcia will research source cost, Tunisia market price, and estimated margin.",
+    heroTitle: "Enter a specific product and Nexora will research source cost, Tunisia market price, and estimated margin.",
     productInputLabel: "Product",
     productPlaceholder: "Vintage T9 hair trimmer",
     analyzeButton: "Analyze product",
@@ -1213,11 +1411,11 @@ const copy = {
   },
   fr: {
     clientEyebrow: "Analyse client",
-    clientTitle: "Rapport d'opportunité produit Sourcia",
+    clientTitle: "Rapport d'opportunité produit Nexora",
     clientSubtitle: "Recherche sourcing, marché retail tunisien et estimation de rentabilité.",
     exportPdf: "Exporter PDF",
     heroEyebrow: "Flux d'analyse client",
-    heroTitle: "Entrez un produit précis et Sourcia analysera le coût source, le prix du marché tunisien et la marge estimée.",
+    heroTitle: "Entrez un produit précis et Nexora analysera le coût source, le prix du marché tunisien et la marge estimée.",
     productInputLabel: "Produit",
     productPlaceholder: "Tondeuse cheveux T9 vintage",
     analyzeButton: "Analyser le produit",
@@ -1332,7 +1530,10 @@ agentsNextButton.addEventListener("click", () => {
   agentsPage = Math.min(maxPage, agentsPage + 1);
   renderAgentsPage();
 });
-exportPdfButton.addEventListener("click", () => window.print());
+exportPdfButton.addEventListener("click", () => {
+  document.querySelectorAll("details").forEach((details) => { details.open = true; });
+  window.print();
+});
 applyStaticTranslations();
 if (window.location.pathname === "/analytics") {
   showPage("analyticsPage");
@@ -1355,9 +1556,24 @@ function adminHeaders(extra = {}) {
 
 async function unlockAnalytics() {
   adminPassword = adminPasswordInput.value.trim();
-  localStorage.setItem("sourcia_admin_password", adminPassword);
+  localStorage.setItem("Nexora_admin_password", adminPassword);
   await loadAnalytics();
 }
+
+const ANALYSIS_STEPS = [
+  "stepProduct",
+  "stepSourcing",
+  "stepSuppliers",
+  "stepMarket",
+  "stepCompetition",
+  "stepProfitability",
+  "stepPotential",
+  "stepAds",
+  "stepScore",
+  "stepDecision",
+  "stepReport"
+];
+let analysisStepTimer = null;
 
 async function analyzePrototype() {
   const product = prototypeProductInput.value.trim();
@@ -1365,20 +1581,31 @@ async function analyzePrototype() {
     prototypeProductInput.focus();
     return;
   }
+  const targetMarket = targetMarketInput.value.trim() || "Tunisia";
+  const sourcingCountry = sourcingCountryInput.value.trim() || "China";
   prototypeAnalyzeButton.disabled = true;
   renderAnalysisPendingState();
-  const response = await fetch("/prototype/analyze", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ product, quantity_scenarios: [1000] })
-  });
+  startAnalysisStepAnimation();
+  let response;
   try {
+    response = await fetch("/prototype/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product,
+        target_market: targetMarket,
+        sourcing_country: sourcingCountry,
+        quantity_scenarios: [1000]
+      })
+    });
+    stopAnalysisStepAnimation();
     const data = await readJson(response);
     currentRunId = data.run_id;
     currentPrototypeData = data;
     renderPrototypeResult(data);
     loadAnalytics();
   } catch (error) {
+    stopAnalysisStepAnimation();
     productPhoto.innerHTML = `<div class="placeholder">${copy[currentLanguage].noReliableProductImageFound}</div>`;
     prototypeResult.innerHTML = `<div class="result-band wide"><h2>${copy[currentLanguage].analysisFailed}</h2><p>${escapeHtml(error.message)}</p></div>`;
   } finally {
@@ -1386,10 +1613,38 @@ async function analyzePrototype() {
   }
 }
 
+function startAnalysisStepAnimation() {
+  const labels = copy[currentLanguage];
+  let stepIndex = 0;
+  const advance = () => {
+    stepIndex = Math.min(stepIndex + 1, ANALYSIS_STEPS.length - 1);
+    renderAnalysisSteps(stepIndex);
+  };
+  renderAnalysisSteps(0);
+  analysisStepTimer = window.setInterval(advance, 4200);
+}
+
+function stopAnalysisStepAnimation() {
+  if (analysisStepTimer) {
+    window.clearInterval(analysisStepTimer);
+    analysisStepTimer = null;
+  }
+}
+
+function renderAnalysisSteps(activeIndex) {
+  const labels = copy[currentLanguage];
+  const container = document.getElementById("analysisProgressSteps");
+  if (!container) return;
+  container.innerHTML = ANALYSIS_STEPS.map((key, index) => {
+    const state = index < activeIndex ? "done" : index === activeIndex ? "active" : "";
+    return `<div class="progress-step ${state}"><span class="step-dot"></span><span>${escapeHtml(labels[key])}</span></div>`;
+  }).join("");
+}
+
 function renderPrototypeResult(data) {
   productPhoto.innerHTML = renderProductImage(data);
   const retail = deriveRetailSummary(data.retail_market_summary || {});
-  const profit = data.profitability_estimate || {};
+  const profit = deriveProfitability(data);
   const quantityUnits = analysisQuantityUnits(data);
   const chinaTndRange = priceRangeTnd(
     data.sourcing_summary?.china_price_min_tnd_estimate,
@@ -1497,6 +1752,7 @@ function renderAnalysisPendingState() {
     <section class="result-band wide loading analysis-loader" aria-label="${escapeAttribute(labels.analyzingProductOpportunity)}">
       <div class="letter-loader" aria-hidden="true">${labels.analyzing.split("").map((letter) => `<span class="loader-letter">${escapeHtml(letter)}</span>`).join("")}</div>
       <p>${escapeHtml(labels.searchingEvidence)}</p>
+      <div id="analysisProgressSteps" class="progress-steps"></div>
     </section>
   `;
 }
@@ -1661,6 +1917,33 @@ function analysisQuantityUnits(data) {
   return Number.isFinite(value) && value > 0 ? Math.round(value) : 1000;
 }
 
+function deriveProfitability(data) {
+  const profit = data.profitability_estimate || {};
+  const quantityUnits = analysisQuantityUnits(data);
+  const campaignBudget = finiteOrNull(profit.digital_ad_budget_default_tnd ?? profit.estimated_meta_campaign_budget_tnd) ?? 400;
+  const budgetMin = finiteOrNull(profit.digital_ad_budget_min_tnd) ?? campaignBudget;
+  const budgetMax = finiteOrNull(profit.digital_ad_budget_max_tnd) ?? campaignBudget;
+  const grossMargin = Number(profit.gross_margin_per_unit_before_marketing_tnd);
+  const grossProfit = Number.isFinite(grossMargin)
+    ? Number((grossMargin * quantityUnits).toFixed(2))
+    : profit.gross_profit_for_1000_before_marketing_tnd;
+  const netProfit = Number.isFinite(grossProfit)
+    ? Number((grossProfit - campaignBudget).toFixed(2))
+    : (profit.net_profit_for_1000_after_marketing_tnd ?? profit.estimated_profit_for_1000_units_tnd);
+  return {
+    ...profit,
+    estimated_meta_campaign_budget_tnd: campaignBudget,
+    digital_ad_budget_min_tnd: budgetMin,
+    digital_ad_budget_max_tnd: budgetMax,
+    digital_ad_budget_default_tnd: campaignBudget,
+    gross_profit_for_1000_before_marketing_tnd: grossProfit,
+    net_profit_for_1000_after_marketing_tnd: netProfit,
+    estimated_profit_for_1000_units_tnd: netProfit,
+    net_profit_for_1000_after_advertising_min_tnd: Number.isFinite(grossProfit) ? Number((grossProfit - budgetMax).toFixed(2)) : profit.net_profit_for_1000_after_advertising_min_tnd,
+    net_profit_for_1000_after_advertising_max_tnd: Number.isFinite(grossProfit) ? Number((grossProfit - budgetMin).toFixed(2)) : profit.net_profit_for_1000_after_advertising_max_tnd,
+  };
+}
+
 function deriveRetailSummary(retail) {
   const summary = retail || {};
   if (
@@ -1712,9 +1995,19 @@ function retailExampleValues(item) {
 }
 
 function digitalAdvertisingBudgetRange(data) {
-  return currentLanguage === "fr"
-    ? "300-500 TND total"
-    : "300-500 TND total";
+  const profit = data.profitability_estimate || {};
+  const minimum = finiteOrNull(profit.digital_ad_budget_min_tnd);
+  const maximum = finiteOrNull(profit.digital_ad_budget_max_tnd);
+  const fallback = finiteOrNull(profit.digital_ad_budget_default_tnd ?? profit.estimated_meta_campaign_budget_tnd);
+  if (minimum !== null && maximum !== null) return `${formatNumber(minimum)}–${formatNumber(maximum)} TND total`;
+  if (fallback !== null) return `${formatNumber(fallback)} TND total`;
+  return copy[currentLanguage].notAvailable;
+}
+
+function finiteOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function quantityScenarioText(quantityUnits) {
@@ -1889,7 +2182,7 @@ function marketAnalysisText(data) {
 function businessReadingText(data) {
   const localized = localizedText(data.localized_analysis, "business_reading", "");
   if (localized) return localized;
-  const profit = data.profitability_estimate || {};
+  const profit = deriveProfitability(data);
   const quantityUnits = analysisQuantityUnits(data);
   const estimate = tnd(profit.net_profit_for_1000_after_marketing_tnd ?? profit.estimated_profit_for_1000_units_tnd);
   const recommendation = data.recommendation || "investigate_more";
@@ -2473,5 +2766,6 @@ async function loadProviders() { return fetch("/providers"); }
 async function runBenchmarkProvider() { return fetch("/benchmark/analyze", { method: "POST" }); }
 async function runAllConfigured() { return fetch("/benchmark/analyze", { method: "POST" }); }
 </script>
+<script src="/report.js"></script>
 </body>
 </html>
