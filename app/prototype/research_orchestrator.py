@@ -371,7 +371,7 @@ def _to_client_response(
         draft_retail = _retail_summary_with_fallbacks(_retail_summary_from_validated(validated))
         base = computed.model_copy(
             update={
-                **_image_payload(_valid_image_or_none(draft.product_image_url, evidence), evidence, product),
+                **_image_payload(_valid_image_or_none(draft.product_image_url, evidence, product), evidence, product),
                 "product_description": draft.product_description or computed.product_description,
                 "localized_analysis": _localized_analysis_with_fallbacks(
                     draft.localized_analysis,
@@ -948,25 +948,25 @@ def _tunisia_link(offer: TunisiaSourcingOffer) -> PrototypeSourcingLink:
     )
 
 
-def _valid_image_or_none(url: str | None, evidence: ProviderEvidence) -> str | None:
-    if not url:
-        return _first_source_image(evidence)
-    return url if url.startswith(("http://", "https://")) else _first_source_image(evidence)
+def _valid_image_or_none(url: str | None, evidence: ProviderEvidence, product: ProductUnderstanding) -> str | None:
+    if url and _is_product_image_url(url):
+        source = _source_for_image(url, evidence)
+        if source is None or _image_source_matches_product(source, product):
+            return url
+    selected = _best_source_image(evidence, product)
+    return selected[1] if selected else None
 
 
 def _image_payload(url: str | None, evidence: ProviderEvidence, product: ProductUnderstanding) -> dict:
-    if url:
+    if url and _is_product_image_url(url):
         source = _source_for_image(url, evidence)
-        return {
-            "product_image_url": url,
-            "product_image_source_url": source.url if source else None,
-            "product_image_confidence": _image_confidence(source, product) if source else "low",
-            "product_image_notes": (
-                "Source-backed image selected from provider evidence."
-                if source
-                else "Image URL returned by analysis output."
-            ),
-        }
+        if source is None or _image_source_matches_product(source, product):
+            return {
+                "product_image_url": url,
+                "product_image_source_url": source.url,
+                "product_image_confidence": _image_confidence(source, product),
+                "product_image_notes": "Source-backed image selected from provider evidence.",
+            }
     selected = _best_source_image(evidence, product)
     if selected:
         source, image_url = selected
@@ -975,15 +975,6 @@ def _image_payload(url: str | None, evidence: ProviderEvidence, product: Product
             "product_image_source_url": source.url,
             "product_image_confidence": _image_confidence(source, product),
             "product_image_notes": "Source-backed image selected from provider evidence.",
-        }
-    domain_visual = _source_domain_visual(evidence, product)
-    if domain_visual:
-        source, image_url = domain_visual
-        return {
-            "product_image_url": image_url,
-            "product_image_source_url": source.url,
-            "product_image_confidence": "fallback",
-            "product_image_notes": "No direct product image was captured; using source-domain visual from provider evidence.",
         }
     return {
         "product_image_url": None,
@@ -1523,6 +1514,8 @@ def _first_source_image(evidence: ProviderEvidence) -> str | None:
 def _best_source_image(evidence: ProviderEvidence, product: ProductUnderstanding) -> tuple[ProviderRawSource, str] | None:
     sorted_sources = sorted(evidence.sources, key=lambda source: _image_source_score(source, product), reverse=True)
     for source in sorted_sources:
+        if not _image_source_matches_product(source, product):
+            continue
         for image_url in _source_image_candidates(source):
             if image_url.startswith(("http://", "https://")):
                 return source, image_url
@@ -1531,7 +1524,7 @@ def _best_source_image(evidence: ProviderEvidence, product: ProductUnderstanding
 
 def _source_for_image(url: str, evidence: ProviderEvidence) -> ProviderRawSource | None:
     for source in evidence.sources:
-        if url in _source_image_candidates(source) or url == _source_domain_visual_for_source(source):
+        if url in _source_image_candidates(source):
             return source
     return None
 
@@ -1548,27 +1541,37 @@ def _source_image_candidates(source: ProviderRawSource) -> list[str]:
     seen: set[str] = set()
     for candidate in candidates:
         cleaned = candidate.strip().rstrip(").,;\"'")
-        if not cleaned.startswith(("http://", "https://")) or cleaned in seen:
+        if not _is_product_image_url(cleaned) or cleaned in seen:
             continue
         seen.add(cleaned)
         deduped.append(cleaned)
     return deduped
 
 
-def _source_domain_visual(evidence: ProviderEvidence, product: ProductUnderstanding) -> tuple[ProviderRawSource, str] | None:
-    sorted_sources = sorted(evidence.sources, key=lambda source: _image_source_score(source, product), reverse=True)
-    for source in sorted_sources:
-        image_url = _source_domain_visual_for_source(source)
-        if image_url:
-            return source, image_url
-    return None
+def _is_product_image_url(url: str) -> bool:
+    if not url.startswith(("http://", "https://")):
+        return False
+    path = urlparse(url).path.lower()
+    blocked_markers = ("favicon", "/sash/", "/batch/", "uedata", "placeholder", "image-not-found", "no-image", "/logo", "/sprite")
+    return not any(marker in path for marker in blocked_markers)
 
 
-def _source_domain_visual_for_source(source: ProviderRawSource) -> str | None:
-    parsed = urlparse(source.url)
-    if not parsed.scheme or not parsed.netloc:
-        return None
-    return f"{parsed.scheme}://{parsed.netloc}/favicon.ico"
+def _image_source_matches_product(source: ProviderRawSource, product: ProductUnderstanding) -> bool:
+    source_text = _source_text(source).lower().replace("-", "")
+    product_text = " ".join([
+        product.original_product or "",
+        product.normalized_product or "",
+        " ".join(product.technical_specs or []),
+    ]).lower().replace("-", "")
+    target_viscosities = re.findall(r"\b\d+w\d+\b", product_text)
+    if target_viscosities and not all(viscosity in source_text for viscosity in target_viscosities):
+        return False
+    if target_viscosities and source.source_type != "product_page":
+        return False
+    product_terms = {"oil", "huile", "engine", "moteur", "lubricant", "automotive"}
+    if any(term in product_text for term in product_terms) and not any(term in source_text for term in product_terms):
+        return False
+    return True
 
 
 def _image_source_score(source: ProviderRawSource, product: ProductUnderstanding) -> int:

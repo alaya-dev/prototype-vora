@@ -185,7 +185,7 @@ def _cover(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, Pa
     labels = _labels(language)
     product = _product_name(report)
     decision = _decision_for_pdf(report, language)
-    confidence = _confidence(report.decision_scores.confidence, language)
+    confidence = _confidence(_global_confidence_key(report), language)
     metadata = [
         [_p(labels["product"], styles["kpi_label"]), _p(product, styles["kpi_value"])],
         [_p(labels["market"], styles["kpi_label"]), _p(_market_name(report.target_market, language), styles["kpi_value"])],
@@ -309,19 +309,48 @@ def _market_section(report: PrototypeAnalyzeResponse, language: str, styles: dic
 
 def _comparability_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
     labels = _labels(language)
-    level = _level(report.comparability.level, language)
+    level = _level(_comparability_level_key(report), language)
     reasons = _comparability_reasons(report, language)
     normalization = _market_price_basis(report, language)
     body = f"{labels['market_comparability']}: {level}. " + " ".join(reasons) + f" {normalization}"
     return _section(labels["comparability_section"], [_p(_escape(body), styles["body"])], None, styles)
 
 
+def _comparability_level_key(report: PrototypeAnalyzeResponse) -> str:
+    level = report.comparability.level
+    if level != "high":
+        return level
+    target_volume, target_unit = _target_volume(report)
+    if not target_volume or not target_unit or not report.retail_offers:
+        return "medium"
+    observed_volumes = [_volume_value(offer.volume_text or offer.product_title or "") for offer in report.retail_offers]
+    if any(volume != target_volume or unit != target_unit for volume, unit in observed_volumes):
+        return "medium"
+    product_text = _product_comparison_text(report)
+    viscosities = re.findall(r"\b\d+w-\d+\b", product_text, re.IGNORECASE)
+    if not viscosities or any(not re.search(re.escape(viscosities[0]), offer.product_title or "", re.IGNORECASE) for offer in report.retail_offers):
+        return "medium"
+    if not re.search(r"\b(api|acea)\b", product_text, re.IGNORECASE):
+        return "medium"
+    return "high"
+
+
+def _product_comparison_text(report: PrototypeAnalyzeResponse) -> str:
+    product = report.product_understanding
+    return " ".join([
+        _value(product, "original_product") or "",
+        _value(product, "normalized_product") or "",
+        " ".join(_value(product, "technical_specs") or []),
+        " ".join(offer.product_title or "" for offer in report.retail_offers),
+    ])
+
+
 def _comparability_reasons(report: PrototypeAnalyzeResponse, language: str) -> list[str]:
     if language != "fr":
         return report.comparability.reasons or ["Comparability could not be established."]
-    if report.comparability.level == "high":
+    if _comparability_level_key(report) == "high":
         return ["Les produits observés partagent une catégorie et des caractéristiques suffisamment proches."]
-    if report.comparability.level == "medium":
+    if _comparability_level_key(report) == "medium":
         return ["Les produits sont comparables pour une première lecture, mais les marques, spécifications ou conditionnements diffèrent."]
     return ["Les produits comparés ne sont pas suffisamment équivalents pour soutenir une marge ferme."]
 
@@ -330,7 +359,7 @@ def _competition_section(report: PrototypeAnalyzeResponse, language: str, styles
     labels = _labels(language)
     brands = ", ".join(sorted({offer.brand for offer in report.retail_offers if offer.brand})) or labels["unavailable"]
     sellers = ", ".join(sorted({offer.seller_name for offer in report.retail_offers if offer.seller_name})) or labels["unavailable"]
-    body = f"{labels['competition_level']}: {_level(report.competition_level, language)}. {labels['brands']}: {brands}. {labels['sellers']}: {sellers}."
+    body = f"{labels['competition_level']}: {_level(_competition_level_key(report), language)}. {labels['brands']}: {brands}. {labels['sellers']}: {sellers}."
     return _section(labels["competition_section"], [_p(_escape(body), styles["body"])], None, styles)
 
 
@@ -383,7 +412,7 @@ def _decision_section(report: PrototypeAnalyzeResponse, language: str, styles: d
     labels = _labels(language)
     scores = [[_criterion_label(item.key, language), f"{item.score}/{item.max_score}", _criterion_justification(item, language)] for item in report.detailed_scoring.criteria]
     blocks = [_p(labels["decision_section"], styles["section"]), _p(_decision_for_pdf(report, language), styles["decision"]), _p(
-        f"{labels['score']}: {report.detailed_scoring.total}/100 · {labels['confidence']}: {_confidence(report.decision_scores.confidence, language)}", styles["center"],
+        f"{labels['score']}: {report.detailed_scoring.total}/100 · {labels['confidence']}: {_confidence(_global_confidence_key(report), language)}", styles["center"],
     )]
     decision_reason = _decision_reason(report, language)
     if decision_reason:
@@ -449,7 +478,7 @@ def _pdf_risks(report: PrototypeAnalyzeResponse, language: str) -> list[str]:
         risks.append("Moins de trois offres Chine avec prix vérifiable ont été retenues.")
     if len(report.retail_offers) < 3:
         risks.append("La couverture des prix détail tunisiens peut être incomplète.")
-    if report.comparability.level in {"low", "unknown"}:
+    if _comparability_level_key(report) in {"low", "unknown"}:
         risks.append("La comparabilité des produits doit être confirmée avant d’utiliser la marge comme argument principal.")
     if report.profitability_estimate.risks:
         risks.append("La qualité, la conformité et les conditions fournisseur doivent être vérifiées avant investissement.")
@@ -457,16 +486,25 @@ def _pdf_risks(report: PrototypeAnalyzeResponse, language: str) -> list[str]:
 
 
 def _decision_reason(report: PrototypeAnalyzeResponse, language: str) -> str:
-    localized = _localized(report.localized_analysis, "business_reading", language)
-    if localized:
-        return localized
+    margin = _final_margin(report)
+    margin_percent = _margin_percent_values(margin, _comparable_market_price(report))
+    competition = _level(_competition_level_key(report), language)
     if language != "fr":
-        return report.recommendation_reason
-    return {
-        "go": "Les éléments disponibles justifient une vérification fournisseur et un test d’échantillon.",
-        "no_go": "La marge ou la qualité des preuves ne justifie pas un investissement immédiat.",
-        "investigate_more": "Le produit présente un potentiel, mais des vérifications fournisseur, marché et logistique restent nécessaires.",
-    }.get(report.recommendation, "Des vérifications complémentaires sont nécessaires.")
+        return _decision_reason_en(report, margin_percent, competition)
+    profitability = (
+        "La rentabilité théorique apparaît élevée sur la base des données disponibles."
+        if margin is not None and _margin_percent_number(margin, _comparable_market_price(report)) >= 40
+        else "La rentabilité reste à confirmer à partir des données disponibles."
+    )
+    conditions = "Obtenir un devis fournisseur ferme, confirmer les coûts logistiques et douaniers réels, vérifier les normes et la qualité, confirmer les prix de gros tunisiens et valider la demande commerciale."
+    return f"{profitability} Marge brute : {margin_percent}. Concurrence : {competition}. {conditions}"
+
+
+def _decision_reason_en(report: PrototypeAnalyzeResponse, margin_percent: str, competition: str) -> str:
+    margin = _final_margin(report)
+    profitability = "Theoretical profitability appears high based on the available data." if margin is not None and _margin_percent_number(margin, _comparable_market_price(report)) >= 40 else "Profitability remains to be confirmed from the available data."
+    conditions = "Obtain a firm supplier quote, confirm actual logistics and customs costs, verify standards and quality, confirm Tunisian wholesale prices, and validate commercial demand."
+    return f"{profitability} Gross margin: {margin_percent}. Competition: {competition}. {conditions}"
 
 
 def _criterion_justification(item: Any, language: str) -> str:
@@ -564,6 +602,64 @@ def _margin_percent_values(margin: float | None, selling_price: float | None) ->
     return f"{margin / selling_price * 100:.1f}%"
 
 
+def _margin_percent_number(margin: float | None, selling_price: float | None) -> float:
+    if margin is None or not selling_price:
+        return 0.0
+    return margin / selling_price * 100
+
+
+def _final_margin(report: PrototypeAnalyzeResponse) -> float | None:
+    price = _comparable_market_price(report)
+    cost = report.profitability_estimate.estimated_landed_cost_per_unit_tnd
+    return round(price - cost, 2) if price is not None and cost is not None else None
+
+
+def _competition_level_key(report: PrototypeAnalyzeResponse) -> str:
+    if report.competition_level != "unknown":
+        return report.competition_level
+    sellers = {offer.seller_name for offer in report.retail_offers if offer.seller_name}
+    brands = {offer.brand for offer in report.retail_offers if offer.brand}
+    competitors = max(len(sellers), len(brands))
+    if competitors >= 5:
+        return "high"
+    if competitors >= 2:
+        return "medium"
+    return "low" if competitors else "unknown"
+
+
+def _global_confidence_key(report: PrototypeAnalyzeResponse) -> str:
+    supplier_count = sum(1 for offer in report.china_offers if offer.source_url and offer.confidence in {"high", "medium"})
+    retail_count = sum(1 for offer in report.retail_offers if offer.source_url and _retail_normalized_value(offer) is not None)
+    source_quality = _average_source_quality(report)
+    cost_quality = _landed_cost_quality(report)
+    comparability_quality = {"high": 1.0, "medium": 0.65, "low": 0.25, "unknown": 0.2}[_comparability_level_key(report)]
+    score = (
+        min(supplier_count / 3, 1) * 0.25
+        + min(retail_count / 3, 1) * 0.20
+        + source_quality * 0.20
+        + cost_quality * 0.20
+        + comparability_quality * 0.15
+    )
+    if score >= 0.75 and supplier_count >= 3 and retail_count >= 3 and cost_quality >= 0.9 and comparability_quality == 1:
+        return "high"
+    return "medium" if score >= 0.45 else "low"
+
+
+def _average_source_quality(report: PrototypeAnalyzeResponse) -> float:
+    weights = {"high": 1.0, "medium": 0.65, "low": 0.25, "unknown": 0.2}
+    sources = _relevant_sources(report)
+    return sum(weights.get(source.confidence, 0.2) for source in sources) / len(sources) if sources else 0.2
+
+
+def _landed_cost_quality(report: PrototypeAnalyzeResponse) -> float:
+    components = report.landed_cost.components
+    if not components:
+        return 0.2
+    known = sum(component.value_tnd is not None for component in components)
+    quality = known / len(components)
+    return min(quality, 0.6) if report.landed_cost.partial_estimate else quality
+
+
 def _executive_summary(report: PrototypeAnalyzeResponse, language: str) -> str:
     decision = _decision_for_pdf(report, language)
     score = report.detailed_scoring.total
@@ -581,9 +677,9 @@ def _executive_summary(report: PrototypeAnalyzeResponse, language: str) -> str:
 
 def _decision_for_pdf(report: PrototypeAnalyzeResponse, language: str) -> str:
     if report.recommendation == "go" and (
-        report.decision_scores.confidence != "high"
+        _global_confidence_key(report) != "high"
         or report.landed_cost.partial_estimate
-        or report.comparability.level in {"medium", "low", "unknown"}
+        or _comparability_level_key(report) in {"medium", "low", "unknown"}
     ):
         return "GO SOUS CONDITIONS" if language == "fr" else "GO WITH CONDITIONS"
     return _decision(report.recommendation, language)

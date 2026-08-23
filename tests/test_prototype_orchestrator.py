@@ -214,10 +214,10 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
             PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
         )
 
-        self.assertTrue((result.product_image_url or "").startswith("https://"))
-        self.assertIsNotNone(result.product_image_source_url)
+        self.assertIsNone(result.product_image_url)
+        self.assertIsNone(result.product_image_source_url)
         self.assertEqual(result.product_image_confidence, "fallback")
-        self.assertIn("source-domain visual", result.product_image_notes)
+        self.assertIn("No reliable source-backed", result.product_image_notes)
 
     async def test_markdown_image_is_used_when_provider_content_contains_product_image(self) -> None:
         firecrawl = FakeProvider(
