@@ -191,7 +191,7 @@ def _cover(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, Pa
         [_p(labels["market"], styles["kpi_label"]), _p(_market_name(report.target_market, language), styles["kpi_value"])],
         [_p(labels["date"], styles["kpi_label"]), _p(date.today().isoformat(), styles["kpi_value"])],
         [_p(labels["decision"], styles["kpi_label"]), _p(decision, styles["kpi_value"])],
-        [_p(labels["score"], styles["kpi_label"]), _p(f"{report.detailed_scoring.total}/100", styles["kpi_value"])],
+        [_p(labels["score"], styles["kpi_label"]), _p(f"{_pdf_score_total(report)}/100", styles["kpi_value"])],
         [_p(labels["confidence"], styles["kpi_label"]), _p(confidence, styles["kpi_value"])],
     ]
     metadata_table = Table(metadata, colWidths=[32 * mm, 64 * mm], hAlign="LEFT")
@@ -278,11 +278,12 @@ def _sourcing_section(report: PrototypeAnalyzeResponse, language: str, styles: d
 
 def _landed_cost_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
     labels = _labels(language)
-    rows = [
-        [labels.get(component.label_key, component.label_key), _tnd(component.value_tnd, labels), _provenance(component.provenance, language)]
-        for component in report.landed_cost.components
-    ]
-    rows.append([labels["landed_cost"], _tnd(report.landed_cost.total_tnd, labels), _provenance("estimate", language)])
+    financials = _financial_truth(report)
+    rows = [[labels[key], _tnd(financials[key], labels), _provenance(provenance, language)] for key, provenance in (
+        ("supplier_price", "observed"), ("shipping", "estimate"), ("customs", "computed"),
+        ("handling", "estimate"), ("misc", "estimate"),
+    )]
+    rows.append([labels["landed_cost"], _tnd(financials["landed_cost"], labels), _provenance("estimate", language)])
     return _section(labels["landed_cost_section"], [_p(_escape(_landed_cost_note(report, language)), styles["muted"])], _table(
         [labels["component"], labels["value"], labels["data_quality"]], rows, [70, 45, 45], styles,
     ), styles)
@@ -359,15 +360,16 @@ def _competition_section(report: PrototypeAnalyzeResponse, language: str, styles
     labels = _labels(language)
     brands = ", ".join(sorted({offer.brand for offer in report.retail_offers if offer.brand})) or labels["unavailable"]
     sellers = ", ".join(sorted({offer.seller_name for offer in report.retail_offers if offer.seller_name})) or labels["unavailable"]
-    body = f"{labels['competition_level']}: {_level(_competition_level_key(report), language)}. {labels['brands']}: {brands}. {labels['sellers']}: {sellers}."
+    body = f"{labels['competition_level']}: {_competition_display(report, language)}. {labels['brands']}: {brands}. {labels['sellers']}: {sellers}."
     return _section(labels["competition_section"], [_p(_escape(body), styles["body"])], None, styles)
 
 
 def _profitability_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
     labels = _labels(language)
     profit = report.profitability_estimate
+    financials = _financial_truth(report)
     selling_price = _comparable_market_price(report)
-    landed_cost = profit.estimated_landed_cost_per_unit_tnd
+    landed_cost = financials["landed_cost"]
     margin = round(selling_price - landed_cost, 2) if selling_price is not None and landed_cost is not None else None
     quantity = report.analysis_quantity_units
     gross_profit = round(margin * quantity, 2) if margin is not None else None
@@ -375,7 +377,7 @@ def _profitability_section(report: PrototypeAnalyzeResponse, language: str, styl
     profit_after_ads = round(gross_profit - ad_budget, 2) if gross_profit is not None and ad_budget is not None else None
     rows = [
         [labels["quantity"], str(quantity)],
-        [labels["purchase_price"], _tnd(profit.source_unit_price_tnd, labels)],
+        [labels["purchase_price"], _tnd(financials["supplier_price"], labels)],
         [labels["landed_cost"], _tnd(landed_cost, labels)],
         [labels["selling_price"], _tnd(selling_price, labels)],
         [labels["gross_margin"], _tnd(margin, labels)],
@@ -410,9 +412,10 @@ def _risks_section(report: PrototypeAnalyzeResponse, language: str, styles: dict
 
 def _decision_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
     labels = _labels(language)
-    scores = [[_criterion_label(item.key, language), f"{item.score}/{item.max_score}", _criterion_justification(item, language)] for item in report.detailed_scoring.criteria]
+    criteria = _pdf_score_criteria(report)
+    scores = [[_criterion_label(item.key, language), f"{item.score}/{item.max_score}", item.justification] for item in criteria]
     blocks = [_p(labels["decision_section"], styles["section"]), _p(_decision_for_pdf(report, language), styles["decision"]), _p(
-        f"{labels['score']}: {report.detailed_scoring.total}/100 · {labels['confidence']}: {_confidence(_global_confidence_key(report), language)}", styles["center"],
+        f"{labels['score']}: {_pdf_score_total(report)}/100 · {labels['confidence']}: {_confidence(_global_confidence_key(report), language)}", styles["center"],
     )]
     decision_reason = _decision_reason(report, language)
     if decision_reason:
@@ -420,6 +423,23 @@ def _decision_section(report: PrototypeAnalyzeResponse, language: str, styles: d
     blocks.append(_p(labels["scoring"], styles["subsection"]))
     blocks.append(_table([labels["criterion"], labels["score"], labels["justification"]], scores or [[labels["unavailable"]] * 3], [38, 25, 112], styles))
     return blocks
+
+
+def _pdf_score_criteria(report: PrototypeAnalyzeResponse) -> list[Any]:
+    criteria = [item.model_copy() for item in report.detailed_scoring.criteria]
+    margin = _final_margin(report)
+    margin_percent = _margin_percent_number(margin, _comparable_market_price(report))
+    for index, item in enumerate(criteria):
+        if item.key == "margin":
+            score = 20 if margin_percent >= 30 else 15 if margin_percent >= 20 else 10 if margin_percent >= 10 else 5 if margin_percent > 0 else 0
+            criteria[index] = item.model_copy(update={"score": score, "justification": f"Marge recalculée à partir de l’offre fournisseur retenue : {margin_percent:.1f}%."})
+        if item.key == "competition" and _competition_level_key(report) == "unknown":
+            criteria[index] = item.model_copy(update={"score": 7, "justification": "Données insuffisantes : moins de trois vendeurs ou concurrents fiables retenus."})
+    return criteria
+
+
+def _pdf_score_total(report: PrototypeAnalyzeResponse) -> int:
+    return min(100, sum(item.score for item in _pdf_score_criteria(report)))
 
 
 def _sources_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
@@ -440,7 +460,7 @@ def _section(title: str, intro: list[Any], table: Any, styles: dict[str, Paragra
 def _landed_cost_note(report: PrototypeAnalyzeResponse, language: str) -> str:
     if language != "fr":
         return report.landed_cost.note or _labels(language)["partial_estimate"]
-    components = {component.label_key: component.value_tnd for component in report.landed_cost.components}
+    components = _financial_truth(report)
     parts = [
         f"Prix fournisseur {_tnd(components.get('supplier_price'), _labels(language))}",
         f"transport {_tnd(components.get('shipping'), _labels(language))}",
@@ -448,7 +468,7 @@ def _landed_cost_note(report: PrototypeAnalyzeResponse, language: str) -> str:
         f"manutention {_tnd(components.get('handling'), _labels(language))}",
         f"autres charges {_tnd(components.get('misc'), _labels(language))}",
     ]
-    return " + ".join(parts) + f" = coût rendu estimé {_tnd(report.landed_cost.total_tnd, _labels(language))}. " + _labels(language)["partial_estimate"]
+    return " + ".join(parts) + f" = coût rendu estimé {_tnd(components.get('landed_cost'), _labels(language))}. " + _labels(language)["partial_estimate"]
 
 
 def _profitability_notes(report: PrototypeAnalyzeResponse, profit: Any, language: str) -> list[str]:
@@ -488,7 +508,7 @@ def _pdf_risks(report: PrototypeAnalyzeResponse, language: str) -> list[str]:
 def _decision_reason(report: PrototypeAnalyzeResponse, language: str) -> str:
     margin = _final_margin(report)
     margin_percent = _margin_percent_values(margin, _comparable_market_price(report))
-    competition = _level(_competition_level_key(report), language)
+    competition = _competition_display(report, language)
     if language != "fr":
         return _decision_reason_en(report, margin_percent, competition)
     profitability = (
@@ -610,21 +630,66 @@ def _margin_percent_number(margin: float | None, selling_price: float | None) ->
 
 def _final_margin(report: PrototypeAnalyzeResponse) -> float | None:
     price = _comparable_market_price(report)
-    cost = report.profitability_estimate.estimated_landed_cost_per_unit_tnd
+    cost = _financial_truth(report)["landed_cost"]
     return round(price - cost, 2) if price is not None and cost is not None else None
 
 
+def _source_of_truth_supplier_price(report: PrototypeAnalyzeResponse) -> float | None:
+    candidates = [
+        offer for offer in report.china_offers
+        if offer.price_min_tnd is not None and offer.source_url
+    ]
+    exact = [offer for offer in candidates if offer.product_match == "exact"] or candidates
+    reliable = [offer for offer in exact if offer.confidence in {"high", "medium"}] or exact
+    selected = min(reliable, key=lambda offer: offer.price_min_tnd) if reliable else None
+    return selected.price_min_tnd if selected else report.profitability_estimate.source_unit_price_tnd
+
+
+def _financial_truth(report: PrototypeAnalyzeResponse) -> dict[str, float | None]:
+    profit = report.profitability_estimate
+    supplier_price = _source_of_truth_supplier_price(report)
+    shipping = profit.estimated_shipping_per_unit_tnd
+    handling = profit.estimated_handling_per_unit_tnd
+    misc = profit.estimated_misc_per_unit_tnd
+    customs_rate = _customs_rate(report)
+    customs = round(supplier_price * customs_rate, 2) if supplier_price is not None else None
+    landed = _sum_known_costs(supplier_price, shipping, customs, handling, misc)
+    return {"supplier_price": supplier_price, "shipping": shipping, "customs": customs, "handling": handling, "misc": misc, "landed_cost": landed}
+
+
+def _customs_rate(report: PrototypeAnalyzeResponse) -> float:
+    profit = report.profitability_estimate
+    if profit.source_unit_price_tnd and profit.estimated_customs_per_unit_tnd is not None:
+        inferred_rate = profit.estimated_customs_per_unit_tnd / profit.source_unit_price_tnd
+        return 0.10 if 0.08 <= inferred_rate <= 0.12 else inferred_rate
+    return 0.10
+
+
+def _sum_known_costs(*values: float | None) -> float | None:
+    if any(value is None for value in values):
+        return None
+    return round(sum(value for value in values if value is not None), 2)
+
+
 def _competition_level_key(report: PrototypeAnalyzeResponse) -> str:
-    if report.competition_level != "unknown":
-        return report.competition_level
     sellers = {offer.seller_name for offer in report.retail_offers if offer.seller_name}
     brands = {offer.brand for offer in report.retail_offers if offer.brand}
+    if len(sellers) < 3 and len(brands) < 3:
+        return "unknown"
+    if report.competition_level != "unknown":
+        return report.competition_level
     competitors = max(len(sellers), len(brands))
     if competitors >= 5:
         return "high"
     if competitors >= 2:
         return "medium"
     return "low" if competitors else "unknown"
+
+
+def _competition_display(report: PrototypeAnalyzeResponse, language: str) -> str:
+    if _competition_level_key(report) == "unknown":
+        return "Données insuffisantes" if language == "fr" else "Insufficient data"
+    return _level(_competition_level_key(report), language)
 
 
 def _global_confidence_key(report: PrototypeAnalyzeResponse) -> str:
@@ -662,9 +727,9 @@ def _landed_cost_quality(report: PrototypeAnalyzeResponse) -> float:
 
 def _executive_summary(report: PrototypeAnalyzeResponse, language: str) -> str:
     decision = _decision_for_pdf(report, language)
-    score = report.detailed_scoring.total
+    score = _pdf_score_total(report)
     market_price = _comparable_market_price(report)
-    landed = report.profitability_estimate.estimated_landed_cost_per_unit_tnd
+    landed = _financial_truth(report)["landed_cost"]
     margin = round(market_price - landed, 2) if market_price is not None and landed is not None else None
     if language == "fr":
         if market_price is None or landed is None:
@@ -676,6 +741,9 @@ def _executive_summary(report: PrototypeAnalyzeResponse, language: str) -> str:
 
 
 def _decision_for_pdf(report: PrototypeAnalyzeResponse, language: str) -> str:
+    score = _pdf_score_total(report)
+    if report.recommendation == "go" and score < 60:
+        return "À INVESTIGUER" if language == "fr" else "INVESTIGATE"
     if report.recommendation == "go" and (
         _global_confidence_key(report) != "high"
         or report.landed_cost.partial_estimate

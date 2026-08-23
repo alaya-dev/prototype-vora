@@ -425,6 +425,7 @@ def _to_client_response(
             }
         )
     profitability = _profitability_with_evidence_risks(base.profitability_estimate, validated)
+    profitability = _reconcile_profitability_supplier_price(profitability, validated, cost_config)
     recommendation, recommendation_reason = _conservative_recommendation(
         base.recommendation,
         profitability.gross_margin_per_unit_before_marketing_tnd,
@@ -2093,6 +2094,44 @@ def _profitability_with_evidence_risks(
             "risks": risks,
         }
     )
+
+
+def _reconcile_profitability_supplier_price(
+    profitability: ProfitabilityEstimate,
+    validated: ProviderAnalysisResult,
+    cost_config: CostConfig,
+) -> ProfitabilityEstimate:
+    supplier_price = _canonical_supplier_price(validated, cost_config)
+    if supplier_price is None or supplier_price == profitability.source_unit_price_tnd:
+        return profitability
+    landed, landed_notes, parts = _landed_cost_breakdown(supplier_price, cost_config)
+    selling_price = profitability.estimated_selling_price_tnd
+    margin = round(selling_price - landed, 2) if selling_price is not None and landed is not None else None
+    gross_profit = round(margin * ANALYSIS_QUANTITY_UNITS, 2) if margin is not None else None
+    return profitability.model_copy(update={
+        "source_unit_price_tnd": supplier_price,
+        "estimated_shipping_per_unit_tnd": parts["shipping"],
+        "estimated_customs_per_unit_tnd": parts["customs"],
+        "estimated_handling_per_unit_tnd": parts["handling"],
+        "estimated_misc_per_unit_tnd": parts["misc"],
+        "estimated_landed_cost_per_unit_tnd": landed,
+        "estimated_source_cost_tnd": landed,
+        "landed_cost_breakdown_notes": landed_notes,
+        "gross_margin_per_unit_before_marketing_tnd": margin,
+        "estimated_margin_per_unit_tnd": margin,
+        "gross_profit_for_1000_before_marketing_tnd": gross_profit,
+        "net_profit_for_1000_after_marketing_tnd": round(gross_profit - DIGITAL_AD_BUDGET_DEFAULT_TND, 2) if gross_profit is not None else None,
+        "estimated_profit_for_1000_units_tnd": round(gross_profit - DIGITAL_AD_BUDGET_DEFAULT_TND, 2) if gross_profit is not None else None,
+    })
+
+
+def _canonical_supplier_price(validated: ProviderAnalysisResult, cost_config: CostConfig) -> float | None:
+    offers = [offer for offer in validated.china_sourcing_offers if offer.price_min_usd_numeric is not None and offer.source_url]
+    exact = [offer for offer in offers if offer.product_match == "exact"] or offers
+    reliable = [offer for offer in exact if offer.confidence in {"high", "medium"}] or exact
+    if not reliable:
+        return None
+    return round(min(offer.price_min_usd_numeric for offer in reliable) * cost_config.usd_to_tnd_rate, 2)
 
 
 def _has_equivalent_or_weak_china_sourcing(validated: ProviderAnalysisResult) -> bool:
