@@ -92,11 +92,10 @@ class ExaAdapter(SearchProviderAdapter):
         )
 
     async def search_group(self, product: str, group: str) -> ProviderEvidence:
-        from app.benchmark.query_strategy import build_regional_queries
+        from app.benchmark.query_strategy import build_group_queries
 
         self._raise_if_not_configured()
-        query_groups = build_regional_queries(product, self.settings.effective_search_queries_per_group)
-        query_list = getattr(query_groups, group)
+        query_list = build_group_queries(product, self.settings.effective_search_queries_per_group, group)
         sources: list[ProviderRawSource] = []
         api_calls = 0
         try:
@@ -125,7 +124,7 @@ class ExaAdapter(SearchProviderAdapter):
                                 snippet=item.get("summary", "") or text[:300],
                                 content=text or None,
                                 image_urls=_extract_exa_images(item),
-                                region_hint=group,
+                                region_hint="tunisia_retail" if group == "image_discovery" else group,
                                 source_type="search_result",
                             )
                         )

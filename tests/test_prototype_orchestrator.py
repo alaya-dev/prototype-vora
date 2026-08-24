@@ -11,7 +11,12 @@ from app.benchmark.schemas import (
     TunisiaRetailOffer,
     TunisiaSourcingOffer,
 )
-from app.prototype.research_orchestrator import PrototypeResearchOrchestrator, _comparable_prices
+from app.prototype.research_orchestrator import (
+    PrototypeResearchOrchestrator,
+    _comparable_prices,
+    _detailed_scoring,
+    _image_source_matches_product,
+)
 from app.prototype.schemas import (
     CostConfig,
     ExampleRetailPrice,
@@ -20,6 +25,7 @@ from app.prototype.schemas import (
     PrototypeAnalyzeRequest,
     RetailMarketSummary,
 )
+from app.benchmark.query_strategy import build_image_discovery_queries
 from app.prototype.storage import PrototypeStore
 from app.schemas import IntentResult, ProductUnderstanding
 
@@ -107,7 +113,72 @@ class SequentialImageProvider(FakeProvider):
         return await super().search_group(product, group)
 
 
+class DedicatedImageProvider(FakeProvider):
+    async def search_group(self, product, group: str) -> ProviderEvidence:
+        self.calls.append(group)
+        if group == "image_discovery":
+            return ProviderEvidence(
+                provider_id=self.provider_id,
+                sources=[
+                    _source(
+                        "T9 vintage hair trimmer product photo",
+                        "https://image.example/t9",
+                        "T9 vintage hair trimmer product image",
+                        "tunisia_retail",
+                        image_urls=["https://cdn.example/dedicated-image.jpg"],
+                    )
+                ],
+                raw_queries_count=3,
+                provider_api_calls=3,
+            )
+        return await super().search_group(product, group)
+
+
 class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
+    def test_unconfirmed_margin_and_risk_scores_are_conservative(self) -> None:
+        scoring = _detailed_scoring(ProviderAnalysisResult(), None)
+        criteria = {criterion.key: criterion for criterion in scoring.criteria}
+
+        self.assertEqual(criteria["margin"].score, 0)
+        self.assertEqual(
+            criteria["margin"].justification,
+            "Marge non calculable : l’unité du prix fournisseur n’est pas confirmée.",
+        )
+        self.assertEqual(criteria["risk"].score, 0)
+        self.assertIn("unité du prix fournisseur inconnue", criteria["risk"].justification)
+
+    def test_image_discovery_queries_keep_exact_product_specifications(self) -> None:
+        product = ProductUnderstanding(
+            original_product="Huile moteur 5W-30 4L",
+            normalized_product="5W-30 engine oil 4L",
+            french_search_name="huile moteur 5W-30 4L",
+            english_search_name="5W-30 engine oil 4L",
+            technical_specs=["5W-30", "4L"],
+        )
+
+        queries = build_image_discovery_queries(product)
+
+        self.assertTrue(queries)
+        self.assertIn("5W-30", queries[0])
+        self.assertIn("4L", queries[0])
+        self.assertIn("product photo", queries[0])
+
+    def test_image_discovery_rejects_wrong_viscosity_or_volume(self) -> None:
+        product = ProductUnderstanding(
+            original_product="Huile moteur 5W-30 4L",
+            normalized_product="Huile moteur 5W-30 4L",
+            technical_specs=["5W-30", "4L"],
+        )
+        wrong_variant = _source(
+            "Huile moteur 0W-20 5L",
+            "https://example.test/huile-0w20-5l",
+            "huile moteur 0W-20 5L bidon",
+            "tunisia_retail",
+            image_urls=["https://cdn.example/0w20-5l.jpg"],
+        )
+
+        self.assertFalse(_image_source_matches_product(wrong_variant, product))
+
     async def test_client_analysis_keeps_bilingual_gemini_narrative(self) -> None:
         draft = PrototypeAnalysisDraft(
             product_description="English fallback description.",
@@ -656,6 +727,24 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.product_image_source_url, "https://image.example/t9")
         self.assertGreaterEqual(firecrawl.calls.count("tunisia_retail"), 2)
 
+    async def test_dedicated_image_search_is_used_before_retail_fallback(self) -> None:
+        firecrawl = DedicatedImageProvider(
+            "firecrawl",
+            {
+                "china_sourcing": [_source("CN", "https://cn.example/t9", "US$2 factory price MOQ 100", "china_sourcing")],
+                "tunisia_sourcing": [],
+                "tunisia_retail": [],
+            },
+        )
+
+        result = await _orchestrator(firecrawl=firecrawl).analyze(
+            PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
+        )
+
+        self.assertEqual(result.product_image_url, "https://cdn.example/dedicated-image.jpg")
+        self.assertIn("image_discovery", firecrawl.calls)
+        self.assertNotIn("tunisia_retail", firecrawl.calls[firecrawl.calls.index("image_discovery") + 1:])
+
     async def test_client_retail_examples_keep_market_product_links(self) -> None:
         result = await _orchestrator().analyze(
             PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer")
@@ -772,6 +861,7 @@ def _analysis(include_tunisia_sourcing: bool = True) -> ProviderAnalysisResult:
                 price_range_usd="US$2-3",
                 price_min_usd_numeric=2,
                 price_max_usd_numeric=3,
+                price_unit="unit",
                 moq="100 pcs",
                 moq_numeric=100,
                 source_url="https://cn.example/t9",

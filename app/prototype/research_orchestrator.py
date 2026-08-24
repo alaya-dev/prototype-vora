@@ -229,41 +229,49 @@ class PrototypeResearchOrchestrator:
         raw_queries = 0
         api_calls = 0
         for provider in self.providers:
-            provider_id = getattr(provider, "provider_id", "unknown")
-            started = time.perf_counter()
-            try:
-                evidence = await provider.search_group(product, "tunisia_retail")
-                collected.extend(evidence.sources)
-                raw_queries += evidence.raw_queries_count
-                api_calls += evidence.provider_api_calls
-                self.store.log_provider_attempt(
-                    run_id,
-                    provider_id,
-                    "image_discovery",
-                    "success",
-                    evidence.provider_api_calls,
-                    len(evidence.sources),
-                    _elapsed_ms(started),
-                )
-                if _best_source_image(evidence, product):
-                    break
-            except (ProviderNotConfiguredError, ProviderAdapterError):
-                self.store.log_provider_attempt(
-                    run_id,
-                    provider_id,
-                    "image_discovery",
-                    "failed",
-                    0,
-                    0,
-                    _elapsed_ms(started),
-                )
-                continue
+            dedicated = await self._search_image_group(run_id, provider, product, "image_discovery")
+            collected.extend(dedicated.sources)
+            raw_queries += dedicated.raw_queries_count
+            api_calls += dedicated.provider_api_calls
+            if _best_source_image(dedicated, product):
+                break
+            fallback = await self._search_image_group(run_id, provider, product, "tunisia_retail")
+            collected.extend(fallback.sources)
+            raw_queries += fallback.raw_queries_count
+            api_calls += fallback.provider_api_calls
+            if _best_source_image(fallback, product):
+                break
         return ProviderEvidence(
             provider_id="prototype_image_discovery",
             sources=_dedupe_sources(collected),
             raw_queries_count=raw_queries,
             provider_api_calls=api_calls,
         )
+
+    async def _search_image_group(
+        self,
+        run_id: int,
+        provider: object,
+        product: ProductUnderstanding,
+        group: str,
+    ) -> ProviderEvidence:
+        provider_id = getattr(provider, "provider_id", "unknown")
+        started = time.perf_counter()
+        try:
+            evidence = await provider.search_group(product, group)
+        except (ProviderNotConfiguredError, ProviderAdapterError):
+            self.store.log_provider_attempt(run_id, provider_id, group, "failed", 0, 0, _elapsed_ms(started))
+            return ProviderEvidence(provider_id=provider_id)
+        self.store.log_provider_attempt(
+            run_id,
+            provider_id,
+            group,
+            "success",
+            evidence.provider_api_calls,
+            len(evidence.sources),
+            _elapsed_ms(started),
+        )
+        return evidence
 
     async def _extract_analysis(
         self,
@@ -483,6 +491,7 @@ def _response_from_validated(
     china_prices = _china_price_points(validated.china_sourcing_offers)
     china_tnd = [round(price * cost_config.usd_to_tnd_rate, 2) for price in china_prices]
     source_unit_price, selling_price, pricing_basis = _comparable_prices(validated, cost_config)
+    source_offer = _canonical_supplier_offer(validated)
     landed_cost, landed_notes, landed_parts = _landed_cost_breakdown(source_unit_price, cost_config)
     ad_allocation, ad_notes = _ad_allocation(cost_config)
     gross_margin = None
@@ -536,6 +545,8 @@ def _response_from_validated(
     retail_summary = _retail_summary_from_validated(validated)
     profitability_estimate = ProfitabilityEstimate(
         source_unit_price_tnd=source_unit_price,
+        source_price_unit=source_offer.price_unit if source_offer else None,
+        source_price_unit_confirmed=bool(source_offer and source_offer.price_unit),
         estimated_shipping_per_unit_tnd=landed_parts["shipping"],
         estimated_customs_per_unit_tnd=landed_parts["customs"],
         estimated_handling_per_unit_tnd=landed_parts["handling"],
@@ -952,7 +963,7 @@ def _tunisia_link(offer: TunisiaSourcingOffer) -> PrototypeSourcingLink:
 def _valid_image_or_none(url: str | None, evidence: ProviderEvidence, product: ProductUnderstanding) -> str | None:
     if url and _is_product_image_url(url):
         source = _source_for_image(url, evidence)
-        if source is None or _image_source_matches_product(source, product):
+        if source and _image_source_matches_product(source, product):
             return url
     selected = _best_source_image(evidence, product)
     return selected[1] if selected else None
@@ -961,7 +972,7 @@ def _valid_image_or_none(url: str | None, evidence: ProviderEvidence, product: P
 def _image_payload(url: str | None, evidence: ProviderEvidence, product: ProductUnderstanding) -> dict:
     if url and _is_product_image_url(url):
         source = _source_for_image(url, evidence)
-        if source is None or _image_source_matches_product(source, product):
+        if source and _image_source_matches_product(source, product):
             return {
                 "product_image_url": url,
                 "product_image_source_url": source.url,
@@ -1057,6 +1068,7 @@ def _china_offer_views(offers: list[ChinaSourcingOffer], cost_config: CostConfig
             price_text=offer.price_range_usd,
             price_min=offer.price_min_usd_numeric,
             price_max=offer.price_max_usd_numeric,
+            price_unit=offer.price_unit,
             currency="USD" if (offer.price_min_usd_numeric is not None or offer.price_max_usd_numeric is not None or offer.price_range_usd) else "",
             price_min_tnd=min_tnd,
             price_max_tnd=max_tnd,
@@ -1378,7 +1390,7 @@ def _detailed_scoring(validated: ProviderAnalysisResult, profitability: Profitab
 
     margin_percent = _margin_percent(profitability)
     if margin_percent is None:
-        margin_score, margin_note = 0, "Margin could not be computed from current data."
+        margin_score, margin_note = 0, "Marge non calculable : l’unité du prix fournisseur n’est pas confirmée."
     elif margin_percent >= 30:
         margin_score, margin_note = 20, f"Gross margin is about {margin_percent:.0f}% of selling price."
     elif margin_percent >= 20:
@@ -1418,8 +1430,7 @@ def _detailed_scoring(validated: ProviderAnalysisResult, profitability: Profitab
     )
 
     differentiation_score = 2
-    risks_count = len(_evidence_risks(validated))
-    risk_score = max(0, 5 - min(5, risks_count))
+    risk_score, risk_note = _risk_management_score(validated, profitability, len(unique_sellers))
 
     criteria = [
         ScoreCriterion(key="market_demand", score=demand_score, max_score=20, justification=demand_note),
@@ -1429,9 +1440,31 @@ def _detailed_scoring(validated: ProviderAnalysisResult, profitability: Profitab
         ScoreCriterion(key="ads_potential", score=ads_score, max_score=10, justification=ads_note),
         ScoreCriterion(key="recurrence", score=recurrence_score, max_score=10, justification=recurrence_note),
         ScoreCriterion(key="differentiation", score=differentiation_score, max_score=5, justification="No clear differentiator evidenced; assume limited differentiation."),
-        ScoreCriterion(key="risk", score=risk_score, max_score=5, justification=f"{risks_count} open risk signal(s) from evidence quality."),
+        ScoreCriterion(key="risk", score=risk_score, max_score=5, justification=risk_note),
     ]
     return DetailedScoring(total=min(100, sum(c.score for c in criteria)), criteria=criteria)
+
+
+def _risk_management_score(
+    validated: ProviderAnalysisResult,
+    profitability: ProfitabilityEstimate | None,
+    seller_count: int,
+) -> tuple[int, str]:
+    score = 5
+    limits: list[str] = []
+    risk_limits = [
+        (_overall_confidence(validated) == "low", 2, "confiance globale faible"),
+        (not profitability or not profitability.source_price_unit_confirmed, 2, "unité du prix fournisseur inconnue"),
+        (len(validated.china_sourcing_offers) < 3, 1, "moins de trois fournisseurs"),
+        (seller_count < 3 or _competition_level(validated) == "unknown", 1, "couverture de la concurrence insuffisante"),
+    ]
+    for limited, deduction, label in risk_limits:
+        if limited:
+            score -= deduction
+            limits.append(label)
+    if not limits:
+        return score, "La maîtrise du risque est soutenue par une couverture suffisante des preuves."
+    return max(0, score), "Maîtrise du risque limitée : " + "; ".join(limits) + "."
 
 
 def _commercial_potential_score(validated: ProviderAnalysisResult) -> int:
@@ -1558,7 +1591,11 @@ def _is_product_image_url(url: str) -> bool:
 
 
 def _image_source_matches_product(source: ProviderRawSource, product: ProductUnderstanding) -> bool:
-    source_text = _source_text(source).lower().replace("-", "")
+    source_text = re.sub(
+        r"\s+",
+        "",
+        f"{_source_text(source)} {source.url}".lower().replace("-", ""),
+    )
     product_text = " ".join([
         product.original_product or "",
         product.normalized_product or "",
@@ -1567,12 +1604,23 @@ def _image_source_matches_product(source: ProviderRawSource, product: ProductUnd
     target_viscosities = re.findall(r"\b\d+w\d+\b", product_text)
     if target_viscosities and not all(viscosity in source_text for viscosity in target_viscosities):
         return False
-    if target_viscosities and source.source_type != "product_page":
+    target_volumes = _product_volume_tokens(product_text)
+    if target_volumes and not all(volume in source_text for volume in target_volumes):
+        return False
+    if target_viscosities and source.source_type not in {"product_page", "search_result"}:
         return False
     product_terms = {"oil", "huile", "engine", "moteur", "lubricant", "automotive"}
     if any(term in product_text for term in product_terms) and not any(term in source_text for term in product_terms):
         return False
     return True
+
+
+def _product_volume_tokens(product_text: str) -> list[str]:
+    normalized = re.sub(r"\s+", "", product_text)
+    return [f"{amount}{unit}" for amount, unit in re.findall(
+        r"\b(\d+(?:[.,]\d+)?)(l|ml|kg|g|pcs?|pieces?|units?)\b",
+        normalized,
+    )]
 
 
 def _image_source_score(source: ProviderRawSource, product: ProductUnderstanding) -> int:
@@ -2101,7 +2149,19 @@ def _reconcile_profitability_supplier_price(
     validated: ProviderAnalysisResult,
     cost_config: CostConfig,
 ) -> ProfitabilityEstimate:
+    supplier_offer = _canonical_supplier_offer(validated)
     supplier_price = _canonical_supplier_price(validated, cost_config)
+    if not supplier_offer or not supplier_offer.price_unit:
+        return profitability.model_copy(update={
+            "source_price_unit": None,
+            "source_price_unit_confirmed": False,
+            "estimated_landed_cost_per_unit_tnd": None,
+            "gross_margin_per_unit_before_marketing_tnd": None,
+            "estimated_margin_per_unit_tnd": None,
+            "gross_profit_for_1000_before_marketing_tnd": None,
+            "net_profit_for_1000_after_marketing_tnd": None,
+            "estimated_profit_for_1000_units_tnd": None,
+        })
     if supplier_price is None or supplier_price == profitability.source_unit_price_tnd:
         return profitability
     landed, landed_notes, parts = _landed_cost_breakdown(supplier_price, cost_config)
@@ -2110,6 +2170,8 @@ def _reconcile_profitability_supplier_price(
     gross_profit = round(margin * ANALYSIS_QUANTITY_UNITS, 2) if margin is not None else None
     return profitability.model_copy(update={
         "source_unit_price_tnd": supplier_price,
+        "source_price_unit": supplier_offer.price_unit if supplier_offer else None,
+        "source_price_unit_confirmed": bool(supplier_offer and supplier_offer.price_unit),
         "estimated_shipping_per_unit_tnd": parts["shipping"],
         "estimated_customs_per_unit_tnd": parts["customs"],
         "estimated_handling_per_unit_tnd": parts["handling"],
@@ -2126,12 +2188,17 @@ def _reconcile_profitability_supplier_price(
 
 
 def _canonical_supplier_price(validated: ProviderAnalysisResult, cost_config: CostConfig) -> float | None:
+    offer = _canonical_supplier_offer(validated)
+    if not offer:
+        return None
+    return round(offer.price_min_usd_numeric * cost_config.usd_to_tnd_rate, 2)
+
+
+def _canonical_supplier_offer(validated: ProviderAnalysisResult):
     offers = [offer for offer in validated.china_sourcing_offers if offer.price_min_usd_numeric is not None and offer.source_url]
     exact = [offer for offer in offers if offer.product_match == "exact"] or offers
     reliable = [offer for offer in exact if offer.confidence in {"high", "medium"}] or exact
-    if not reliable:
-        return None
-    return round(min(offer.price_min_usd_numeric for offer in reliable) * cost_config.usd_to_tnd_rate, 2)
+    return min(reliable, key=lambda offer: offer.price_min_usd_numeric) if reliable else None
 
 
 def _has_equivalent_or_weak_china_sourcing(validated: ProviderAnalysisResult) -> bool:

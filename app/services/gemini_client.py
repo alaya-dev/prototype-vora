@@ -368,7 +368,7 @@ def _build_analysis_prompt(product: str | ProductUnderstanding, evidence: Provid
         "China sourcing: extract wholesale/manufacturer product prices only. Use "
         "china_sourcing_offers for product-level wholesale, factory, manufacturer, B2B, "
         "or marketplace-source offers from China. The target is the lowest source-backed "
-        "unit price in USD for the requested product. MOQ is important and should be "
+        "unit price in USD for the requested product. Also extract price_unit only when the source explicitly states the pricing unit (for example per litre, per 4L bottle, or per piece); otherwise return null. MOQ is important and should be "
         "extracted when available. The supplier/company name is secondary evidence "
         "attached to the product listing. Do not return generic wholesaler/company pages "
         "without product-level price evidence. Do not treat a company directory, supplier "

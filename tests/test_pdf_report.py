@@ -113,6 +113,7 @@ class PdfReportTests(unittest.TestCase):
             china_offers=[SourcingOfferView(
                 name="Retained supplier", product_title="5W30 engine oil 4L",
                 price_min_tnd=6.2, price_max_tnd=8.06,
+                price_unit="4L",
                 source_url="https://example.com/supplier", confidence="medium", product_match="exact",
             )],
             retail_offers=[
@@ -131,9 +132,11 @@ class PdfReportTests(unittest.TestCase):
         self.assertIn("31.8 TND/L", text)
         self.assertIn("131.05 TND", text)
         self.assertIn("118.23 TND", text)
-        self.assertIn("GO SOUS CONDITIONS", text)
+        self.assertIn("À INVESTIGUER", text)
         self.assertIn("Maîtrise du risque", text)
         self.assertNotIn("Space Heater", text)
+        for english_fragment in ("seller(s)", "sourcing offer(s)", "Qualitative reading only", "Product looks consumable", "No clear differentiator", "open risk signal"):
+            self.assertNotIn(english_fragment, text)
 
     def test_pdf_recomputes_financials_from_retained_supplier_offer(self) -> None:
         report = PrototypeAnalyzeResponse(
@@ -142,6 +145,7 @@ class PdfReportTests(unittest.TestCase):
             china_offers=[SourcingOfferView(
                 name="Retained supplier", product_title="5W30 engine oil 4L",
                 price_min_tnd=6.2, price_max_tnd=8.06,
+                price_unit=None,
                 source_url="https://example.com/supplier", confidence="medium", product_match="exact",
             )],
             retail_offers=[RetailOfferView(
@@ -161,5 +165,6 @@ class PdfReportTests(unittest.TestCase):
         text = "\n".join((page.extract_text() or "") for page in PdfReader(BytesIO(build_opportunity_pdf(report, "fr"))).pages)
 
         self.assertIn("6.2 TND", text)
-        self.assertIn("12.82 TND", text)
+        self.assertIn("Prix sourcing non directement comparable", text)
+        self.assertNotIn("12.82 TND", text)
         self.assertNotIn("1.55 TND", text)

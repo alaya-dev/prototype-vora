@@ -95,6 +95,8 @@ class RetailMarketSummary(StrictModel):
 
 class ProfitabilityEstimate(StrictModel):
     source_unit_price_tnd: float | None = None
+    source_price_unit: str | None = None
+    source_price_unit_confirmed: bool = False
     estimated_shipping_per_unit_tnd: float | None = None
     estimated_customs_per_unit_tnd: float | None = None
     estimated_handling_per_unit_tnd: float | None = None
@@ -161,6 +163,7 @@ class SourcingOfferView(StrictModel):
     price_text: str | None = None
     price_min: float | None = None
     price_max: float | None = None
+    price_unit: str | None = None
     currency: str = ""
     price_min_tnd: float | None = None
     price_max_tnd: float | None = None

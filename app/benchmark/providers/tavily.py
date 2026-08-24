@@ -142,11 +142,10 @@ def _dedupe_urls(urls: list[str]) -> list[str]:
 
 
 async def _search_one_group(adapter: TavilyAdapter, product, group: str) -> ProviderEvidence:
-    from app.benchmark.query_strategy import build_regional_queries
+    from app.benchmark.query_strategy import build_group_queries
 
     adapter._raise_if_not_configured()
-    query_groups = build_regional_queries(product, adapter.settings.effective_search_queries_per_group)
-    query_list = getattr(query_groups, group)
+    query_list = build_group_queries(product, adapter.settings.effective_search_queries_per_group, group)
     sources: list[ProviderRawSource] = []
     api_calls = 0
     country = "china" if group == "china_sourcing" else "tunisia"
@@ -180,7 +179,7 @@ async def _search_one_group(adapter: TavilyAdapter, product, group: str) -> Prov
                             url=item.get("url", ""),
                             snippet=item.get("content", ""),
                             content=item.get("raw_content") or None,
-                            region_hint=group,
+                            region_hint="tunisia_retail" if group == "image_discovery" else group,
                             source_type="search_result",
                             image_urls=_extract_image_urls(item),
                         )

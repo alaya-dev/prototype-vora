@@ -24,6 +24,35 @@ class RegionalQueries:
         return self.tunisia_retail
 
 
+def build_image_discovery_queries(product: str | ProductUnderstanding) -> list[str]:
+    intent = infer_product_intent(product)
+    exact_names = [
+        intent.french_search_name,
+        intent.english_search_name,
+        intent.original_product,
+    ]
+    specifications = " ".join([intent.brand_or_model or "", *intent.technical_specs]).strip()
+    queries: list[str] = []
+    for name in exact_names:
+        if not name:
+            continue
+        query = f'"{name}" {specifications} product photo official image'.strip()
+        if query.lower() not in {item.lower() for item in queries}:
+            queries.append(query)
+    return queries[:3]
+
+
+def build_group_queries(
+    product: str | ProductUnderstanding,
+    max_queries_per_region: int,
+    group: str,
+) -> list[str]:
+    if group == "image_discovery":
+        return build_image_discovery_queries(product)
+    groups = build_regional_queries(product, max_queries_per_region)
+    return getattr(groups, group)
+
+
 @dataclass(frozen=True)
 class ProductIntent:
     original_product: str

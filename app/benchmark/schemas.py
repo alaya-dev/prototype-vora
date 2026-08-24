@@ -103,6 +103,7 @@ class ChinaSourcingOffer(StrictModel):
     price_range_usd: str | None = None
     price_min_usd_numeric: float | None = None
     price_max_usd_numeric: float | None = None
+    price_unit: str | None = None
     moq: str | None = None
     moq_numeric: float | None = None
     source_url: str = ""

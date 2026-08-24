@@ -1974,7 +1974,6 @@ async function exportOpportunityPdf() {
 function dashboardImageUrlForPdf(report) {
   const image = productPhoto.querySelector("img");
   if (!image) return null;
-  if (image.alt.includes("Illustrative product image unavailable")) return null;
   const displayedSource = image.currentSrc || image.src;
   if (displayedSource.startsWith("data:image/") || displayedSource.startsWith("http")) return displayedSource;
   return report.product_image_url || null;
