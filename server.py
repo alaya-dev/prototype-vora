@@ -126,6 +126,8 @@ def create_app(
         try:
             resolved_prototype_orchestrator.cost_config = resolved_store.get_cost_config()
             return await resolved_prototype_orchestrator.analyze(request)
+        except (GeminiClientError, GeminiSearchClientError) as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
         except RuntimeError as error:
             message = str(error)
             if message.startswith("GEMINI_"):

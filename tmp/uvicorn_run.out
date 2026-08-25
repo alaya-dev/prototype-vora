@@ -4,4 +4,5 @@ INFO:     127.0.0.1:60931 - "GET /logo/Nexora_logo_transparent_clean_cropped.png
 INFO:     127.0.0.1:60932 - "GET /report.js HTTP/1.1" 200 OK
 INFO:     127.0.0.1:60932 - "POST /prototype/analyze HTTP/1.1" 200 OK
 INFO:     127.0.0.1:60932 - "POST /prototype/runs/run_20260825104750355497/pdf HTTP/1.1" 200 OK
-   
+   INFO:     127.0.0.1:62350 - "POST /prototype/analyze HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:62460 - "GET /health HTTP/1.1" 200 OK
