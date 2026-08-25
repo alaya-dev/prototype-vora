@@ -168,3 +168,74 @@ class PdfReportTests(unittest.TestCase):
         self.assertIn("Prix sourcing non directement comparable", text)
         self.assertNotIn("12.82 TND", text)
         self.assertNotIn("1.55 TND", text)
+
+    def test_pdf_normalizes_liter_supplier_price_to_target_package(self) -> None:
+        report = PrototypeAnalyzeResponse(
+            run_id="run-liter-price",
+            product_understanding=ProductUnderstanding(
+                original_product="Huile moteur 5W-30 4L",
+                normalized_product="5W-30 engine oil 4L",
+                technical_specs=["5W-30", "4L"],
+            ),
+            detailed_scoring=DetailedScoring(criteria=[
+                ScoreCriterion(key="margin", score=20, max_score=20),
+                ScoreCriterion(key="risk", score=5, max_score=5),
+            ]),
+            china_offers=[SourcingOfferView(
+                name="Retained supplier",
+                product_title="5W30 engine oil 4L",
+                price_min_tnd=4.65,
+                price_max_tnd=6.2,
+                price_unit="liter",
+                source_url="https://example.com/supplier",
+                confidence="low",
+                product_match="exact",
+            )],
+            retail_offers=[
+                RetailOfferView(seller_name="Mannol", product_title="Mannol 4L", volume_text="4L", price_tnd=134.9, source_url="https://example.com/mannol"),
+                RetailOfferView(seller_name="Shell", product_title="Shell 5L", volume_text="5L", price_tnd=159, source_url="https://example.com/shell"),
+            ],
+            profitability_estimate=ProfitabilityEstimate(
+                source_unit_price_tnd=1.55,
+                estimated_shipping_per_unit_tnd=4,
+                estimated_customs_per_unit_tnd=0.15,
+                estimated_handling_per_unit_tnd=0,
+                estimated_misc_per_unit_tnd=2,
+                estimated_landed_cost_per_unit_tnd=7.28,
+                digital_ad_budget_default_tnd=400,
+            ),
+        )
+
+        text = "\n".join((page.extract_text() or "") for page in PdfReader(BytesIO(build_opportunity_pdf(report, "fr"))).pages)
+
+        self.assertIn("4.65 TND/L", text)
+        self.assertIn("18.6 TND", text)
+        self.assertIn("26.46 TND", text)
+        self.assertNotIn("1.55 TND", text)
+        self.assertNotIn("11.12 TND", text)
+        self.assertNotIn("7.28 TND", text)
+        self.assertIn("Confiance\nFaible", text)
+
+        english_text = "\n".join((page.extract_text() or "") for page in PdfReader(BytesIO(build_opportunity_pdf(report, "en"))).pages)
+
+        self.assertIn("Gross margin is about", english_text)
+        self.assertIn("Risk control", english_text)
+        self.assertNotIn("Marge recalculée", english_text)
+        self.assertNotIn("Maîtrise du risque", english_text)
+
+    def test_pdf_replaces_unsupported_retail_range_with_retained_offers(self) -> None:
+        report = PrototypeAnalyzeResponse(
+            run_id="run-retail-range",
+            product_understanding=ProductUnderstanding(original_product="Produit test"),
+            product_description="Les prix Tunisie sont compris entre 94 et 219 TND.",
+            retail_offers=[
+                RetailOfferView(seller_name="Vendeur A", price_tnd=129.9, source_url="https://example.com/a"),
+                RetailOfferView(seller_name="Vendeur B", price_tnd=147, source_url="https://example.com/b"),
+            ],
+        )
+
+        text = "\n".join((page.extract_text() or "") for page in PdfReader(BytesIO(build_opportunity_pdf(report, "fr"))).pages)
+
+        self.assertIn("129.9–147 TND", text)
+        self.assertNotIn("94", text)
+        self.assertNotIn("219", text)

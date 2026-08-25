@@ -433,7 +433,7 @@ def _to_client_response(
             }
         )
     profitability = _profitability_with_evidence_risks(base.profitability_estimate, validated)
-    profitability = _reconcile_profitability_supplier_price(profitability, validated, cost_config)
+    profitability = _reconcile_profitability_supplier_price(profitability, validated, cost_config, product)
     recommendation, recommendation_reason = _conservative_recommendation(
         base.recommendation,
         profitability.gross_margin_per_unit_before_marketing_tnd,
@@ -490,7 +490,7 @@ def _response_from_validated(
 ) -> PrototypeAnalyzeResponse:
     china_prices = _china_price_points(validated.china_sourcing_offers)
     china_tnd = [round(price * cost_config.usd_to_tnd_rate, 2) for price in china_prices]
-    source_unit_price, selling_price, pricing_basis = _comparable_prices(validated, cost_config)
+    source_unit_price, selling_price, pricing_basis = _comparable_prices(validated, cost_config, product)
     source_offer = _canonical_supplier_offer(validated)
     landed_cost, landed_notes, landed_parts = _landed_cost_breakdown(source_unit_price, cost_config)
     ad_allocation, ad_notes = _ad_allocation(cost_config)
@@ -625,7 +625,15 @@ def _china_price_points(offers: list[ChinaSourcingOffer]) -> list[float]:
 def _comparable_prices(
     validated: ProviderAnalysisResult,
     cost_config: CostConfig,
+    product: ProductUnderstanding | None = None,
 ) -> tuple[float | None, float | None, str]:
+    if product is not None:
+        normalized_source = _canonical_supplier_price(validated, cost_config, product)
+        target_volume, target_unit = _product_target_volume(product)
+        retail_points = _retail_price_points(validated.tunisia_retail_market.retail_offers)
+        comparable_retail = _target_package_retail_price(retail_points, target_volume, target_unit)
+        if validated.china_sourcing_offers and target_volume and target_unit:
+            return normalized_source, comparable_retail, "Supplier price normalized to the target package; Tunisia prices normalized to the same package."
     source_points = _source_price_points(
         validated.china_sourcing_offers,
         validated.tunisia_sourcing_offers,
@@ -649,6 +657,20 @@ def _comparable_prices(
             f"Prices normalized in TND/{source_unit} because package volumes differ.",
         )
     return source_price, round(retail_price, 2), "Comparable listed-package prices used; no volume conversion was required."
+
+
+def _target_package_retail_price(
+    retail_points: list[tuple[float, str | None, float | None]],
+    target_volume: float | None,
+    target_unit: str | None,
+) -> float | None:
+    if not target_volume or not target_unit:
+        return None
+    matching = [point for point in retail_points if point[1] == target_unit and point[2]]
+    if not matching:
+        return None
+    comparable_prices = [price / volume * target_volume for price, _, volume in matching]
+    return round(sum(comparable_prices) / len(comparable_prices), 2)
 
 
 def _source_price_points(
@@ -1026,7 +1048,7 @@ def _landed_cost_breakdown(source_unit_price: float | None, cost_config: CostCon
         )
     landed = round(source_unit_price + shipping + customs + handling + misc, 2)
     note = (
-        f"Source unit price {source_unit_price:g} TND + shipping {shipping:g} TND "
+        f"Supplier price equivalent to the target package {source_unit_price:g} TND + shipping {shipping:g} TND "
         f"+ customs/import {customs:g} TND + handling {handling:g} TND "
         f"+ misc {misc:g} TND = estimated landed cost {landed:g} TND/unit. "
         "Shipping, customs, handling, and misc values are admin assumptions unless source-backed."
@@ -2148,10 +2170,11 @@ def _reconcile_profitability_supplier_price(
     profitability: ProfitabilityEstimate,
     validated: ProviderAnalysisResult,
     cost_config: CostConfig,
+    product: ProductUnderstanding,
 ) -> ProfitabilityEstimate:
     supplier_offer = _canonical_supplier_offer(validated)
-    supplier_price = _canonical_supplier_price(validated, cost_config)
-    if not supplier_offer or not supplier_offer.price_unit:
+    supplier_price = _canonical_supplier_price(validated, cost_config, product)
+    if not supplier_offer or not supplier_offer.price_unit or supplier_price is None:
         return profitability.model_copy(update={
             "source_price_unit": None,
             "source_price_unit_confirmed": False,
@@ -2187,11 +2210,45 @@ def _reconcile_profitability_supplier_price(
     })
 
 
-def _canonical_supplier_price(validated: ProviderAnalysisResult, cost_config: CostConfig) -> float | None:
+def _canonical_supplier_price(
+    validated: ProviderAnalysisResult,
+    cost_config: CostConfig,
+    product: ProductUnderstanding | None = None,
+) -> float | None:
     offer = _canonical_supplier_offer(validated)
     if not offer:
         return None
-    return round(offer.price_min_usd_numeric * cost_config.usd_to_tnd_rate, 2)
+    price_tnd = round(offer.price_min_usd_numeric * cost_config.usd_to_tnd_rate, 2)
+    if product is None:
+        return price_tnd
+    target_volume, target_unit = _product_target_volume(product)
+    price_unit = _supplier_price_unit_kind(offer.price_unit)
+    if price_unit == "liter" and target_unit == "L" and target_volume:
+        return round(price_tnd * target_volume, 2)
+    if price_unit == "unit":
+        return price_tnd
+    return None
+
+
+def _product_target_volume(product: ProductUnderstanding) -> tuple[float | None, str | None]:
+    product_text = " ".join([
+        product.original_product,
+        product.normalized_product,
+        *product.technical_specs,
+    ])
+    quantity, unit = _parse_volume(product_text)
+    return _base_volume(quantity, unit), _base_unit(unit)
+
+
+def _supplier_price_unit_kind(price_unit: str | None) -> str | None:
+    normalized = re.sub(r"\s+", " ", (price_unit or "").lower()).strip()
+    if re.search(r"(?:liter|litre|litres|liters|per l|/l|\bl\b)", normalized):
+        return "liter"
+    if re.search(r"(?:unit|piece|pcs|bidon|bottle|carton|package)", normalized):
+        return "unit"
+    if re.fullmatch(r"\d+(?:[.,]\d+)?\s*(?:l|litre?s?)", normalized):
+        return "unit"
+    return None
 
 
 def _canonical_supplier_offer(validated: ProviderAnalysisResult):

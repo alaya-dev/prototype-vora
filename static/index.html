@@ -1948,11 +1948,11 @@ async function exportOpportunityPdf() {
   exportPdfButton.textContent = currentLanguage === "fr" ? "Génération du PDF…" : "Generating PDF…";
   try {
     const report = { ...currentPrototypeData };
-    report.product_image_url = dashboardImageUrlForPdf(report);
+    report.product_image_url = await dashboardImageUrlForPdf(report);
     const response = await fetch(`/prototype/runs/${encodeURIComponent(report.run_id)}/pdf`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ report, language: currentLanguage })
+      body: JSON.stringify({ report, language: "en" })
     });
     const pdfBlob = await readBlob(response);
     const downloadUrl = URL.createObjectURL(pdfBlob);
@@ -1971,11 +1971,26 @@ async function exportOpportunityPdf() {
   }
 }
 
-function dashboardImageUrlForPdf(report) {
+async function dashboardImageUrlForPdf(report) {
   const image = productPhoto.querySelector("img");
   if (!image) return null;
   const displayedSource = image.currentSrc || image.src;
-  if (displayedSource.startsWith("data:image/") || displayedSource.startsWith("http")) return displayedSource;
+  if (displayedSource.startsWith("data:image/")) return displayedSource;
+  if (displayedSource.startsWith("http")) {
+    try {
+      const response = await fetch(displayedSource, { mode: "cors", cache: "force-cache" });
+      if (!response.ok) throw new Error("Displayed product image could not be read.");
+      const blob = await response.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (_error) {
+      return displayedSource;
+    }
+  }
   return report.product_image_url || null;
 }
 

@@ -241,7 +241,7 @@ def _product_section(report: PrototypeAnalyzeResponse, language: str, styles: di
         (labels["market"], _market_name(report.target_market, language)),
         (labels["sourcing_country"], _country_name(report.sourcing_country, language)),
     ]
-    description = _localized(report.localized_analysis, "product_description", language) or report.product_description
+    description = _product_description_for_pdf(report, language)
     return _section(labels["product_section"], [_p(_escape(description), styles["body"])], _key_value_table(rows, styles), styles)
 
 
@@ -249,21 +249,21 @@ def _sourcing_section(report: PrototypeAnalyzeResponse, language: str, styles: d
     labels = _labels(language)
     china_rows = [
         [offer.name or labels["unavailable"], offer.product_title or labels["unavailable"],
-         _price_range(offer.price_min, offer.price_max, offer.currency or "USD"),
-         _tnd_range(offer.price_min_tnd, offer.price_max_tnd), _supplier_price_unit_label(offer, language),
+         _price_range(offer.price_min, offer.price_max, offer.currency or "USD", labels["unavailable"]),
+         _supplier_tnd_conversion(offer, labels["unavailable"]), _supplier_price_unit_label(offer, language),
          _format_moq(offer.moq, language, labels),
          _source_link(offer.source_url, offer.name or labels["source"], styles, language)]
         for offer in report.china_offers
     ]
     wholesale_rows = [
         [offer.name or labels["unavailable"], offer.product_title or labels["unavailable"],
-         _tnd_range(offer.price_min_tnd, offer.price_max_tnd),
+         _tnd_range(offer.price_min_tnd, offer.price_max_tnd, labels["unavailable"]),
          _source_link(offer.source_url, offer.name or labels["source"], styles, language)]
         for offer in report.tunisia_wholesale_offers
     ]
     blocks: list[Any] = []
     blocks.append(_p(labels["international_sourcing"], styles["section"]))
-    blocks.append(_p(_confidence_note(report.sourcing_summary.evidence_confidence, language), styles["muted"]))
+    blocks.append(_p(_confidence_note(_sourcing_confidence_key(report), language), styles["muted"]))
     blocks.append(_p(labels["suppliers"], styles["subsection"]))
     blocks.append(_table(
         [labels["supplier"], labels["product"], labels["price"], labels["tnd_conversion"], labels.get("price_unit", "Price unit"), labels["moq"], labels["source"]],
@@ -280,10 +280,11 @@ def _sourcing_section(report: PrototypeAnalyzeResponse, language: str, styles: d
 def _landed_cost_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
     labels = _labels(language)
     financials = _financial_truth(report)
-    rows = [[labels[key], _tnd(financials[key], labels), _provenance(provenance, language)] for key, provenance in (
-        ("supplier_price", "observed"), ("shipping", "estimate"), ("customs", "computed"),
-        ("handling", "estimate"), ("misc", "estimate"),
-    )]
+    rows = [[_target_package_cost_label(report, language), _tnd(financials["supplier_price"], labels), _provenance("observed", language)]]
+    rows.extend([[_label, _tnd(financials[key], labels), _provenance(provenance, language)] for key, provenance, _label in (
+        ("shipping", "estimate", labels["shipping"]), ("customs", "computed", labels["customs"]),
+        ("handling", "estimate", labels["handling"]), ("misc", "estimate", labels["misc"]),
+    )])
     rows.append([labels["landed_cost"], _tnd(financials["landed_cost"], labels), _provenance("estimate", language)])
     return _section(labels["landed_cost_section"], [_p(_escape(_landed_cost_note(report, language)), styles["muted"])], _table(
         [labels["component"], labels["value"], labels["data_quality"]], rows, [70, 45, 45], styles,
@@ -294,7 +295,7 @@ def _market_section(report: PrototypeAnalyzeResponse, language: str, styles: dic
     labels = _labels(language)
     retail_rows = [
         [offer.seller_name or labels["unavailable"], offer.brand or labels["unavailable"], offer.product_title or labels["unavailable"],
-         offer.volume_text or labels["unavailable"], _tnd_range(offer.price_tnd, offer.price_tnd) if offer.price_tnd is not None else offer.price_range_tnd or labels["unavailable"],
+         offer.volume_text or labels["unavailable"], _tnd_range(offer.price_tnd, offer.price_tnd, labels["unavailable"]) if offer.price_tnd is not None else offer.price_range_tnd or labels["unavailable"],
          _normalized_retail_price(offer, language, labels), offer.city or labels["unavailable"],
          _source_link(offer.source_url, offer.seller_name or labels["source"], styles, language)]
         for offer in report.retail_offers
@@ -379,15 +380,17 @@ def _profitability_section(report: PrototypeAnalyzeResponse, language: str, styl
     rows = [
         [labels["quantity"], str(quantity)],
         [labels["purchase_price"], _supplier_price_display(report, financials["supplier_price"], language, labels)],
+        [_target_package_label(language), _target_package_display(report, labels)],
+        [_target_package_cost_label(report, language), _tnd(financials["supplier_price"], labels)],
         [labels["landed_cost"], _tnd(landed_cost, labels)],
         [labels["selling_price"], _tnd(selling_price, labels)],
         [labels["gross_margin"], _tnd(margin, labels)],
         [labels["margin_percent"], _margin_percent_values(margin, selling_price)],
         [labels["gross_profit"], _tnd(gross_profit, labels)],
-        [labels["ad_budget"], _budget(profit)],
+        [labels["ad_budget"], _budget(profit, labels["unavailable"])],
         [labels["profit_after_ads"], _tnd(profit_after_ads, labels)],
     ]
-    notes = _profitability_notes(report, profit, language)
+    notes = _profitability_notes(report, language)
     flowables = [_p(labels["profitability_section"], styles["section"]), _p(_market_price_basis(report, language), styles["muted"]), _table([labels["metric"], labels["value"]], rows, [85, 90], styles)]
     if notes:
         flowables.append(_p("<br/>".join(_escape(note) for note in dict.fromkeys(filter(None, notes))), styles["muted"]))
@@ -416,7 +419,7 @@ def _decision_section(report: PrototypeAnalyzeResponse, language: str, styles: d
     criteria = _pdf_score_criteria(report, language)
     scores = [[_criterion_label(item.key, language), f"{item.score}/{item.max_score}", _criterion_justification(item, language)] for item in criteria]
     blocks = [_p(labels["decision_section"], styles["section"]), _p(_decision_for_pdf(report, language), styles["decision"]), _p(
-        f"{labels['score']}: {_pdf_score_total(report)}/100 · {labels['confidence']}: {_confidence(_global_confidence_key(report), language)}", styles["center"],
+        f"{labels['score']}: {_pdf_score_total(report, language)}/100 · {labels['confidence']}: {_confidence(_global_confidence_key(report), language)}", styles["center"],
     )]
     decision_reason = _decision_reason(report, language)
     if decision_reason:
@@ -432,30 +435,73 @@ def _pdf_score_criteria(report: PrototypeAnalyzeResponse, language: str = "fr") 
     margin_percent = _margin_percent_number(margin, _comparable_market_price(report))
     for index, item in enumerate(criteria):
         if item.key == "risk":
-            score, justification = _pdf_risk_management_score(report)
+            score, justification = _pdf_risk_management_score(report, language)
             criteria[index] = item.model_copy(update={"score": score, "justification": justification})
             continue
         if item.key == "margin" and margin is None:
             criteria[index] = item.model_copy(update={
                 "score": 0,
-                "justification": "Marge non calculable : l’unité du prix fournisseur n’est pas confirmée.",
+                "justification": (
+                    "Marge non calculable : l’unité du prix fournisseur n’est pas confirmée."
+                    if language == "fr"
+                    else "Margin cannot be calculated: the supplier price unit is not confirmed."
+                ),
             })
             continue
         if item.key == "sourcing" and not _supplier_price_unit_confirmed(report):
-            criteria[index] = item.model_copy(update={"score": 3, "justification": "Unité du prix fournisseur non confirmée ; le prix sourcing n’est pas directement comparable."})
+            criteria[index] = item.model_copy(update={
+                "score": 3,
+                "justification": (
+                    "Unité du prix fournisseur non confirmée ; le prix sourcing n’est pas directement comparable."
+                    if language == "fr"
+                    else "Supplier price unit is not confirmed; the sourcing price is not directly comparable."
+                ),
+            })
         if item.key == "margin":
-            score = 0 if not _supplier_price_unit_confirmed(report) else 20 if margin_percent >= 30 else 15 if margin_percent >= 20 else 10 if margin_percent >= 10 else 5 if margin_percent > 0 else 0
-            criteria[index] = item.model_copy(update={"score": score, "justification": f"Marge recalculée à partir de l’offre fournisseur retenue : {margin_percent:.1f}%."})
+            score, penalty = _margin_score_with_confidence(report, margin_percent)
+            criteria[index] = item.model_copy(update={
+                "score": score,
+                "justification": (
+                    f"Marge recalculée à partir de l’offre fournisseur retenue : {margin_percent:.1f}%. Pénalité de fiabilité des données : -{penalty} point(s)."
+                    if language == "fr"
+                    else f"Gross margin is about {margin_percent:.1f}%. Economic score was adjusted by a data reliability penalty of -{penalty} point(s)."
+                ),
+            })
         if item.key == "competition" and _competition_level_key(report) == "unknown":
-            criteria[index] = item.model_copy(update={"score": 7, "justification": "Données insuffisantes : moins de trois vendeurs ou concurrents fiables retenus."})
+            criteria[index] = item.model_copy(update={
+                "score": 7,
+                "justification": (
+                    "Données insuffisantes : moins de trois vendeurs ou concurrents fiables retenus."
+                    if language == "fr"
+                    else "Insufficient data: fewer than three reliable sellers or competitors were retained."
+                ),
+            })
     return criteria
 
 
-def _pdf_score_total(report: PrototypeAnalyzeResponse) -> int:
-    return min(100, sum(item.score for item in _pdf_score_criteria(report)))
+def _margin_score_with_confidence(report: PrototypeAnalyzeResponse, margin_percent: float) -> tuple[int, int]:
+    base_score = 20 if margin_percent >= 30 else 15 if margin_percent >= 20 else 10 if margin_percent >= 10 else 5 if margin_percent > 0 else 0
+    if base_score == 0:
+        return 0, 0
+    selected = _selected_supplier_offer(report)
+    penalty = 0
+    if selected and selected.confidence == "low":
+        penalty += 2
+    if report.landed_cost.partial_estimate:
+        penalty += 1
+    if not report.tunisia_wholesale_offers:
+        penalty += 1
+    if _global_confidence_key(report) == "low":
+        penalty += 1
+    penalty = min(penalty, base_score)
+    return base_score - penalty, penalty
 
 
-def _pdf_risk_management_score(report: PrototypeAnalyzeResponse) -> tuple[int, str]:
+def _pdf_score_total(report: PrototypeAnalyzeResponse, language: str = "fr") -> int:
+    return min(100, sum(item.score for item in _pdf_score_criteria(report, language)))
+
+
+def _pdf_risk_management_score(report: PrototypeAnalyzeResponse, language: str = "fr") -> tuple[int, str]:
     score = 5
     limits: list[str] = []
     supplier_count = sum(
@@ -463,18 +509,20 @@ def _pdf_risk_management_score(report: PrototypeAnalyzeResponse) -> tuple[int, s
         if offer.source_url and offer.confidence in {"high", "medium"}
     )
     risk_limits = [
-        (_global_confidence_key(report) == "low", 2, "confiance globale faible"),
-        (not _supplier_price_unit_confirmed(report), 2, "unité du prix fournisseur inconnue"),
-        (supplier_count < 3, 1, "moins de trois fournisseurs"),
-        (_competition_level_key(report) == "unknown", 1, "couverture de la concurrence insuffisante"),
+        (_global_confidence_key(report) == "low", 2, "confiance globale faible", "low overall confidence"),
+        (not _supplier_price_unit_confirmed(report), 2, "unité du prix fournisseur inconnue", "supplier price unit unknown"),
+        (supplier_count < 3, 1, "moins de trois fournisseurs", "fewer than three suppliers"),
+        (_competition_level_key(report) == "unknown", 1, "couverture de la concurrence insuffisante", "insufficient competition coverage"),
     ]
-    for limited, deduction, label in risk_limits:
+    for limited, deduction, label_fr, label_en in risk_limits:
         if limited:
             score -= deduction
-            limits.append(label)
+            limits.append(label_fr if language == "fr" else label_en)
     if not limits:
-        return score, "La maîtrise du risque est soutenue par une couverture suffisante des preuves."
-    return max(0, score), "Maîtrise du risque limitée : " + "; ".join(limits) + "."
+        note = "La maîtrise du risque est soutenue par une couverture suffisante des preuves." if language == "fr" else "Risk control is supported by sufficiently complete evidence coverage."
+        return score, note
+    prefix = "Maîtrise du risque limitée : " if language == "fr" else "Risk control is limited: "
+    return max(0, score), prefix + "; ".join(limits) + "."
 
 
 def _sources_section(report: PrototypeAnalyzeResponse, language: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
@@ -493,31 +541,27 @@ def _section(title: str, intro: list[Any], table: Any, styles: dict[str, Paragra
 
 
 def _landed_cost_note(report: PrototypeAnalyzeResponse, language: str) -> str:
-    if language != "fr":
-        if not _supplier_price_unit_confirmed(report):
-            return f"Supplier price {_tnd(_financial_truth(report).get('supplier_price'), _labels(language))} — price unit not determined. Sourcing price is not directly comparable; landed cost and margin were not calculated."
-        return report.landed_cost.note or _labels(language)["partial_estimate"]
     components = _financial_truth(report)
     if not _supplier_price_unit_confirmed(report):
-        return f"Prix fournisseur {_tnd(components.get('supplier_price'), _labels(language))} — unité de prix non déterminée. Prix sourcing non directement comparable ; coût rendu et marge non calculés."
+        if language == "fr":
+            return "Prix fournisseur non comparable : unité non confirmée. Coût rendu et marge non calculés."
+        return "Supplier price is not directly comparable because its unit is unconfirmed. Landed cost and margin were not calculated."
     parts = [
-        f"Prix fournisseur {_tnd(components.get('supplier_price'), _labels(language))}",
-        f"transport {_tnd(components.get('shipping'), _labels(language))}",
-        f"droits et taxes {_tnd(components.get('customs'), _labels(language))}",
-        f"manutention {_tnd(components.get('handling'), _labels(language))}",
-        f"autres charges {_tnd(components.get('misc'), _labels(language))}",
+        f"{_target_package_cost_label(report, language)} {_tnd(components.get('supplier_price'), _labels(language))}",
+        f"{_labels(language)['shipping']} {_tnd(components.get('shipping'), _labels(language))}",
+        f"{_labels(language)['customs']} {_tnd(components.get('customs'), _labels(language))}",
+        f"{_labels(language)['handling']} {_tnd(components.get('handling'), _labels(language))}",
+        f"{_labels(language)['misc']} {_tnd(components.get('misc'), _labels(language))}",
     ]
+    if language != "fr":
+        return " + ".join(parts) + f" = estimated landed cost {_tnd(components.get('landed_cost'), _labels(language))}. " + _labels(language)["partial_estimate"]
     return " + ".join(parts) + f" = coût rendu estimé {_tnd(components.get('landed_cost'), _labels(language))}. " + _labels(language)["partial_estimate"]
 
 
-def _profitability_notes(report: PrototypeAnalyzeResponse, profit: Any, language: str) -> list[str]:
+def _profitability_notes(report: PrototypeAnalyzeResponse, language: str) -> list[str]:
+    basis = _market_price_basis(report, language)
     if language != "fr":
-        return [profit.pricing_basis, *profit.assumptions]
-    basis = profit.pricing_basis
-    if "normalized" in basis.lower() or report.retail_offers:
-        basis = "Les prix ont été normalisés par litre ou par kilogramme car les conditionnements diffèrent."
-    elif basis:
-        basis = "Les prix des conditionnements comparables ont été utilisés sans conversion supplémentaire."
+        return [basis, "Profitability is an estimate, not a guarantee.", "USD/TND rate and logistics charges are configured assumptions."]
     notes = [
         basis,
         "La rentabilité est une estimation et non une garantie.",
@@ -546,7 +590,7 @@ def _pdf_risks(report: PrototypeAnalyzeResponse, language: str) -> list[str]:
 
 def _decision_reason(report: PrototypeAnalyzeResponse, language: str) -> str:
     margin = _final_margin(report)
-    margin_percent = _margin_percent_values(margin, _comparable_market_price(report))
+    margin_percent = _margin_percent_values(margin, _comparable_market_price(report), language)
     competition = _competition_display(report, language)
     if not _supplier_price_unit_confirmed(report):
         if language == "fr":
@@ -572,7 +616,18 @@ def _decision_reason_en(report: PrototypeAnalyzeResponse, margin_percent: str, c
 
 def _criterion_justification(item: Any, language: str) -> str:
     if language != "fr":
-        return item.justification or "Not available"
+        if item.key in {"risk", "margin"}:
+            return item.justification or "Not available"
+        messages = {
+            "market_demand": "Seller and price references were observed in Tunisia.",
+            "margin": "Gross margin is based on the selling price and estimated landed cost.",
+            "sourcing": "Retained sourcing offers; logistics remain to be confirmed.",
+            "competition": "Competition is assessed from the number of observed sellers and brands.",
+            "ads_potential": "Qualitative reading only; no CPC, CPA, ROAS or search-volume data is invented.",
+            "recurrence": "Repurchase potential is inferred from available category signals.",
+            "differentiation": "No clear differentiator is documented in the sources.",
+        }
+        return messages.get(item.key, "Justification unavailable.")
     if item.key == "risk" or (item.key == "margin" and item.score == 0):
         return item.justification or "Justification non disponible."
     messages = {
@@ -661,9 +716,9 @@ def _market_price_basis(report: PrototypeAnalyzeResponse, language: str) -> str:
     return labels["market_reference_unavailable"]
 
 
-def _margin_percent_values(margin: float | None, selling_price: float | None) -> str:
+def _margin_percent_values(margin: float | None, selling_price: float | None, language: str = "fr") -> str:
     if margin is None or not selling_price:
-        return "Non disponible"
+        return "Non disponible" if language == "fr" else "Not available"
     return f"{margin / selling_price * 100:.1f}%"
 
 
@@ -681,7 +736,9 @@ def _final_margin(report: PrototypeAnalyzeResponse) -> float | None:
 
 def _source_of_truth_supplier_price(report: PrototypeAnalyzeResponse) -> float | None:
     selected = _selected_supplier_offer(report)
-    return selected.price_min_tnd if selected else report.profitability_estimate.source_unit_price_tnd
+    if selected:
+        return _supplier_target_price(report, selected)
+    return report.profitability_estimate.source_unit_price_tnd
 
 
 def _selected_supplier_offer(report: PrototypeAnalyzeResponse) -> Any | None:
@@ -693,21 +750,91 @@ def _selected_supplier_offer(report: PrototypeAnalyzeResponse) -> Any | None:
 
 def _supplier_price_unit_confirmed(report: PrototypeAnalyzeResponse) -> bool:
     offer = _selected_supplier_offer(report)
-    return bool(offer and offer.price_unit and offer.price_unit.strip())
+    return bool(offer and _supplier_price_unit_kind(offer.price_unit))
+
+
+def _sourcing_confidence_key(report: PrototypeAnalyzeResponse) -> str:
+    selected = _selected_supplier_offer(report)
+    if selected and selected.confidence == "low":
+        return "low"
+    if report.sourcing_summary.evidence_confidence == "low":
+        return "low"
+    return report.sourcing_summary.evidence_confidence or "unknown"
+
+
+def _supplier_price_unit_kind(price_unit: str | None) -> str | None:
+    normalized = re.sub(r"\s+", " ", (price_unit or "").lower()).strip()
+    if re.search(r"(?:liter|litre|litres|liters|per l|/l|\bl\b)", normalized):
+        return "liter"
+    if re.search(r"(?:unit|piece|pcs|bidon|bottle|carton|package)", normalized):
+        return "unit"
+    if re.fullmatch(r"\d+(?:[.,]\d+)?\s*(?:l|litre?s?)", normalized):
+        return "unit"
+    return None
+
+
+def _supplier_target_price(report: PrototypeAnalyzeResponse, offer: Any) -> float | None:
+    raw_price = offer.price_min_tnd
+    if raw_price is None:
+        return None
+    if _supplier_price_unit_kind(offer.price_unit) == "liter":
+        target_volume, target_unit = _target_volume(report)
+        if target_volume and target_unit == "L":
+            return round(raw_price * target_volume, 2)
+        return None
+    if _supplier_price_unit_kind(offer.price_unit) == "unit":
+        return raw_price
+    return None
 
 
 def _supplier_price_unit_label(offer: Any, language: str) -> str:
     if not offer.price_unit:
         return "Non déterminée" if language == "fr" else "Not determined"
+    unit_kind = _supplier_price_unit_kind(offer.price_unit)
+    if unit_kind == "liter":
+        return "litre" if language == "fr" else "liter"
+    if unit_kind == "unit":
+        return "unité" if language == "fr" else "unit"
     return offer.price_unit.strip()
 
 
+def _supplier_tnd_conversion(offer: Any, unavailable: str) -> str:
+    if _supplier_price_unit_kind(offer.price_unit) == "liter":
+        return _tnd_range(offer.price_min_tnd, offer.price_max_tnd, unavailable).replace(" TND", " TND/L")
+    return _tnd_range(offer.price_min_tnd, offer.price_max_tnd, unavailable)
+
+
 def _supplier_price_display(report: PrototypeAnalyzeResponse, price: float | None, language: str, labels: dict[str, str]) -> str:
-    value = _tnd(price, labels)
+    selected = _selected_supplier_offer(report)
+    if selected and _supplier_price_unit_kind(selected.price_unit) == "liter" and selected.price_min_tnd is not None:
+        return f"{selected.price_min_tnd:g} TND/L"
+    if selected and not _supplier_price_unit_confirmed(report) and selected.price_min_tnd is not None:
+        value = _tnd(selected.price_min_tnd, labels)
+    else:
+        value = _tnd(price, labels)
     if _supplier_price_unit_confirmed(report):
         return value
     suffix = " — unité non déterminée" if language == "fr" else " — unit not determined"
     return value + suffix
+
+
+def _target_package_label(language: str) -> str:
+    return "Conditionnement analysé" if language == "fr" else "Analyzed package"
+
+
+def _target_package_display(report: PrototypeAnalyzeResponse, labels: dict[str, str]) -> str:
+    volume, unit = _target_volume(report)
+    if volume is None or unit is None:
+        return labels["unavailable"]
+    unit_label = "L" if unit == "L" else unit
+    return f"{volume:g} {unit_label}"
+
+
+def _target_package_cost_label(report: PrototypeAnalyzeResponse, language: str) -> str:
+    volume, unit = _target_volume(report)
+    suffix = f" {volume:g} {unit}" if volume and unit else ""
+    base = "Coût produit équivalent" if language == "fr" else "Equivalent product cost"
+    return base + suffix
 
 
 def _financial_truth(report: PrototypeAnalyzeResponse) -> dict[str, float | None]:
@@ -718,17 +845,13 @@ def _financial_truth(report: PrototypeAnalyzeResponse) -> dict[str, float | None
     shipping = profit.estimated_shipping_per_unit_tnd
     handling = profit.estimated_handling_per_unit_tnd
     misc = profit.estimated_misc_per_unit_tnd
-    customs_rate = _customs_rate(report)
+    customs_rate = _customs_rate()
     customs = round(supplier_price * customs_rate, 2) if supplier_price is not None else None
     landed = _sum_known_costs(supplier_price, shipping, customs, handling, misc)
     return {"supplier_price": supplier_price, "shipping": shipping, "customs": customs, "handling": handling, "misc": misc, "landed_cost": landed}
 
 
-def _customs_rate(report: PrototypeAnalyzeResponse) -> float:
-    profit = report.profitability_estimate
-    if profit.source_unit_price_tnd and profit.estimated_customs_per_unit_tnd is not None:
-        inferred_rate = profit.estimated_customs_per_unit_tnd / profit.source_unit_price_tnd
-        return 0.10 if 0.08 <= inferred_rate <= 0.12 else inferred_rate
+def _customs_rate() -> float:
     return 0.10
 
 
@@ -776,7 +899,7 @@ def _global_confidence_key(report: PrototypeAnalyzeResponse) -> str:
     )
     if score >= 0.75 and supplier_count >= 3 and retail_count >= 3 and cost_quality >= 0.9 and comparability_quality == 1:
         return "high"
-    return "medium" if score >= 0.45 else "low"
+    return "medium" if score >= 0.40 else "low"
 
 
 def _average_source_quality(report: PrototypeAnalyzeResponse) -> float:
@@ -967,12 +1090,13 @@ def _product_image(url: str | None, styles: dict[str, ParagraphStyle], language:
         max_width, max_height = 55 * mm, 78 * mm
         scale = min(max_width / width, max_height / height)
         return Image(BytesIO(image_bytes), width=width * scale, height=height * scale)
-    return _generic_category_image(product_label, styles)
+    return _generic_category_image(product_label, styles, language)
 
 
-def _generic_category_image(product_label: str, styles: dict[str, ParagraphStyle]) -> Any:
+def _generic_category_image(product_label: str, styles: dict[str, ParagraphStyle], language: str = "fr") -> Any:
     label = html.escape(product_label[:34], quote=True)
-    svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="720" height="520"><rect width="720" height="520" fill="#f9fbff"/><rect x="80" y="70" width="560" height="380" rx="22" fill="#dbf2ed" stroke="#164698" stroke-width="3"/><rect x="210" y="135" width="300" height="210" rx="28" fill="#f9fbff" stroke="#030927" stroke-width="8"/><circle cx="286" cy="216" r="36" fill="#30ab90"/><path d="M342 260h96M342 218h96" stroke="#258090" stroke-width="18" stroke-linecap="round"/><text x="360" y="395" text-anchor="middle" font-family="Arial" font-size="26" fill="#1d2430">{label}</text><text x="360" y="430" text-anchor="middle" font-family="Arial" font-size="20" fill="#5e6875">Visuel générique</text></svg>'
+    generic_label = "Visuel générique" if language == "fr" else "Generic visual"
+    svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="720" height="520"><rect width="720" height="520" fill="#f9fbff"/><rect x="80" y="70" width="560" height="380" rx="22" fill="#dbf2ed" stroke="#164698" stroke-width="3"/><rect x="210" y="135" width="300" height="210" rx="28" fill="#f9fbff" stroke="#030927" stroke-width="8"/><circle cx="286" cy="216" r="36" fill="#30ab90"/><path d="M342 260h96M342 218h96" stroke="#258090" stroke-width="18" stroke-linecap="round"/><text x="360" y="395" text-anchor="middle" font-family="Arial" font-size="26" fill="#1d2430">{label}</text><text x="360" y="430" text-anchor="middle" font-family="Arial" font-size="20" fill="#5e6875">{generic_label}</text></svg>'
     try:
         drawing = svg2rlg(BytesIO(svg.encode("utf-8")))
         if drawing and drawing.width and drawing.height:
@@ -983,7 +1107,7 @@ def _generic_category_image(product_label: str, styles: dict[str, ParagraphStyle
             return drawing
     except (OSError, ValueError, TypeError):
         pass
-    return Table([[_p("Visuel générique", styles["center"])]], colWidths=[55 * mm], rowHeights=[45 * mm], style=TableStyle([
+    return Table([[_p(generic_label, styles["center"])]], colWidths=[55 * mm], rowHeights=[45 * mm], style=TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), PALE_BLUE), ("BOX", (0, 0), (-1, -1), 0.6, LINE), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
 
@@ -993,8 +1117,10 @@ def _verified_product_image_url(report: PrototypeAnalyzeResponse) -> str | None:
     if url and url.startswith("data:image/"):
         return url
     source = next((item for item in report.sources if item.url == report.product_image_source_url), None)
-    if not url or not source:
+    if not url:
         return None
+    if not source:
+        return url
     product = _product_comparison_text(report).lower().replace("-", "")
     evidence = f"{source.title} {source.url} {source.data_used}".lower().replace("-", "")
     viscosities = re.findall(r"\b\d+w\d+\b", product)
@@ -1080,6 +1206,49 @@ def _product_name(report: PrototypeAnalyzeResponse) -> str:
     return _value(product, "original_product") or _value(product, "normalized_product") or report.product_description or "Produit"
 
 
+def _product_description_for_pdf(report: PrototypeAnalyzeResponse, language: str) -> str:
+    description = _localized(report.localized_analysis, "product_description", language) or report.product_description
+    retail_range = _retained_retail_range(report)
+    if not retail_range:
+        return description
+    description = _replace_retail_ranges(description, retail_range)
+    if retail_range not in description:
+        sentence = (
+            f"Fourchette des prix retail retenus en Tunisie : {retail_range}."
+            if language == "fr"
+            else f"Retained Tunisia retail price range: {retail_range}."
+        )
+        description = f"{description} {sentence}".strip()
+    return description
+
+
+def _retained_retail_range(report: PrototypeAnalyzeResponse) -> str:
+    prices: list[float] = []
+    for offer in report.retail_offers:
+        if offer.price_tnd is not None:
+            prices.append(offer.price_tnd)
+            continue
+        prices.extend(_price_values(offer.price_range_tnd))
+    if not prices:
+        return ""
+    return _tnd_range(min(prices), max(prices))
+
+
+def _price_values(value: str | None) -> list[float]:
+    if not value:
+        return []
+    return [float(token.replace(",", ".")) for token in re.findall(r"\d+(?:[.,]\d+)?", value)]
+
+
+def _replace_retail_ranges(description: str, retail_range: str) -> str:
+    return re.sub(
+        r"(?<!\d)\d+(?:[.,]\d+)?\s*(?:[-–—]|à|to|and|et)\s*\d+(?:[.,]\d+)?\s*TND",
+        retail_range,
+        description,
+        flags=re.IGNORECASE,
+    )
+
+
 def _localized(model: Any, key: str, language: str) -> str:
     suffix = "fr" if language == "fr" else "en"
     return _value(model, f"{key}_{suffix}") or ""
@@ -1089,27 +1258,27 @@ def _tnd(value: float | None, labels: dict[str, str]) -> str:
     return labels["unavailable"] if value is None else f"{value:g} TND"
 
 
-def _tnd_range(minimum: float | None, maximum: float | None) -> str:
+def _tnd_range(minimum: float | None, maximum: float | None, unavailable: str = "Non disponible") -> str:
     if minimum is None:
-        return "Non disponible"
+        return unavailable
     if maximum is None or maximum == minimum:
         return f"{minimum:g} TND"
     return f"{minimum:g}–{maximum:g} TND"
 
 
-def _price_range(minimum: float | None, maximum: float | None, currency: str) -> str:
+def _price_range(minimum: float | None, maximum: float | None, currency: str, unavailable: str = "Non disponible") -> str:
     if minimum is None:
-        return "Non disponible"
+        return unavailable
     if maximum is None or maximum == minimum:
         return f"{minimum:g} {currency}"
     return f"{minimum:g}–{maximum:g} {currency}"
 
 
-def _budget(profit: Any) -> str:
+def _budget(profit: Any, unavailable: str = "Non disponible") -> str:
     minimum = _value(profit, "digital_ad_budget_min_tnd")
     maximum = _value(profit, "digital_ad_budget_max_tnd")
     if minimum is None:
-        return "Non disponible"
+        return unavailable
     return f"{minimum:g}–{maximum:g} TND" if maximum is not None else f"{minimum:g} TND"
 
 

@@ -14,8 +14,10 @@ from app.benchmark.schemas import (
 from app.prototype.research_orchestrator import (
     PrototypeResearchOrchestrator,
     _comparable_prices,
+    _canonical_supplier_price,
     _detailed_scoring,
     _image_source_matches_product,
+    _response_from_validated,
 )
 from app.prototype.schemas import (
     CostConfig,
@@ -429,6 +431,65 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(source_price, 6.2)
         self.assertEqual(retail_price, 10.5)
         self.assertIn("TND/L", basis)
+
+    def test_liter_supplier_price_is_normalized_to_target_package(self) -> None:
+        analysis = ProviderAnalysisResult(
+            china_sourcing_offers=[
+                ChinaSourcingOffer(
+                    name="Oil supplier",
+                    product_title="5W-30 engine oil 4L",
+                    price_min_usd_numeric=1.5,
+                    price_unit="liter",
+                    source_url="https://cn.example/oil",
+                )
+            ]
+        )
+        product = ProductUnderstanding(
+            original_product="Huile moteur 5W-30 4L",
+            normalized_product="5W-30 engine oil 4L",
+            technical_specs=["5W-30", "4L"],
+        )
+
+        self.assertEqual(_canonical_supplier_price(analysis, CostConfig(), product), 18.6)
+
+    def test_liter_supplier_price_drives_single_target_unit_landed_cost(self) -> None:
+        analysis = ProviderAnalysisResult(
+            china_sourcing_offers=[
+                ChinaSourcingOffer(
+                    name="Oil supplier",
+                    product_title="5W-30 engine oil 4L",
+                    price_min_usd_numeric=1.5,
+                    price_unit="liter",
+                    source_url="https://cn.example/oil",
+                    confidence="medium",
+                    product_match="exact",
+                )
+            ],
+            tunisia_retail_market=TunisiaRetailMarket(retail_offers=[
+                TunisiaRetailOffer(seller_name="Mannol", product_title="Mannol 4L", price_min_tnd_numeric=134.9, source_url="https://tn.example/mannol"),
+                TunisiaRetailOffer(seller_name="Shell", product_title="Shell 5L", price_min_tnd_numeric=159, source_url="https://tn.example/shell"),
+            ]),
+        )
+        product = ProductUnderstanding(
+            original_product="Huile moteur 5W-30 4L",
+            normalized_product="5W-30 engine oil 4L",
+            technical_specs=["5W-30", "4L"],
+        )
+
+        response = _response_from_validated(
+            "run-liter-cost",
+            product,
+            analysis,
+            ProviderEvidence(provider_id="test"),
+            CostConfig(),
+            [],
+            [],
+        )
+
+        profit = response.profitability_estimate
+        self.assertEqual(profit.source_unit_price_tnd, 18.6)
+        self.assertEqual(profit.estimated_customs_per_unit_tnd, 1.86)
+        self.assertEqual(profit.estimated_landed_cost_per_unit_tnd, 26.46)
 
     async def test_recommendation_is_conservative_for_equivalent_oem_or_weak_evidence(self) -> None:
         analysis = _analysis()
