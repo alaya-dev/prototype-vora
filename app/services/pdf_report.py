@@ -234,7 +234,7 @@ def _product_section(report: PrototypeAnalyzeResponse, language: str, styles: di
     product = report.product_understanding
     rows = [
         (labels["requested_product"], _value(product, "original_product") or _product_name(report)),
-        (labels["normalized_product"], _value(product, "normalized_product") or labels["unavailable"]),
+        (labels["normalized_product"], _value(product, "french_search_name") or _value(product, "normalized_product") or labels["unavailable"]),
         (labels["category"], _category_name(_value(product, "product_category"), language)),
         (labels["variant"], _value(product, "brand_or_model") or labels["unavailable"]),
         (labels["specifications"], ", ".join(_value(product, "technical_specs") or []) or labels["unavailable"]),
@@ -666,8 +666,9 @@ def _comparable_market_price(report: PrototypeAnalyzeResponse) -> float | None:
         volume, unit = _volume_value(offer.volume_text or offer.product_title or "")
         if normalized is not None and unit == target_unit:
             normalized_values.append(normalized)
-        if offer.price_tnd is not None:
-            raw_values.append(offer.price_tnd)
+        total_price = _retail_total_price(offer)
+        if total_price is not None:
+            raw_values.append(total_price)
     if normalized_values and target_volume:
         return round(sum(normalized_values) / len(normalized_values) * target_volume, 2)
     if raw_values:
@@ -1027,9 +1028,20 @@ def _normalized_retail_price(offer: Any, language: str, labels: dict[str, str]) 
 
 def _retail_normalized_value(offer: Any) -> float | None:
     volume, unit = _volume_value(offer.volume_text or offer.product_title or "")
-    if offer.price_tnd is not None and volume and unit in {"L", "kg"}:
-        return round(offer.price_tnd / volume, 3)
+    total_price = _retail_total_price(offer)
+    if total_price is not None and volume and unit in {"L", "kg"}:
+        return round(total_price / volume, 3)
     return offer.normalized_price_per_unit_tnd
+
+
+def _retail_total_price(offer: Any) -> float | None:
+    if offer.price_tnd is not None:
+        return float(offer.price_tnd)
+    values = [
+        float(value)
+        for value in re.findall(r"\d+(?:[.,]\d+)?", offer.price_range_tnd or "")
+    ]
+    return values[0] if len(values) == 1 else None
 
 
 def _table(headers: list[str], rows: list[list[Any]], widths_mm: list[float], styles: dict[str, ParagraphStyle]) -> LongTable:

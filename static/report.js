@@ -207,7 +207,7 @@ function renderPrototypeResult(data) {
   const profit = deriveProfitability(data);
   const quantityUnits = analysisQuantityUnits(data);
   const scores = normalizeDecisionScores(data.decision_scores || {});
-  const recommendation = displayedRecommendation(data.recommendation || "investigate_more", scores);
+  const recommendation = displayedRecommendation(data.recommendation || "investigate_more", scores, data);
   const productDescription = localizedText(
     data.localized_analysis,
     "product_description",
@@ -290,7 +290,9 @@ function sectionConfidence(label, level, note) {
 
 function renderExecutiveSummary(data, scores, recommendation, profit) {
   const labels = copy[currentLanguage];
-  const summaryText = localizedText(data.localized_analysis, "business_reading", data.decision_summary || data.recommendation_reason || "");
+  const summaryText = executiveSummaryText(data, scores, recommendation, profit);
+  const overallScore = reportOverallScore(data, scores);
+  const productName = frenchProductName(data);
   const comparability = data.comparability || {};
   const landed = data.landed_cost || {};
   const retail = data.retail_market_summary || {};
@@ -305,23 +307,84 @@ function renderExecutiveSummary(data, scores, recommendation, profit) {
           <img class="report-cover-logo" src="/logo/Nexora_logo_transparent_clean_cropped.png" alt="NEXORA">
           <div class="eyebrow">${currentLanguage === "fr" ? "Rapport d'opportunité produit" : "Product opportunity report"}</div>
           <p class="report-tagline">INTELLIGENT SOURCING. SMARTER GROWTH.</p>
-          <h2>${escapeHtml(data.product_understanding?.normalized_product || data.product_description || labels.product)}</h2>
+          <h2>${escapeHtml(productName)}</h2>
           <p>${escapeHtml(contextLine)}</p>
         </div>
-        <img class="report-cover-image" src="${escapeAttribute(data.product_image_url || fallbackProductImage(data.product_understanding?.normalized_product || labels.product))}" alt="${escapeAttribute(data.product_understanding?.normalized_product || labels.product)}" onerror="handleProductImageError(this, '${escapeAttribute(data.product_understanding?.normalized_product || labels.product)}')">
-        <span class="pill">${recommendationText(recommendation)} · ${scores.go_percent}/100</span>
+        <img class="report-cover-image" src="${escapeAttribute(data.product_image_url || fallbackProductImage(productName))}" alt="${escapeAttribute(productName)}" onerror="handleProductImageError(this, '${escapeAttribute(productName)}')">
+        <span class="pill">${recommendationText(recommendation)} · ${overallScore}/100</span>
       </div>
       <h3>${labels.execSummary}</h3>
       <p>${escapeHtml(summaryText)}</p>
       <div class="metric-grid">
         ${metric(labels.landedCost, tnd(landed.total_tnd ?? profit.estimated_landed_cost_per_unit_tnd))}
-        ${metric(labels.averagePrice, tnd(retail.retail_avg_tnd))}
+        ${metric(labels.averagePrice, tnd(profit.estimated_selling_price_tnd ?? retail.retail_avg_tnd))}
         ${metric(labels.grossMarginPerUnit, tnd(profit.gross_margin_per_unit_before_marketing_tnd))}
         ${metric(labels.decisionConfidence, confidenceText(scores.confidence))}
       </div>
       ${comparability.margin_is_indicative_only ? `<div class="margin-warning">${labels.indicativeMarginWarning}</div>` : ""}
     </section>
   `;
+}
+
+function reportOverallScore(data, scores) {
+  const score = Number(displayScoring(data).total);
+  return Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : scores.go_percent;
+}
+
+function displayScoring(data) {
+  const source = data?.detailed_scoring || {};
+  const criteria = (source.criteria || []).map((criterion) => ({ ...criterion }));
+  const profit = deriveProfitability(data);
+  const selling = finiteOrNull(profit.estimated_selling_price_tnd);
+  const margin = finiteOrNull(profit.gross_margin_per_unit_before_marketing_tnd);
+  const marginCriterion = criteria.find((criterion) => criterion.key === "margin");
+  if (marginCriterion) {
+    if (selling === null || margin === null) {
+      marginCriterion.score = 0;
+      marginCriterion.justification = currentLanguage === "fr"
+        ? "Marge non calculable : l’unité du prix fournisseur n’est pas confirmée."
+        : "Margin cannot be calculated: the supplier price unit is not confirmed.";
+    } else {
+      const marginPercent = selling > 0 ? margin / selling * 100 : 0;
+      const baseScore = marginPercent >= 30 ? 20 : marginPercent >= 20 ? 15 : marginPercent >= 10 ? 10 : marginPercent > 0 ? 5 : 0;
+      const selected = (data.china_offers || []).filter((offer) => offer.source_url).sort((a, b) => Number(a.price_min_tnd || Infinity) - Number(b.price_min_tnd || Infinity))[0];
+      let penalty = selected?.confidence === "low" ? 2 : 0;
+      if (data.landed_cost?.partial_estimate) penalty += 1;
+      if (!(data.tunisia_wholesale_offers || []).length) penalty += 1;
+      if (String(data.decision_scores?.confidence || "").toLowerCase() === "low") penalty += 1;
+      penalty = Math.min(penalty, baseScore);
+      marginCriterion.score = baseScore - penalty;
+      marginCriterion.justification = currentLanguage === "fr"
+        ? `Marge brute d’environ ${marginPercent.toFixed(1)} %. Pénalité de fiabilité des données : -${penalty} point(s).`
+        : `Gross margin is about ${marginPercent.toFixed(1)}%. Economic score was adjusted by a data reliability penalty of -${penalty} point(s).`;
+    }
+  }
+  return {
+    ...source,
+    criteria,
+    total: Math.min(100, criteria.reduce((sum, criterion) => sum + (Number(criterion.score) || 0), 0)),
+  };
+}
+
+function executiveSummaryText(data, scores, recommendation, profit) {
+  const market = finiteOrNull(profit.estimated_selling_price_tnd);
+  const landed = finiteOrNull(profit.estimated_landed_cost_per_unit_tnd);
+  const margin = finiteOrNull(profit.gross_margin_per_unit_before_marketing_tnd);
+  const score = reportOverallScore(data, scores);
+  const decision = recommendationText(recommendation);
+  if (market === null || landed === null || margin === null) {
+    return currentLanguage === "fr"
+      ? `La décision finale est ${decision} avec un score de ${score}/100. La marge ne peut pas être calculée de manière fiable avec les données disponibles.`
+      : `The final decision is ${decision} with a score of ${score}/100. Gross margin cannot be calculated reliably from the available data.`;
+  }
+  const marginPercent = market > 0 ? (margin / market) * 100 : 0;
+  const profitability = marginPercent >= 40
+    ? (currentLanguage === "fr" ? "La rentabilité théorique apparaît attractive" : "Theoretical profitability appears attractive")
+    : (currentLanguage === "fr" ? "La rentabilité théorique reste à confirmer" : "Theoretical profitability remains to be confirmed");
+  if (currentLanguage === "fr") {
+    return `${profitability} sur la base des données disponibles. Le prix marché comparable est de ${formatNumber(market)} TND, contre un coût rendu estimé de ${formatNumber(landed)} TND et une marge brute de ${formatNumber(margin)} TND (${marginPercent.toFixed(1)}%). La décision ${decision} reste conditionnelle à la confirmation du devis fournisseur, des coûts logistiques et douaniers, de la qualité et de la demande tunisienne.`;
+  }
+  return `${profitability} based on the available data. The comparable market price is ${formatNumber(market)} TND, against an estimated landed cost of ${formatNumber(landed)} TND and a gross margin of ${formatNumber(margin)} TND (${marginPercent.toFixed(1)}%). The ${decision} decision remains conditional on confirming the supplier quote, logistics and customs costs, product quality, and Tunisian demand.`;
 }
 
 function renderProductIdentification(data, understanding, productDescription) {
@@ -335,8 +398,8 @@ function renderProductIdentification(data, understanding, productDescription) {
       </div>
       <div class="metric-grid">
         ${metric(labels.requestedProduct, understanding.original_product || labels.notAvailable)}
-        ${metric(labels.normalizedProduct, understanding.normalized_product || labels.notAvailable)}
-        ${metric(labels.category, understanding.product_category || labels.notAvailable)}
+        ${metric(labels.normalizedProduct, frenchProductName(data))}
+        ${metric(labels.category, frenchCategoryName(understanding.product_category))}
         ${metric(labels.brandCol, understanding.brand_or_model || labels.notAvailable)}
         ${specs.length ? metric(labels.techSpecs, specs.join(" · ")) : ""}
         ${metric(labels.volumeUnit, detectVolumeText(understanding))}
@@ -346,6 +409,17 @@ function renderProductIdentification(data, understanding, productDescription) {
       <p>${escapeHtml(productDescription)}</p>
     </section>
   `;
+}
+
+function frenchProductName(data) {
+  const product = data?.product_understanding || {};
+  return product.french_search_name || product.original_product || product.normalized_product || copy.fr.product;
+}
+
+function frenchCategoryName(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "automotive fluids" || normalized === "automotive fluid") return "Fluides automobiles";
+  return value || copy.fr.notAvailable;
 }
 
 function detectVolumeText(understanding) {
@@ -664,7 +738,7 @@ function criterionLabel(key) {
 
 function renderDetailedScoring(data) {
   const labels = copy[currentLanguage];
-  const scoring = data.detailed_scoring || {};
+  const scoring = displayScoring(data);
   const criteria = scoring.criteria || [];
   if (!criteria.length) return "";
   return `
@@ -751,14 +825,15 @@ function renderActionsSection(data) {
   const labels = copy[currentLanguage];
   const actions = decisionChangeActions(data, normalizeDecisionScores(data.decision_scores || {}), displayedRecommendation(
     data.recommendation || "investigate_more",
-    normalizeDecisionScores(data.decision_scores || {})
+    normalizeDecisionScores(data.decision_scores || {}),
+    data
   ));
   return `
     <section class="result-band wide">
       <h2>${labels.actionsTitle}</h2>
       <ol class="decision-factors" style="padding-left:18px">${actions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}</ol>
       <h3>${labels.decisionJustificationTitle}</h3>
-      <p>${escapeHtml(decisionScoreExplanation(data, normalizeDecisionScores(data.decision_scores || {}), displayedRecommendation(data.recommendation || "investigate_more", normalizeDecisionScores(data.decision_scores || {}))))}</p>
+      <p>${escapeHtml(decisionScoreExplanation(data, normalizeDecisionScores(data.decision_scores || {}), displayedRecommendation(data.recommendation || "investigate_more", normalizeDecisionScores(data.decision_scores || {}), data)))}</p>
     </section>
   `;
 }

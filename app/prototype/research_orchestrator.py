@@ -434,6 +434,7 @@ def _to_client_response(
         )
     profitability = _profitability_with_evidence_risks(base.profitability_estimate, validated)
     profitability = _reconcile_profitability_supplier_price(profitability, validated, cost_config, product)
+    profitability = _reconcile_profitability_market_price(profitability, validated, cost_config, product)
     recommendation, recommendation_reason = _conservative_recommendation(
         base.recommendation,
         profitability.gross_margin_per_unit_before_marketing_tnd,
@@ -1136,12 +1137,17 @@ def _retail_offer_views(offers: list) -> list[RetailOfferView]:
             liters = _unit_to_liters(volume_unit)
             kilograms = _unit_to_kilograms(volume_unit)
             if liters is not None and liters > 0:
-                normalized = round(base_price / liters, 2)
+                normalized_volume = volume_quantity * liters
+                normalized = round(base_price / normalized_volume, 2)
                 normalization_note = f"{_format_number(base_price)} TND / {_format_number(volume_quantity)} L = {_format_number(normalized)} TND/L"
             elif kilograms is not None and kilograms > 0:
-                normalized = round(base_price / kilograms, 2)
+                normalized_volume = volume_quantity * kilograms
+                normalized = round(base_price / normalized_volume, 2)
                 normalization_note = f"{_format_number(base_price)} TND / {_format_number(volume_quantity)} kg = {_format_number(normalized)} TND/kg"
-        if offer.normalized_price_numeric is not None:
+        # Recalculate from the retained total price and package volume whenever
+        # both are available. Model-provided normalized values may repeat the
+        # total package price and inflate the comparable market reference.
+        if normalized is None and offer.normalized_price_numeric is not None:
             normalized = offer.normalized_price_numeric
             normalization_note = offer.price_normalization_notes or "Normalized price supplied by the research validation layer."
         views.append(RetailOfferView(
@@ -1339,6 +1345,11 @@ def _comparability_assessment(product: ProductUnderstanding, validated: Provider
         reasons.append("One side of the comparison has no priced offers, so equivalence cannot be verified.")
 
     score = max(0, min(100, score))
+    quality_terms = " ".join([*sourcing_titles, *retail_titles])
+    quality_verified = bool(re.search(r"\b(?:api|acea)\b", quality_terms, re.IGNORECASE))
+    if score >= 70 and not quality_verified:
+        score = 69
+        reasons.append("API/ACEA or equivalent quality positioning was not verified.")
     if score >= 70:
         level = "high"
     elif score >= 40:
@@ -1365,6 +1376,9 @@ def _competition_level(validated: ProviderAnalysisResult) -> str:
     sellers = {offer.seller_name.lower() for offer in retail.retail_offers if offer.seller_name}
     brands = {_extract_brand(offer.product_title or "").lower() for offer in retail.retail_offers}
     brands.discard("")
+    # A small result set is insufficient coverage, not proof of low competition.
+    if len(sellers) < 3 and len(brands) < 3:
+        return "unknown"
     signals = len(sellers) + len(brands)
     if not retail.retail_offers:
         return "unknown"
@@ -1373,6 +1387,15 @@ def _competition_level(validated: ProviderAnalysisResult) -> str:
     if signals >= 4:
         return "medium"
     return "low"
+
+
+def _competition_note(level: str) -> str:
+    return {
+        "unknown": "Competition data is insufficient; the observed seller coverage is too limited to infer competition intensity.",
+        "low": "Few competing sellers or brands were observed.",
+        "medium": "A moderate number of competing sellers or brands were observed.",
+        "high": "Many established sellers or brands compete on this product.",
+    }.get(level, "Competition data is insufficient.")
 
 
 RECURRENCE_KEYWORDS = ("huile", "oil", "filtre", "filter", "detergent", "savon", "piles", "battery", "consommable", "lubrifi")
@@ -1424,6 +1447,15 @@ def _detailed_scoring(validated: ProviderAnalysisResult, profitability: Profitab
     else:
         margin_score, margin_note = 0, "Estimated margin is zero or negative."
 
+    if margin_percent is not None:
+        margin_penalty = _margin_confidence_penalty(validated, profitability)
+        margin_score = max(0, margin_score - margin_penalty)
+        if margin_score > 0:
+            margin_note = (
+                f"Gross margin is about {margin_percent:.0f}% of selling price. "
+                f"Economic score was adjusted by a data reliability penalty of -{margin_penalty} point(s)."
+            )
+
     confidences = [offer.confidence for offer in validated.china_sourcing_offers]
     if "high" in confidences and len(validated.china_sourcing_offers) >= 2:
         sourcing_score, sourcing_note = 14, f"{len(validated.china_sourcing_offers)} sourcing offer(s) with high-confidence evidence."
@@ -1465,6 +1497,23 @@ def _detailed_scoring(validated: ProviderAnalysisResult, profitability: Profitab
         ScoreCriterion(key="risk", score=risk_score, max_score=5, justification=risk_note),
     ]
     return DetailedScoring(total=min(100, sum(c.score for c in criteria)), criteria=criteria)
+
+
+def _margin_confidence_penalty(
+    validated: ProviderAnalysisResult,
+    profitability: ProfitabilityEstimate | None,
+) -> int:
+    if profitability is None or profitability.gross_margin_per_unit_before_marketing_tnd is None:
+        return 0
+    selected = _canonical_supplier_offer(validated)
+    penalty = 2 if selected and selected.confidence == "low" else 0
+    if profitability.estimated_landed_cost_per_unit_tnd is not None:
+        penalty += 1
+    if not validated.tunisia_sourcing_offers:
+        penalty += 1
+    if _overall_confidence(validated) == "low":
+        penalty += 1
+    return min(penalty, 20)
 
 
 def _risk_management_score(
@@ -1683,11 +1732,23 @@ def _range_text(prefix: str, values: list[float | None], suffix: str = "") -> st
 def _retail_summary_from_validated(validated: ProviderAnalysisResult) -> RetailMarketSummary:
     retail = validated.tunisia_retail_market
     seller_density = _computed_seller_density(retail.retail_offers)
+    retained_prices = [
+        offer.price_min_tnd_numeric
+        for offer in retail.retail_offers
+        if offer.price_min_tnd_numeric is not None
+    ]
+    retail_min = min(retained_prices) if retained_prices else retail.price_min_tnd
+    retail_max = max(retained_prices) if retained_prices else retail.price_max_tnd
+    retail_avg = (
+        round(sum(retained_prices) / len(retained_prices), 2)
+        if retained_prices
+        else retail.price_avg_tnd
+    )
     return _retail_summary_with_fallbacks(RetailMarketSummary(
-        retail_price_range_tnd=_range_text("", [retail.price_min_tnd, retail.price_max_tnd], suffix=" TND"),
-        retail_min_tnd=retail.price_min_tnd,
-        retail_max_tnd=retail.price_max_tnd,
-        retail_avg_tnd=retail.price_avg_tnd,
+        retail_price_range_tnd=_range_text("", [retail_min, retail_max], suffix=" TND"),
+        retail_min_tnd=retail_min,
+        retail_max_tnd=retail_max,
+        retail_avg_tnd=retail_avg,
         seller_density=seller_density,
         example_retail_prices=[
             ExampleRetailPrice(
@@ -1702,7 +1763,7 @@ def _retail_summary_from_validated(validated: ProviderAnalysisResult) -> RetailM
             )
             for offer in retail.retail_offers[:10]
         ],
-        competition_notes=retail.competition_notes,
+        competition_notes=_competition_note(_competition_level(validated)),
         availability_notes=retail.availability_notes,
     ))
 
@@ -1771,13 +1832,17 @@ def _digital_ad_budget_default(cost_config: CostConfig) -> float:
 
 
 def _overall_confidence(validated: ProviderAnalysisResult) -> str:
-    confidences = [
-        offer.confidence
-        for offer in [*validated.china_sourcing_offers, *validated.tunisia_sourcing_offers]
-    ]
-    if "high" in confidences:
+    supplier_count = sum(
+        1 for offer in validated.china_sourcing_offers
+        if offer.source_url and offer.confidence in {"high", "medium"}
+    )
+    retail_count = sum(
+        1 for offer in validated.tunisia_retail_market.retail_offers
+        if offer.source_url and offer.confidence in {"high", "medium"}
+    )
+    if supplier_count >= 3 and retail_count >= 3:
         return "high"
-    if "medium" in confidences:
+    if supplier_count or retail_count:
         return "medium"
     return "low"
 
@@ -2207,6 +2272,39 @@ def _reconcile_profitability_supplier_price(
         "gross_profit_for_1000_before_marketing_tnd": gross_profit,
         "net_profit_for_1000_after_marketing_tnd": round(gross_profit - DIGITAL_AD_BUDGET_DEFAULT_TND, 2) if gross_profit is not None else None,
         "estimated_profit_for_1000_units_tnd": round(gross_profit - DIGITAL_AD_BUDGET_DEFAULT_TND, 2) if gross_profit is not None else None,
+    })
+
+
+def _reconcile_profitability_market_price(
+    profitability: ProfitabilityEstimate,
+    validated: ProviderAnalysisResult,
+    cost_config: CostConfig,
+    product: ProductUnderstanding,
+) -> ProfitabilityEstimate:
+    """Keep the final profitability payload aligned with retained retail offers."""
+    _, selling_price, pricing_basis = _comparable_prices(validated, cost_config, product)
+    landed_cost = profitability.estimated_landed_cost_per_unit_tnd
+    if selling_price is None or landed_cost is None:
+        return profitability.model_copy(update={
+            "estimated_selling_price_tnd": selling_price,
+            "gross_margin_per_unit_before_marketing_tnd": None,
+            "estimated_margin_per_unit_tnd": None,
+            "gross_profit_for_1000_before_marketing_tnd": None,
+            "net_profit_for_1000_after_marketing_tnd": None,
+            "estimated_profit_for_1000_units_tnd": None,
+            "pricing_basis": pricing_basis,
+        })
+    margin = round(selling_price - landed_cost, 2)
+    gross_profit = round(margin * ANALYSIS_QUANTITY_UNITS, 2)
+    budget = profitability.digital_ad_budget_default_tnd or DIGITAL_AD_BUDGET_DEFAULT_TND
+    return profitability.model_copy(update={
+        "estimated_selling_price_tnd": selling_price,
+        "pricing_basis": pricing_basis,
+        "gross_margin_per_unit_before_marketing_tnd": margin,
+        "estimated_margin_per_unit_tnd": margin,
+        "gross_profit_for_1000_before_marketing_tnd": gross_profit,
+        "net_profit_for_1000_after_marketing_tnd": round(gross_profit - budget, 2),
+        "estimated_profit_for_1000_units_tnd": round(gross_profit - budget, 2),
     })
 
 

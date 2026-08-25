@@ -223,6 +223,48 @@ class PdfReportTests(unittest.TestCase):
         self.assertNotIn("Marge recalculée", english_text)
         self.assertNotIn("Maîtrise du risque", english_text)
 
+    def test_pdf_uses_retained_four_liter_prices_as_one_comparable_reference(self) -> None:
+        report = PrototypeAnalyzeResponse(
+            run_id="run-four-liter-retail",
+            product_understanding=ProductUnderstanding(
+                original_product="Huile moteur 5W-30 4L",
+                normalized_product="5W-30 engine oil 4L",
+                technical_specs=["5W-30", "4L"],
+            ),
+            china_offers=[SourcingOfferView(
+                name="Retained supplier",
+                product_title="5W30 engine oil 4L",
+                price_min_tnd=4.65,
+                price_max_tnd=6.2,
+                price_unit="liter",
+                source_url="https://example.com/supplier",
+                confidence="medium",
+                product_match="exact",
+            )],
+            retail_offers=[
+                RetailOfferView(seller_name="Bestoil Tunisie", product_title="Yacco 5W30 4L", volume_text="4L", price_tnd=117, source_url="https://example.com/yacco"),
+                RetailOfferView(seller_name="Tomobile Store", product_title="Mannol 5W30 4L", volume_text="4L", price_tnd=134.9, source_url="https://example.com/mannol"),
+            ],
+            profitability_estimate=ProfitabilityEstimate(
+                source_unit_price_tnd=18.6,
+                estimated_shipping_per_unit_tnd=4,
+                estimated_customs_per_unit_tnd=1.86,
+                estimated_handling_per_unit_tnd=0,
+                estimated_misc_per_unit_tnd=2,
+                estimated_landed_cost_per_unit_tnd=26.46,
+            ),
+        )
+
+        text = "\n".join((page.extract_text() or "") for page in PdfReader(BytesIO(build_opportunity_pdf(report, "en"))).pages)
+
+        self.assertIn("29.25 TND/L", text)
+        self.assertIn("33.725 TND/L", text)
+        self.assertIn("125.95 TND", text)
+        self.assertIn("99.49 TND", text)
+        self.assertIn("79.0%", text)
+        self.assertIn("Insufficient data", text)
+        self.assertNotIn("503.8 TND", text)
+
     def test_pdf_replaces_unsupported_retail_range_with_retained_offers(self) -> None:
         report = PrototypeAnalyzeResponse(
             run_id="run-retail-range",

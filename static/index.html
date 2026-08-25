@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nexora Product Analysis</title>
+<title>Analyse d’opportunité produit NEXORA</title>
 <link rel="icon" href="/logo/favicon.ico">
 <style>
   :root {
@@ -597,6 +597,9 @@
 
   .language-toggle button:hover { box-shadow: none; }
 
+  /* NEXORA is delivered in French only. */
+  #languageEnButton { display: none !important; }
+
   .page {
     display: none;
   }
@@ -1126,8 +1129,8 @@
             </div>
           </div>
           <div class="topbar-actions">
-            <div id="languageToggle" class="language-toggle language-segment" aria-label="Language">
-                                <button id="languageEnButton" class="language-option active" type="button" aria-pressed="true" aria-label="English" title="English" onclick='setLanguage("en")'>
+            <div id="languageToggle" class="language-toggle language-segment" aria-label="Langue">
+                                <button id="languageEnButton" class="language-option" type="button" aria-pressed="false" aria-label="English" title="English" onclick='setLanguage("en")'>
                     <svg class="flag-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 30">
                       <clipPath id="a"><path d="M0 0v30h60V0z"/></clipPath>
                       <g clip-path="url(#a)">
@@ -1141,7 +1144,7 @@
                     EN
                   </button>
 
-                  <button id="languageFrButton" class="language-option" type="button" aria-pressed="false" aria-label="Français" title="Français" onclick='setLanguage("fr")'>
+                  <button id="languageFrButton" class="language-option active" type="button" aria-pressed="true" aria-label="Français" title="Français" onclick='setLanguage("fr")'>
                   <svg class="flag-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3 2">
                     <rect width="1" height="2" fill="#002395"/>
                     <rect x="1" width="1" height="2" fill="#ffffff"/>
@@ -1307,7 +1310,7 @@ const agentsPageSize = 5;
 let analyticsRunsCache = [];
 let selectedAnalyticsRunId = null;
 let adminPassword = localStorage.getItem("Nexora_admin_password") || "";
-let currentLanguage = "en";
+let currentLanguage = "fr";
 let currentPrototypeData = null;
 const copy = {
   en: {
@@ -1374,6 +1377,7 @@ const copy = {
     whyGo: "Why GO",
     whyNoGo: "Why NO GO",
     goRecommendation: "GO",
+    goWithConditions: "GO WITH CONDITIONS",
     noGoRecommendation: "NO GO",
     goButton: "GO",
     noGoButton: "NO GO",
@@ -1473,6 +1477,7 @@ const copy = {
     whyGo: "Pourquoi GO",
     whyNoGo: "Pourquoi NO GO",
     goRecommendation: "GO",
+    goWithConditions: "GO SOUS CONDITIONS",
     noGoRecommendation: "NO GO",
     goButton: "GO",
     noGoButton: "NO GO",
@@ -1661,8 +1666,7 @@ function renderPrototypeResult(data) {
       <p class="hidden-note">Image confidence: ${escapeHtml(data.product_image_confidence || "fallback")}. ${escapeHtml(data.product_image_notes || "")}</p>
       <div class="metric-grid">
         ${metric(labels.category, data.product_understanding?.product_category || "Not detected")}
-        ${metric(labels.englishSearchName, data.product_understanding?.english_search_name || "")}
-        ${metric(labels.frenchSearchName, data.product_understanding?.french_search_name || "")}
+        ${metric(labels.frenchSearchName, data.product_understanding?.french_search_name || data.product_understanding?.normalized_product || "")}
       </div>
     </section>
     <section class="result-band summary-card">
@@ -1773,7 +1777,7 @@ function renderImageLoader() {
 function renderDecisionIllustration(data) {
   const labels = copy[currentLanguage];
   const scores = normalizeDecisionScores(data.decision_scores || {});
-  const recommendation = displayedRecommendation(data.recommendation || "investigate_more", scores);
+  const recommendation = displayedRecommendation(data.recommendation || "investigate_more", scores, data);
   const recommendationLabel = recommendationText(recommendation);
   const explanation = decisionScoreExplanation(data, scores, recommendation);
   const goDrivers = decisionGoDrivers(data, scores);
@@ -1889,13 +1893,22 @@ function decisionChangeActions(data, scores, recommendation) {
       ];
 }
 
-function displayedRecommendation(recommendation, scores) {
-  if (recommendation === "go" && scores.go_percent < scores.no_go_percent) return "investigate_more";
+function displayedRecommendation(recommendation, scores, data = null) {
+  const score = typeof displayScoring === "function"
+    ? Number(displayScoring(data).total)
+    : Number(data?.detailed_scoring?.total);
+  if (recommendation === "go" && Number.isFinite(score) && score < 60) return "investigate_more";
+  if (recommendation === "go" && (
+    scores.confidence !== "high" ||
+    data?.landed_cost?.partial_estimate ||
+    ["medium", "low", "unknown"].includes(data?.comparability?.level)
+  )) return "go_with_conditions";
   return ["go", "no_go", "investigate_more"].includes(recommendation) ? recommendation : "investigate_more";
 }
 
 function recommendationText(recommendation) {
   const labels = copy[currentLanguage];
+  if (recommendation === "go_with_conditions") return labels.goWithConditions;
   if (recommendation === "go") return labels.goRecommendation;
   if (recommendation === "no_go") return labels.noGoRecommendation;
   return labels.investigateMore;
@@ -1915,12 +1928,20 @@ function analysisQuantityUnits(data) {
 }
 
 function deriveProfitability(data) {
+  const retailSummary = arguments[1] || deriveRetailSummary(data.retail_market_summary || {});
   const profit = data.profitability_estimate || {};
   const quantityUnits = analysisQuantityUnits(data);
   const campaignBudget = finiteOrNull(profit.digital_ad_budget_default_tnd ?? profit.estimated_meta_campaign_budget_tnd) ?? 400;
   const budgetMin = finiteOrNull(profit.digital_ad_budget_min_tnd) ?? campaignBudget;
   const budgetMax = finiteOrNull(profit.digital_ad_budget_max_tnd) ?? campaignBudget;
-  const grossMargin = Number(profit.gross_margin_per_unit_before_marketing_tnd);
+  const landedCost = finiteOrNull(profit.estimated_landed_cost_per_unit_tnd);
+  const comparableMarketPrice = comparableRetailReference(data)
+    ?? finiteOrNull(profit.estimated_selling_price_tnd)
+    ?? finiteOrNull(retailSummary?.retail_avg_tnd);
+  const storedGrossMargin = Number(profit.gross_margin_per_unit_before_marketing_tnd);
+  const grossMargin = Number.isFinite(landedCost) && Number.isFinite(comparableMarketPrice)
+    ? Number((comparableMarketPrice - landedCost).toFixed(2))
+    : storedGrossMargin;
   const grossProfit = Number.isFinite(grossMargin)
     ? Number((grossMargin * quantityUnits).toFixed(2))
     : profit.gross_profit_for_1000_before_marketing_tnd;
@@ -1929,6 +1950,8 @@ function deriveProfitability(data) {
     : (profit.net_profit_for_1000_after_marketing_tnd ?? profit.estimated_profit_for_1000_units_tnd);
   return {
     ...profit,
+    estimated_selling_price_tnd: comparableMarketPrice,
+    gross_margin_per_unit_before_marketing_tnd: Number.isFinite(grossMargin) ? grossMargin : null,
     estimated_meta_campaign_budget_tnd: campaignBudget,
     digital_ad_budget_min_tnd: budgetMin,
     digital_ad_budget_max_tnd: budgetMax,
@@ -1939,6 +1962,39 @@ function deriveProfitability(data) {
     net_profit_for_1000_after_advertising_min_tnd: Number.isFinite(grossProfit) ? Number((grossProfit - budgetMax).toFixed(2)) : profit.net_profit_for_1000_after_advertising_min_tnd,
     net_profit_for_1000_after_advertising_max_tnd: Number.isFinite(grossProfit) ? Number((grossProfit - budgetMin).toFixed(2)) : profit.net_profit_for_1000_after_advertising_max_tnd,
   };
+}
+
+function comparableRetailReference(data) {
+  const product = data?.product_understanding || {};
+  const productText = [product.original_product, product.normalized_product, ...(product.technical_specs || [])].filter(Boolean).join(" ");
+  const target = parseVolume(productText);
+  if (!target) return null;
+  const points = (data?.retail_offers || []).map((offer) => {
+    const total = finiteOrNull(offer.price_tnd) ?? firstNumericValue(offer.price_range_tnd);
+    const volume = parseVolume(`${offer.volume_text || ""} ${offer.product_title || ""}`);
+    if (total === null || !volume || volume.unit !== target.unit) return null;
+    return total / volume.value * target.value;
+  }).filter((value) => Number.isFinite(value));
+  return points.length ? Number((points.reduce((sum, value) => sum + value, 0) / points.length).toFixed(2)) : null;
+}
+
+function parseVolume(text) {
+  const match = String(text || "").match(/(\d+(?:[.,]\d+)?)\s*(ml|l|litre?s?|kg|g)\b/i);
+  if (!match) return null;
+  const amount = Number(match[1].replace(",", "."));
+  const rawUnit = match[2].toLowerCase();
+  if (!Number.isFinite(amount)) return null;
+  if (rawUnit === "ml") return { value: amount / 1000, unit: "L" };
+  if (["l", "litre", "litres"].includes(rawUnit)) return { value: amount, unit: "L" };
+  if (rawUnit === "g") return { value: amount / 1000, unit: "kg" };
+  return { value: amount, unit: "kg" };
+}
+
+function firstNumericValue(value) {
+  const match = String(value || "").match(/\d+(?:[.,]\d+)?/);
+  if (!match) return null;
+  const numeric = Number(match[0].replace(",", "."));
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 async function exportOpportunityPdf() {
@@ -1952,7 +2008,7 @@ async function exportOpportunityPdf() {
     const response = await fetch(`/prototype/runs/${encodeURIComponent(report.run_id)}/pdf`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ report, language: "en" })
+      body: JSON.stringify({ report, language: "fr" })
     });
     const pdfBlob = await readBlob(response);
     const downloadUrl = URL.createObjectURL(pdfBlob);
@@ -2006,17 +2062,6 @@ function filenameFromContentDisposition(header) {
 
 function deriveRetailSummary(retail) {
   const summary = retail || {};
-  if (
-    summary.retail_price_range_tnd &&
-    summary.retail_min_tnd !== null &&
-    summary.retail_min_tnd !== undefined &&
-    summary.retail_max_tnd !== null &&
-    summary.retail_max_tnd !== undefined &&
-    summary.retail_avg_tnd !== null &&
-    summary.retail_avg_tnd !== undefined
-  ) {
-    return summary;
-  }
   const examples = Array.isArray(summary.example_retail_prices) ? summary.example_retail_prices : [];
   const rangePoints = [];
   const averagePoints = [];
@@ -2026,11 +2071,11 @@ function deriveRetailSummary(retail) {
     rangePoints.push(...values);
     averagePoints.push(values.reduce((sum, value) => sum + value, 0) / values.length);
   });
-  const retailMin = summary.retail_min_tnd ?? (rangePoints.length ? Math.min(...rangePoints) : null);
-  const retailMax = summary.retail_max_tnd ?? (rangePoints.length ? Math.max(...rangePoints) : null);
-  const retailAvg = summary.retail_avg_tnd ?? (
-    averagePoints.length ? Number((averagePoints.reduce((sum, value) => sum + value, 0) / averagePoints.length).toFixed(2)) : null
-  );
+  const retailMin = rangePoints.length ? Math.min(...rangePoints) : summary.retail_min_tnd ?? null;
+  const retailMax = rangePoints.length ? Math.max(...rangePoints) : summary.retail_max_tnd ?? null;
+  const retailAvg = averagePoints.length
+    ? Number((averagePoints.reduce((sum, value) => sum + value, 0) / averagePoints.length).toFixed(2))
+    : summary.retail_avg_tnd ?? null;
   return {
     ...summary,
     retail_min_tnd: retailMin,
@@ -2085,6 +2130,9 @@ function decisionScoreExplanation(data, scores, recommendation) {
   const marginPerUnit = tnd(profit.gross_margin_per_unit_before_marketing_tnd);
   const campaignBudget = digitalAdvertisingBudgetRange(data);
   if (currentLanguage === "fr") {
+    if (recommendation === "go_with_conditions") {
+      return `Le GO SOUS CONDITIONS est soutenu par le prix retail observé autour de ${retailRange}, au-dessus du scénario de coût rendu à ${landedCost}. La marge brute estimée de ${marginPerUnit} par unité avant publicité est attractive, mais la vérification fournisseur, logistique, qualité et demande reste obligatoire.`;
+    }
     if (recommendation === "go") {
       return `Le GO est plus élevé car le prix retail observé autour de ${retailRange} reste confortablement au-dessus du scénario de coût rendu à ${landedCost}. La marge brute estimée de ${marginPerUnit} par unité avant publicité, combinée à des prix sourcing visibles, justifie la vérification fournisseur et le test d’échantillon.`;
     }
@@ -2095,6 +2143,9 @@ function decisionScoreExplanation(data, scores, recommendation) {
       return `La décision reste équilibrée : le produit montre un potentiel commercial, mais la marge estimée de ${marginPerUnit} par unité ne crée pas encore un coussin suffisant face à la pression prix, au sourcing et au positionnement marché.`;
     }
     return `VORA recommande d’investiguer davantage car le produit présente un potentiel commercial, mais la marge de sécurité n’est pas encore assez forte. La fourchette retail autour de ${retailRange} face au scénario de coût rendu à ${landedCost} suggère une opportunité possible, sans avantage suffisamment net pour avancer immédiatement.`;
+  }
+  if (recommendation === "go_with_conditions") {
+    return `GO WITH CONDITIONS is supported because retail pricing around ${retailRange} sits above the landed-cost scenario at ${landedCost}. The estimated gross margin of ${marginPerUnit} per unit before advertising is attractive, but supplier, logistics, quality, and demand validation remain required.`;
   }
   if (recommendation === "go") {
     return `GO is higher because retail pricing around ${retailRange} sits comfortably above the landed-cost scenario at ${landedCost}. The estimated gross margin of ${marginPerUnit} per unit before advertising, combined with price-backed sourcing evidence, supports moving into supplier verification and sample testing.`;
@@ -2181,11 +2232,11 @@ function decisionMainFactors(data) {
 }
 
 function setLanguage(language) {
-  currentLanguage = language === "fr" ? "fr" : "en";
+  currentLanguage = "fr";
   document.documentElement.lang = currentLanguage;
-  document.getElementById("languageEnButton").classList.toggle("active", currentLanguage === "en");
+  document.getElementById("languageEnButton").classList.remove("active");
   document.getElementById("languageFrButton").classList.toggle("active", currentLanguage === "fr");
-  document.getElementById("languageEnButton").setAttribute("aria-pressed", currentLanguage === "en" ? "true" : "false");
+  document.getElementById("languageEnButton").setAttribute("aria-pressed", "false");
   document.getElementById("languageFrButton").setAttribute("aria-pressed", currentLanguage === "fr" ? "true" : "false");
   applyStaticTranslations();
   if (currentPrototypeData) renderPrototypeResult(currentPrototypeData);
@@ -2537,7 +2588,7 @@ function renderSourcingAgentComposer(agents, data) {
       </div>
       <div class="composer-grid">
         <label class="field">${escapeHtml(labels.selectAgent)}<select id="composerAgentSelect" onchange="generateSourcingEmail()">${options}</select></label>
-        <label class="field">${escapeHtml(labels.preferredLanguage)}<select id="composerLanguageSelect" onchange="generateSourcingEmail()"><option value="en">${escapeHtml(labels.englishLanguage)}</option><option value="fr">${escapeHtml(labels.frenchLanguage)}</option></select></label>
+        <label class="field">${escapeHtml(labels.preferredLanguage)}<select id="composerLanguageSelect" onchange="generateSourcingEmail()"><option value="fr">${escapeHtml(labels.frenchLanguage)}</option></select></label>
         <label class="field">${escapeHtml(labels.userName)}<input id="composerUserName" type="text" oninput="generateSourcingEmail()"></label>
         <label class="field">${escapeHtml(labels.userEmail)}<input id="composerUserEmail" type="email" oninput="generateSourcingEmail()"></label>
         <label class="field">${escapeHtml(labels.userPhone)}<input id="composerUserPhone" type="text" oninput="generateSourcingEmail()"></label>
@@ -2756,7 +2807,10 @@ function dedupeAgents(agents) {
 
 function formatNumber(value) {
   if (!Number.isFinite(value)) return "Not found";
-  return value.toFixed(value % 1 === 0 ? 0 : 2).replace(/\.?0+$/, "");
+  const formatted = value.toFixed(value % 1 === 0 ? 0 : 2);
+  return formatted.includes(".")
+    ? formatted.replace(/0+$/, "").replace(/\.$/, "")
+    : formatted;
 }
 
 function normalizeTndDisplayText(text) {

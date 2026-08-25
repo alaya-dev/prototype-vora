@@ -146,7 +146,7 @@ def create_app(
         if request.report.run_id != run_id:
             raise HTTPException(status_code=400, detail="PDF report does not match the requested run.")
         try:
-            pdf_bytes = build_opportunity_pdf(request.report, request.language)
+            pdf_bytes = build_opportunity_pdf(request.report, "fr")
         except (OSError, ValueError) as error:
             raise HTTPException(status_code=500, detail="PDF generation failed.") from error
         return Response(
