@@ -6,4 +6,4 @@ google-genai>=2.10.0
 httpx
 reportlab>=4.2,<5
 Pillow>=10,<12
-svglib>=1.5,<2
+svglib==1.5.1
