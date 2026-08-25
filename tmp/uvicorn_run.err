@@ -1,0 +1,19 @@
+INFO:     Will watch for changes in these directories: ['C:\\Users\\HP OMEN\\Desktop\\mostql\\sourcia\\Vora\\prototype-vora']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [18076] using WatchFiles
+INFO:     Started server process [12768]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'app\services\pdf_report.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [12768]
+WARNING:  WatchFiles detected changes in 'tmp\rebuild_latest_pdf.py'. Reloading...
+WARNING:  WatchFiles detected changes in 'tmp\debug_analysis.py', 'tmp\rebuild_latest_pdf.py', 'tmp\export_pdf_once.py'. Reloading...
+C:\Users\HP OMEN\AppData\Roaming\Python\Python314\site-packages\uvicorn\_subprocess.py:84: RuntimeWarning: coroutine 'Server.serve' was never awaited
+  pass
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+INFO:     Started server process [13308]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

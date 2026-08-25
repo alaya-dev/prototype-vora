@@ -1142,11 +1142,26 @@ def _load_image(url: str | None) -> bytes | None:
             image.load()
             if image.mode not in ("RGB", "RGBA"):
                 image = image.convert("RGBA")
+            if not _contains_visible_image_content(image):
+                return None
             output = BytesIO()
             image.save(output, format="PNG")
             return output.getvalue()
     except (OSError, ValueError, httpx.HTTPError):
         return None
+
+
+def _contains_visible_image_content(image: PillowImage.Image) -> bool:
+    """Reject blank/transparent remote assets instead of rendering an empty image box."""
+    preview = image.convert("RGBA")
+    preview.thumbnail((96, 96))
+    pixels = list(preview.getdata())
+    visible = sum(
+        1
+        for red, green, blue, alpha in pixels
+        if alpha > 12 and min(red, green, blue) < 245
+    )
+    return visible >= max(3, len(pixels) // 200)
 
 
 def _is_svg(raw: bytes) -> bool:

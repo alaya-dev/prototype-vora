@@ -1,0 +1,14 @@
+{
+  "analysis_status": 200,
+  "pdf": "C:\\Users\\HP OMEN\\Desktop\\mostql\\sourcia\\Vora\\prototype-vora\\tmp\\NEXORA_Analyse_Huile_moteur_5W30_4L_2026-08-25.pdf",
+  "exists": true,
+  "bytes": 207608,
+  "dashboard_image_count": 1,
+  "dashboard_image_prefix": "https://www.bestoil.tn/img/bestoil-logo-1714477311.jpg",
+  "report_has_decision": true,
+  "console_errors": [
+    "Access to fetch at 'https://www.bestoil.tn/img/bestoil-logo-1714477311.jpg' from origin 'http://127.0.0.1:8000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED"
+  ],
+  "api_errors": []
+}
