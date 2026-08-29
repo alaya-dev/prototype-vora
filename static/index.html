@@ -1287,8 +1287,8 @@
               <label class="field">Firecrawl cost per call<input data-cost="firecrawl_cost_per_call" type="number" step="0.0001"></label>
               <label class="field">Tavily cost per call<input data-cost="tavily_cost_per_call" type="number" step="0.0001"></label>
               <label class="field">Exa cost per call<input data-cost="exa_cost_per_call" type="number" step="0.0001"></label>
-              <label class="field">Gemini intent cost per call<input data-cost="gemini_intent_cost_per_call" type="number" step="0.0001"></label>
-              <label class="field">Gemini analysis cost per call<input data-cost="gemini_analysis_cost_per_call" type="number" step="0.0001"></label>
+              <label class="field">Groq intent cost per call<input data-cost="groq_intent_cost_per_call" type="number" step="0.0001"></label>
+              <label class="field">Groq analysis cost per call<input data-cost="groq_analysis_cost_per_call" type="number" step="0.0001"></label>
               <label class="field">USD to TND rate<input data-cost="usd_to_tnd_rate" type="number" step="0.0001"></label>
               <label class="field">Default Meta campaign budget TND<input data-cost="default_meta_campaign_budget_tnd" type="number" step="0.01"></label>
               <label class="field">Legacy Meta ads cost per sale TND<input data-cost="default_meta_ads_cost_per_sale_tnd" type="number" step="0.01"></label>
@@ -1389,6 +1389,9 @@ const copy = {
     waitingTitle: "Waiting for analysis",
     waitingBody: "Raw provider search results, snippets, JSON, API call debug details, and internal errors stay out of the client view.",
     analysisFailed: "Analysis failed",
+    analysisTemporarilyUnavailable: "Analysis is temporarily taking longer than expected. Please retry in a few moments.",
+    retryAnalysis: "Retry analysis",
+    finalizingAnalysis: "Finalizing your analysis...",
     product: "Product",
     productAnalysis: "Product analysis",
     noDescription: "No source-backed product description was available.",
@@ -1489,6 +1492,9 @@ const copy = {
     waitingTitle: "En attente d'analyse",
     waitingBody: "Les résultats bruts, extraits, JSON, détails d'appels API et erreurs internes restent hors de la vue client.",
     analysisFailed: "Échec de l'analyse",
+    analysisTemporarilyUnavailable: "L'analyse prend temporairement plus de temps que prévu. Réessayez dans quelques instants.",
+    retryAnalysis: "Réessayer l'analyse",
+    finalizingAnalysis: "Finalisation de votre analyse...",
     product: "Produit",
     productAnalysis: "Analyse produit",
     noDescription: "Aucune description fiable issue des sources n'a été trouvée.",
@@ -1639,6 +1645,7 @@ const ANALYSIS_STEPS = [
   "stepReport"
 ];
 let analysisStepTimer = null;
+let analysisDelayTimer = null;
 
 async function analyzePrototype() {
   const product = prototypeProductInput.value.trim();
@@ -1672,7 +1679,14 @@ async function analyzePrototype() {
   } catch (error) {
     stopAnalysisStepAnimation();
     productPhoto.innerHTML = `<div class="placeholder">${copy[currentLanguage].noReliableProductImageFound}</div>`;
-    prototypeResult.innerHTML = `<div class="result-band wide"><h2>${copy[currentLanguage].analysisFailed}</h2><p>${escapeHtml(error.message)}</p></div>`;
+    prototypeResult.innerHTML = `
+      <div class="result-band wide">
+        <h2>${copy[currentLanguage].analysisFailed}</h2>
+        <p>${escapeHtml(copy[currentLanguage].analysisTemporarilyUnavailable)}</p>
+        <button id="retryPrototypeAnalysisButton" class="button-primary" type="button">${escapeHtml(copy[currentLanguage].retryAnalysis)}</button>
+      </div>
+    `;
+    document.getElementById("retryPrototypeAnalysisButton")?.addEventListener("click", analyzePrototype);
   } finally {
     prototypeAnalyzeButton.disabled = false;
   }
@@ -1687,12 +1701,20 @@ function startAnalysisStepAnimation() {
   };
   renderAnalysisSteps(0);
   analysisStepTimer = window.setInterval(advance, 4200);
+  analysisDelayTimer = window.setTimeout(() => {
+    const status = document.getElementById("analysisStatusMessage");
+    if (status) status.textContent = copy[currentLanguage].finalizingAnalysis;
+  }, 8000);
 }
 
 function stopAnalysisStepAnimation() {
   if (analysisStepTimer) {
     window.clearInterval(analysisStepTimer);
     analysisStepTimer = null;
+  }
+  if (analysisDelayTimer) {
+    window.clearTimeout(analysisDelayTimer);
+    analysisDelayTimer = null;
   }
 }
 
@@ -1815,7 +1837,7 @@ function renderAnalysisPendingState() {
   prototypeResult.innerHTML = `
     <section class="result-band wide loading analysis-loader" aria-label="${escapeAttribute(labels.analyzingProductOpportunity)}">
       <div class="letter-loader" aria-hidden="true">${labels.analyzing.split("").map((letter) => `<span class="loader-letter">${escapeHtml(letter)}</span>`).join("")}</div>
-      <p>${escapeHtml(labels.searchingEvidence)}</p>
+      <p id="analysisStatusMessage">${escapeHtml(labels.searchingEvidence)}</p>
       <div id="analysisProgressSteps" class="progress-steps"></div>
     </section>
   `;
@@ -2915,7 +2937,17 @@ function escapeSvgText(value) {
 async function readJson(response) {
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(text || `Request failed with status ${response.status}`);
+    let body = null;
+    try {
+      body = JSON.parse(text);
+    } catch (_error) {
+      // Keep transport and provider details out of the prospect interface.
+    }
+    const detail = body?.detail;
+    if (detail?.code === "ANALYSIS_TEMPORARILY_UNAVAILABLE") {
+      throw new Error(detail.message || copy[currentLanguage].analysisTemporarilyUnavailable);
+    }
+    throw new Error(copy[currentLanguage].analysisTemporarilyUnavailable);
   }
   try {
     return JSON.parse(text);

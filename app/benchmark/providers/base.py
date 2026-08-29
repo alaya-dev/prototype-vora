@@ -88,6 +88,13 @@ KNOWN_TUNISIAN_RETAIL_DOMAINS = {
 
 
 def analysis_requirement(settings: Settings) -> ProviderConfigRequirement:
+    # Benchmark search adapters remain backward compatible with historical Gemini-only
+    # configurations, while all newly configured production flows use Groq.
+    if settings.groq_analysis_api_key:
+        return ProviderConfigRequirement(
+            "GROQ_ANALYSIS_API_KEY",
+            settings.groq_analysis_api_key,
+        )
     return ProviderConfigRequirement(
         "GEMINI_ANALYSIS_API_KEY",
         settings.gemini_analysis_api_key,

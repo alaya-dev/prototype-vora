@@ -3,6 +3,7 @@ uvicorn[standard]
 python-dotenv
 pydantic
 google-genai>=2.10.0
+groq>=0.31,<1
 httpx
 reportlab>=4.2,<5
 Pillow>=10,<12

@@ -49,6 +49,10 @@ class SettingsTests(unittest.TestCase):
             "GEMINI_INTENT_MODEL": "gemini-intent",
             "GEMINI_ANALYSIS_API_KEY": "analysis-key",
             "GEMINI_ANALYSIS_MODEL": "gemini-analysis",
+            "GROQ_INTENT_API_KEY": "groq-intent-key",
+            "GROQ_INTENT_MODEL": "openai/gpt-oss-20b",
+            "GROQ_ANALYSIS_API_KEY": "groq-analysis-key",
+            "GROQ_ANALYSIS_MODEL": "openai/gpt-oss-20b",
             "SERPER_API_KEY": "serper-key",
             "BRAVE_SEARCH_API_KEY": "brave-key",
             "EXA_API_KEY": "exa-key",
@@ -75,6 +79,10 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.gemini_intent_model, "gemini-intent")
         self.assertEqual(settings.gemini_analysis_api_key, "analysis-key")
         self.assertEqual(settings.gemini_analysis_model, "gemini-analysis")
+        self.assertEqual(settings.groq_intent_api_key, "groq-intent-key")
+        self.assertEqual(settings.groq_intent_model, "openai/gpt-oss-20b")
+        self.assertEqual(settings.groq_analysis_api_key, "groq-analysis-key")
+        self.assertEqual(settings.groq_analysis_model, "openai/gpt-oss-20b")
         self.assertEqual(settings.serper_api_key, "serper-key")
         self.assertEqual(settings.brave_search_api_key, "brave-key")
         self.assertEqual(settings.exa_api_key, "exa-key")

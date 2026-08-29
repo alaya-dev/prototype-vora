@@ -17,6 +17,10 @@ class Settings:
     gemini_intent_model: str = "gemini-3.1-flash-lite"
     gemini_analysis_api_key: str = ""
     gemini_analysis_model: str = "gemini-3.1-flash-lite"
+    groq_intent_api_key: str = ""
+    groq_intent_model: str = "openai/gpt-oss-20b"
+    groq_analysis_api_key: str = ""
+    groq_analysis_model: str = "openai/gpt-oss-20b"
     serper_api_key: str = ""
     brave_search_api_key: str = ""
     exa_api_key: str = ""
@@ -51,6 +55,10 @@ class Settings:
             gemini_intent_model=_read_str("GEMINI_INTENT_MODEL", "gemini-3.1-flash-lite"),
             gemini_analysis_api_key=_read_str("GEMINI_ANALYSIS_API_KEY"),
             gemini_analysis_model=_read_str("GEMINI_ANALYSIS_MODEL", "gemini-3.1-flash-lite"),
+            groq_intent_api_key=_read_str("GROQ_INTENT_API_KEY"),
+            groq_intent_model=_read_str("GROQ_INTENT_MODEL", "openai/gpt-oss-20b"),
+            groq_analysis_api_key=_read_str("GROQ_ANALYSIS_API_KEY"),
+            groq_analysis_model=_read_str("GROQ_ANALYSIS_MODEL", "openai/gpt-oss-20b"),
             gemini_api_key=_read_str("GEMINI_API_KEY"),
             gemini_model=_read_str("GEMINI_MODEL", "gemini-3.1-flash-lite"),
             analysis_timeout_seconds=_read_int(

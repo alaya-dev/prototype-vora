@@ -365,6 +365,8 @@ class PrototypeStore:
         provider_calls = sum(int(attempt["api_calls"]) for attempt in attempts_list)
         gemini_intent_calls = sum(event["calls"] for event in usage_list if event["service"] == "gemini_intent")
         gemini_analysis_calls = sum(event["calls"] for event in usage_list if event["service"] == "gemini_analysis")
+        groq_intent_calls = sum(event["calls"] for event in usage_list if event["service"] == "groq_intent")
+        groq_analysis_calls = sum(event["calls"] for event in usage_list if event["service"] == "groq_analysis")
         contact_attempts = [attempt for attempt in attempts_list if attempt["evidence_group"] == "contact_enrichment"]
         contact_search_api_calls = sum(int(attempt["api_calls"]) for attempt in contact_attempts)
         contact_cost = _estimate_cost(contact_attempts, [], self.get_cost_config())
@@ -397,6 +399,8 @@ class PrototypeStore:
             exa_called="exa" in provider_ids,
             gemini_intent_calls=gemini_intent_calls,
             gemini_analysis_calls=gemini_analysis_calls,
+            groq_intent_calls=groq_intent_calls,
+            groq_analysis_calls=groq_analysis_calls,
             provider_api_calls=provider_calls,
             raw_sources_collected=raw_sources,
             sources_used_in_final_analysis=raw_sources,
@@ -459,6 +463,10 @@ def _estimate_cost(attempts: list[dict], usage: list[dict], config: CostConfig) 
             if event["service"] == "gemini_intent"
             else config.gemini_analysis_cost_per_call
             if event["service"] == "gemini_analysis"
+            else config.groq_intent_cost_per_call
+            if event["service"] == "groq_intent"
+            else config.groq_analysis_cost_per_call
+            if event["service"] == "groq_analysis"
             else 0.0
         )
         for event in usage

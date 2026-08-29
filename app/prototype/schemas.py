@@ -300,6 +300,8 @@ class CostConfig(StrictModel):
     exa_cost_per_call: float = 0.0
     gemini_intent_cost_per_call: float = 0.0
     gemini_analysis_cost_per_call: float = 0.0
+    groq_intent_cost_per_call: float = 0.0
+    groq_analysis_cost_per_call: float = 0.0
     usd_to_tnd_rate: float = 3.1
     default_meta_ads_cost_per_sale_tnd: float = 5.0
     default_meta_campaign_budget_tnd: float | None = 400.0
@@ -336,6 +338,8 @@ class AnalyticsRunSummary(StrictModel):
     exa_called: bool = False
     gemini_intent_calls: int = 0
     gemini_analysis_calls: int = 0
+    groq_intent_calls: int = 0
+    groq_analysis_calls: int = 0
     provider_api_calls: int = 0
     raw_sources_collected: int = 0
     sources_used_in_final_analysis: int = 0
