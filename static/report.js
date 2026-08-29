@@ -199,6 +199,7 @@ const REPORT_COPY = {
 
 Object.assign(copy.en, REPORT_COPY.en);
 Object.assign(copy.fr, REPORT_COPY.fr);
+if (typeof applyStaticTranslations === "function") applyStaticTranslations();
 
 function renderPrototypeResult(data) {
   productPhoto.innerHTML = renderProductImage(data);
@@ -228,7 +229,7 @@ function renderPrototypeResult(data) {
       ${renderAdsPotentialSection(data)}
     </div>
     ${renderRisksSection(data)}
-    <section class="result-band wide">
+    <section id="finalDecision" data-report-section="final-decision" class="result-band wide">
       <h2>${labels.decisionTitle}</h2>
       ${renderDecisionIllustration(data)}
       ${renderDetailedScoring(data)}
@@ -255,10 +256,11 @@ function renderPrototypeResult(data) {
 
 function provenanceBadge(provenance) {
   const map = {
-    observed: { cls: "badge-observed", label: currentLanguage === "fr" ? "DONNÉE RÉELLE" : "OBSERVED" },
-    computed: { cls: "badge-computed", label: currentLanguage === "fr" ? "CALCUL" : "COMPUTED" },
-    estimate: { cls: "badge-estimate", label: currentLanguage === "fr" ? "ESTIMATION" : "ESTIMATE" },
-    unavailable: { cls: "badge-unavailable", label: currentLanguage === "fr" ? "NON DISPONIBLE" : "NOT AVAILABLE" },
+    observed: { cls: "badge-observed", label: "OBSERVED" },
+    computed: { cls: "badge-computed", label: "CALCULATED" },
+    estimate: { cls: "badge-estimate", label: "ESTIMATE" },
+    unavailable: { cls: "badge-unavailable", label: "INSUFFICIENT DATA" },
+    assumption: { cls: "badge-estimate", label: "ASSUMPTION" },
     source: { cls: "badge-source", label: "SOURCE" },
     deduction: { cls: "badge-deduction", label: currentLanguage === "fr" ? "DÉDUCTION" : "DEDUCTION" }
   };
@@ -276,10 +278,11 @@ function confidenceInline(level) {
 
 function provenanceText(provenance) {
   const labels = {
-    observed: currentLanguage === "fr" ? "DONNÉE RÉELLE" : "OBSERVED",
-    computed: currentLanguage === "fr" ? "CALCUL" : "COMPUTED",
-    estimate: currentLanguage === "fr" ? "ESTIMATION" : "ESTIMATE",
-    unavailable: currentLanguage === "fr" ? "NON DISPONIBLE" : "NOT AVAILABLE",
+    observed: "OBSERVED",
+    computed: "CALCULATED",
+    estimate: "ESTIMATE",
+    unavailable: "INSUFFICIENT DATA",
+    assumption: "ASSUMPTION",
   };
   return labels[provenance] || labels.unavailable;
 }
@@ -301,7 +304,7 @@ function renderExecutiveSummary(data, scores, recommendation, profit) {
     ? `${data.target_market || "Tunisie"} · Sourcing : ${data.sourcing_country || "Chine"} · ${new Date().toLocaleDateString(locale)}`
     : `${data.target_market || "Tunisia"} · Sourcing: ${data.sourcing_country || "China"} · ${new Date().toLocaleDateString(locale)}`;
   return `
-    <section class="result-band wide report-cover">
+    <section id="executiveSummary" data-report-section="executive-summary" class="result-band wide report-cover">
       <div class="report-header">
           <div>
           <img class="report-cover-logo" src="/logo/Nexora_logo_transparent_clean_cropped.png" alt="NEXORA">
@@ -312,6 +315,14 @@ function renderExecutiveSummary(data, scores, recommendation, profit) {
         </div>
         <img class="report-cover-image" src="${escapeAttribute(data.product_image_url || fallbackProductImage(productName))}" alt="${escapeAttribute(productName)}" onerror="handleProductImageError(this, '${escapeAttribute(productName)}')">
         <span class="pill">${recommendationText(recommendation)} · ${overallScore}/100</span>
+      </div>
+      <div class="metric-grid report-header-facts">
+        ${metric(labels.marketAnalyzed, data.target_market || labels.notAvailable)}
+        ${metric(labels.sourcingCountryCol, data.sourcing_country || labels.notAvailable)}
+        ${metric("Date", new Date().toLocaleDateString(locale))}
+        ${metric(labels.decisionConfidence, confidenceText(scores.confidence))}
+        ${metric(currentLanguage === "fr" ? "Score d'opportunité" : "Opportunity score", `${overallScore}/100`)}
+        ${metric(currentLanguage === "fr" ? "Décision finale" : "Final decision", recommendationText(recommendation))}
       </div>
       <h3>${labels.execSummary}</h3>
       <p>${escapeHtml(summaryText)}</p>
@@ -391,7 +402,7 @@ function renderProductIdentification(data, understanding, productDescription) {
   const labels = copy[currentLanguage];
   const specs = Array.isArray(understanding.technical_specs) ? understanding.technical_specs : [];
   return `
-    <section class="result-band wide">
+    <section id="productAnalyzed" data-report-section="product-analyzed" class="result-band wide">
       <div class="section-head">
         <h2>${labels.productAnalyzed}</h2>
         ${sectionConfidence(labels.productAnalyzed, "medium", "")}
@@ -468,14 +479,18 @@ function renderSourcingSection(data) {
     <td>${offer.source_url ? `<a href="${escapeAttribute(offer.source_url)}" target="_blank" rel="noopener noreferrer">${labels.sourceLink}</a>` : labels.notAvailable}</td>
     <td>${confidenceInline(offer.confidence)}</td>
   </tr>`).join("");
+  const coverageWarning = offers.length < 3
+    ? `<div class="coverage-warning"><strong>${currentLanguage === "fr" ? "Couverture sourcing limitée" : "Limited sourcing coverage"}</strong><span>${currentLanguage === "fr" ? "Moins de trois fournisseurs fiables avec prix produit ont été retenus." : "Fewer than three reliable suppliers with product-level pricing were retained."}</span></div>`
+    : "";
   return `
-    <section class="result-band wide">
+    <section id="internationalSourcing" data-report-section="international-sourcing" class="result-band wide">
       <div class="section-head">
         <h2>${labels.sourcingInternational}</h2>
         ${sectionConfidence(labels.sourcingInternational, confidence, currentLanguage === "fr"
           ? (offers.length ? `${offers.length} fournisseur(s) trouvé(s) mais coût logistique incomplet.` : "aucun fournisseur trouvé")
           : (offers.length ? `${offers.length} supplier(s) found but logistics cost incomplete.` : "no supplier found"))}
       </div>
+      ${coverageWarning}
       ${offers.length ? `<table class="report-table">
         <thead><tr><th>${labels.supplierCol}</th><th>${labels.productCol}</th><th>${currentLanguage === "fr" ? "Pays" : "Country"}</th><th>${currentLanguage === "fr" ? "Prix min–max" : "Min–max price"}</th><th>${currentLanguage === "fr" ? "Conversion TND" : "TND conversion"}</th><th>${labels.moq}</th><th>${labels.sourceLink}</th><th>${labels.trustCol}</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -496,6 +511,34 @@ function tndRangeOrNA(min, max) {
   return `${formatNumber(min)}–${formatNumber(max)} TND`;
 }
 
+function targetPackageText(data) {
+  const product = data?.product_understanding || {};
+  const parsed = parseVolume([
+    product.normalized_product,
+    product.original_product,
+    ...(Array.isArray(product.technical_specs) ? product.technical_specs : [])
+  ].filter(Boolean).join(" "));
+  if (!parsed) return copy[currentLanguage].notAvailable;
+  return `${formatNumber(parsed.value)} ${parsed.unit}`;
+}
+
+function supplierUnitPriceText(data) {
+  const offers = Array.isArray(data?.china_offers) ? data.china_offers : [];
+  const offer = offers
+    .filter((item) => finiteOrNull(item.price_min_tnd) !== null)
+    .sort((a, b) => finiteOrNull(a.price_min_tnd) - finiteOrNull(b.price_min_tnd))[0];
+  if (!offer) return copy[currentLanguage].notAvailable;
+  const unit = String(offer.price_unit || "").toLowerCase();
+  const unitLabel = /liter|litre|\bper\s*l\b|\/\s*l\b|\bl\b/.test(unit)
+    ? "L"
+    : /kilogram|\bper\s*kg\b|\/\s*kg\b/.test(unit)
+      ? "kg"
+      : /piece|unit|pcs|bottle|bidon|package/.test(unit)
+        ? (currentLanguage === "fr" ? "unité" : "unit")
+        : (offer.price_unit || (currentLanguage === "fr" ? "unité" : "unit"));
+  return `${formatNumber(Number(offer.price_min_tnd))} TND/${unitLabel}`;
+}
+
 function normalizedPriceText(offer) {
   const labels = copy[currentLanguage];
   const text = offer.normalized_price_text || "";
@@ -512,7 +555,7 @@ function renderLandedCostSection(data) {
   const landed = data.landed_cost || {};
   const components = landed.components || [];
   const componentLabels = {
-    supplier_price: currentLanguage === "fr" ? "Prix fournisseur" : "Supplier price",
+    supplier_price: currentLanguage === "fr" ? "Coût fournisseur équivalent au format analysé" : "Supplier cost equivalent to analyzed package",
     shipping: currentLanguage === "fr" ? "Transport estimé" : "Estimated shipping",
     customs: currentLanguage === "fr" ? "Droits / taxes d'import" : "Import duties / taxes",
     handling: currentLanguage === "fr" ? "Manutention" : "Handling",
@@ -528,11 +571,19 @@ function renderLandedCostSection(data) {
       <td><strong>${landed.total_tnd !== null && landed.total_tnd !== undefined ? `${formatNumber(landed.total_tnd)} TND` : labels.notAvailable}</strong></td>
       <td>${provenanceBadge(landed.partial_estimate ? "estimate" : "computed")}</td>
     </tr>`;
+  const targetPackage = targetPackageText(data);
+  const supplierUnit = supplierUnitPriceText(data);
+  const supplierComponent = components.find((component) => component.label_key === "supplier_price");
   return `
-    <section class="result-band wide">
+    <section id="landedCost" data-report-section="landed-cost" class="result-band wide">
       <div class="section-head">
         <h2>${labels.landedCostTitle}</h2>
         ${sectionConfidence(labels.landedCostTitle, landed.total_tnd != null ? "medium" : "low", landed.partial_estimate ? labels.partialEstimateNote : "")}
+      </div>
+      <div class="metric-grid">
+        ${metric(currentLanguage === "fr" ? "Format analysé" : "Analyzed package", targetPackage)}
+        ${metric(currentLanguage === "fr" ? "Prix source observé" : "Observed source price", supplierUnit)}
+        ${metric(currentLanguage === "fr" ? "Coût produit équivalent" : "Equivalent product cost", supplierComponent?.value_tnd != null ? tnd(supplierComponent.value_tnd) : labels.notAvailable)}
       </div>
       <table class="report-table">
         <thead><tr><th>${labels.componentCol}</th><th>${labels.valueCol}</th><th>${labels.provenanceCol}</th></tr></thead>
@@ -575,8 +626,9 @@ function renderTunisiaMarketSection(data, retail) {
       <thead><tr><th>${labels.supplierCol}</th><th>${labels.productCol}</th><th>${labels.priceCol}</th><th>${labels.sourceLink}</th><th>${labels.trustCol}</th></tr></thead>
       <tbody>${wholesaleRows}</tbody>
     </table>` : `<p>${labels.noWholesalePrice}</p>`;
+  const comparableReference = comparableRetailReference(data);
   return `
-    <section class="result-band wide">
+    <section id="tunisiaMarket" data-report-section="tunisia-market" class="result-band wide">
       <div class="section-head">
         <h2>${labels.tunisiaMarketTitle}</h2>
         ${sectionConfidence(`${labels.retailPrices}`, confidenceLevel, currentLanguage === "fr"
@@ -592,6 +644,8 @@ function renderTunisiaMarketSection(data, retail) {
         ${metric(copy[currentLanguage].minPrice, tnd(retail.retail_min_tnd))}
         ${metric(copy[currentLanguage].maxPrice, tnd(retail.retail_max_tnd))}
         ${metric(copy[currentLanguage].averagePrice, tnd(retail.retail_avg_tnd))}
+        ${metric(currentLanguage === "fr" ? "Fourchette retail retenue" : "Retained retail price range", retail.retail_price_range_tnd || labels.notAvailable)}
+        ${metric(currentLanguage === "fr" ? "Référence marché comparable" : "Comparable market price", tnd(comparableReference))}
       </div>
       <h3>${labels.wholesalePricesShort}</h3>
       ${wholesaleNotice}
@@ -606,7 +660,7 @@ function renderComparabilitySection(data) {
   const levels = { high: labels.comparabilityHigh, medium: labels.comparabilityMedium, low: labels.comparabilityLow, unknown: labels.comparabilityLow };
   const levelKey = comparability.level || "unknown";
   return `
-    <section class="result-band wide">
+    <section id="comparability" data-report-section="comparability" class="result-band wide">
       <div class="section-head">
         <h2>${labels.comparabilityTitle}</h2>
         <span class="pill">Comparabilité : ${levels[levelKey] || levels.unknown}</span>
@@ -625,9 +679,9 @@ function renderCompetitionSection(data) {
   const retailOffers = data.retail_offers || [];
   const brands = [...new Set(retailOffers.map((offer) => offer.brand).filter(Boolean))];
   const sellers = [...new Set(retailOffers.map((offer) => offer.seller_name).filter(Boolean))];
-  const level = data.competition_level || "unknown";
+  const level = sellers.length < 3 && brands.length < 3 ? "unknown" : (data.competition_level || "unknown");
   const levelLabels = currentLanguage === "fr"
-    ? { low: "FAIBLE", medium: "MOYEN", high: "FORT", unknown: "INCONNUE" }
+    ? { low: "FAIBLE", medium: "MOYEN", high: "FORT", unknown: "DONNÉES INSUFFISANTES" }
     : { low: "LOW", medium: "MEDIUM", high: "HIGH", unknown: "UNKNOWN" };
   const justification = currentLanguage === "fr"
     ? {
@@ -643,7 +697,7 @@ function renderCompetitionSection(data) {
         unknown: "Collected data does not allow assessing competitive intensity."
       }[level];
   return `
-    <section class="result-band wide">
+    <section id="competitionAnalysis" data-report-section="competition" class="result-band wide">
       <div class="section-head">
         <h2>${labels.competitionTitle}</h2>
         <span class="pill">${labels.competitionLevelLabel} : ${levelLabels[level] || levelLabels.unknown}</span>
@@ -663,24 +717,30 @@ function renderProfitabilitySection(data, profit, quantityUnits) {
   const labels = copy[currentLanguage];
   const margin = profit.gross_margin_per_unit_before_marketing_tnd;
   const selling = profit.estimated_selling_price_tnd;
+  const marketReference = comparableRetailReference(data) ?? selling;
   const landed = (data.landed_cost || {}).total_tnd ?? profit.estimated_landed_cost_per_unit_tnd;
   let marginPercent = null;
   if (margin !== null && margin !== undefined && selling) {
     marginPercent = Math.round(margin / selling * 1000) / 10;
   }
   const netAfterAds = profit.net_profit_for_1000_after_marketing_tnd ?? profit.estimated_profit_for_1000_units_tnd;
+  const targetPackage = targetPackageText(data);
+  const supplierUnit = supplierUnitPriceText(data);
+  const equivalentProductCost = profit.source_unit_price_tnd;
   return `
-    <section class="result-band wide">
+    <section id="profitability" data-report-section="profitability" class="result-band wide">
       <div class="section-head">
         <h2>${labels.rentabilityTitle}</h2>
         <span class="pill">${labels.hypotheses}</span>
       </div>
+      <p class="data-quality-line">${provenanceBadge("assumption")} ${escapeHtml(currentLanguage === "fr" ? "Le transport, les droits et la publicité sont des hypothèses administratives quand aucune preuve source n'est disponible." : "Shipping, duties, and advertising are administrative assumptions when no source evidence is available.")}</p>
       <div class="detail-columns">
         <section class="detail-section">
           <h3>${labels.observedData}</h3>
           <div class="detail-pairs">
-            ${detailPair(labels.unitBuyPrice, tnd(profit.source_unit_price_tnd))}
-            ${detailPair(labels.observedRetailPrice, tnd(selling))}
+            ${detailPair(labels.unitBuyPrice, `${supplierUnit} · ${targetPackage}`)}
+            ${detailPair(currentLanguage === "fr" ? "Coût produit équivalent" : "Equivalent product cost", tnd(equivalentProductCost))}
+            ${detailPair(labels.observedRetailPrice, tnd(marketReference))}
             ${detailPair(labels.grossMarginUnit, tnd(margin))}
           </div>
         </section>
@@ -697,6 +757,10 @@ function renderProfitabilitySection(data, profit, quantityUnits) {
         <thead><tr><th>${labels.metricColumn}</th><th>${labels.valueCol}</th></tr></thead>
         <tbody>
           ${reportRow(labels.recommendedSalePrice, tnd(selling))}
+          ${reportRow(currentLanguage === "fr" ? "Référence marché comparable" : "Comparable market reference", tnd(marketReference))}
+          ${reportRow(currentLanguage === "fr" ? "Prix source observé" : "Observed source price", supplierUnit)}
+          ${reportRow(currentLanguage === "fr" ? "Format analysé" : "Analyzed package", targetPackage)}
+          ${reportRow(currentLanguage === "fr" ? "Coût produit équivalent" : "Equivalent product cost", tnd(equivalentProductCost))}
           ${reportRow(labels.landedCost, tnd(landed))}
           ${reportRow(labels.grossMarginUnit, tnd(margin))}
           ${reportRow(labels.marginPercent, marginPercent !== null ? `${marginPercent}%` : labels.notAvailable)}
@@ -742,7 +806,7 @@ function renderDetailedScoring(data) {
   const criteria = scoring.criteria || [];
   if (!criteria.length) return "";
   return `
-    <div class="detail-section">
+    <div id="detailedScoring" data-report-section="detailed-scoring" class="detail-section">
       <h3>${labels.scoringDetailTitle}</h3>
       ${criteria.map((criterion) => `
         ${scoreBar(criterionLabel(criterion.key), Number(criterion.score) || 0, Number(criterion.max_score) || 0)}
@@ -760,16 +824,18 @@ function renderCommercialPotentialSection(data) {
   const criteria = scoring.criteria || [];
   const demand = criteria.find((criterion) => criterion.key === "market_demand");
   const recurrence = criteria.find((criterion) => criterion.key === "recurrence");
-  const audiences = currentLanguage === "fr"
-    ? "Particuliers, garages, mécaniciens, centres auto, revendeurs, grossistes — selon la catégorie analysée."
-    : "Individuals, garages, mechanics, auto centers, resellers, wholesalers — depending on the analyzed category.";
+  const retailCount = Array.isArray(data.retail_offers) ? data.retail_offers.length : 0;
+  const evidence = retailCount
+    ? (currentLanguage === "fr" ? `${retailCount} référence(s) retail tunisienne(s) retenue(s).` : `${retailCount} retained Tunisia retail reference(s).`)
+    : (currentLanguage === "fr" ? "Aucune référence retail tunisienne retenue." : "No Tunisia retail reference retained.");
   return `
-    <section class="result-band">
+    <section id="commercialPotential" data-report-section="commercial-potential" class="result-band">
       <div class="section-head">
         <h2>${labels.commercialPotentialTitle}</h2>
         <span class="pill">${score} / 100</span>
       </div>
-      <p>${audiences}</p>
+      <p>${escapeHtml(currentLanguage === "fr" ? "Évaluation qualitative fondée uniquement sur les références et signaux retenus." : "Qualitative assessment based only on retained references and signals.")}</p>
+      <p class="hidden-note">${escapeHtml(evidence)}</p>
       ${demand ? `<p class="hidden-note">${escapeHtml(demand.justification)}</p>` : ""}
       ${recurrence ? `<p class="hidden-note">${escapeHtml(recurrence.justification)}</p>` : ""}
     </section>
@@ -780,14 +846,9 @@ function renderAdsPotentialSection(data) {
   const labels = copy[currentLanguage];
   const score = Number(data.ads_potential_score) || 0;
   const level = score >= 60 ? (currentLanguage === "fr" ? "FORT" : "HIGH") : score >= 35 ? (currentLanguage === "fr" ? "MOYEN" : "MEDIUM") : (currentLanguage === "fr" ? "FAIBLE" : "LOW");
-  const behavior = currentLanguage === "fr"
-    ? "Achat utilitaire et de remplacement : le client cherche un produit précis, compare les prix puis achète en ligne ou en magasin."
-    : "Utility and replacement purchase: the buyer searches for a specific product, compares prices, then buys online or in-store.";
-  const angles = currentLanguage === "fr"
-    ? "Compatibilité précise, rapport qualité/prix, disponibilité locale, livraison rapide."
-    : "Precise compatibility, value for money, local availability, fast delivery.";
+  const adsCriterion = (data.detailed_scoring?.criteria || []).find((criterion) => criterion.key === "ads_potential");
   return `
-    <section class="result-band">
+    <section id="adsPotential" data-report-section="ads-potential" class="result-band">
       <div class="section-head">
         <h2>${labels.adsPotentialTitle}</h2>
         <span class="pill">Ads : ${score} / 100</span>
@@ -795,12 +856,11 @@ function renderAdsPotentialSection(data) {
       <div class="metric-grid">
         ${metric(labels.adsMeta, level)}
         ${metric(labels.adsGoogle, level)}
-        ${metric(labels.purchaseType, currentLanguage === "fr" ? "Achat réfléchi / renouvellement" : "Considered / renewal purchase")}
-        ${metric(labels.acquisitionDifficulty, level === "HIGH" || level === "FORT" ? (currentLanguage === "fr" ? "Élevée (concurrence ads)" : "High (ads competition)") : currentLanguage === "fr" ? "Modérée" : "Moderate")}
-        ${metric(labels.repurchasePotential, currentLanguage === "fr" ? "À confirmer selon la récurrence produit" : "To confirm based on product recurrence")}
+        ${metric(labels.purchaseType, currentLanguage === "fr" ? "Non confirmé par des données comportementales." : "Not confirmed by behavioral data.")}
+        ${metric(labels.acquisitionDifficulty, currentLanguage === "fr" ? "Non disponible" : "Not available")}
+        ${metric(labels.repurchasePotential, currentLanguage === "fr" ? "Non confirmé" : "Not confirmed")}
       </div>
-      <p class="hidden-note"><strong>${labels.customerBehavior} :</strong> ${escapeHtml(behavior)}</p>
-      <p class="hidden-note"><strong>${labels.adAngles} :</strong> ${escapeHtml(angles)}</p>
+      ${adsCriterion ? `<p class="hidden-note">${escapeHtml(adsCriterion.justification || "")}</p>` : ""}
       <p class="hidden-note">${labels.adsQualitativeNote}</p>
     </section>
   `;
@@ -812,9 +872,13 @@ function renderRisksSection(data) {
     ...(Array.isArray(data.profitability_estimate?.risks) ? data.profitability_estimate.risks : []),
     ...(Array.isArray(data.warnings) ? data.warnings : [])
   ].filter(Boolean);
+  if ((data.china_offers || []).length < 3) risks.push(currentLanguage === "fr" ? "Couverture fournisseurs Chine limitée." : "Limited China supplier coverage.");
+  if (!(data.tunisia_wholesale_offers || []).length) risks.push(currentLanguage === "fr" ? "Aucun prix de gros tunisien public fiable." : "No reliable public Tunisia wholesale price.");
+  if ((data.retail_offers || []).length < 3) risks.push(currentLanguage === "fr" ? "Couverture retail tunisienne limitée." : "Limited Tunisia retail coverage.");
+  if (data.landed_cost?.partial_estimate) risks.push(currentLanguage === "fr" ? "Les coûts logistiques et d'importation restent des estimations." : "Logistics and import costs remain estimates.");
   const unique = [...new Set(risks)];
   return `
-    <section class="result-band wide">
+    <section id="mainRisks" data-report-section="risks" class="result-band wide">
       <h2>${labels.risksTitle}</h2>
       ${unique.length ? `<ul class="decision-factors">${unique.map((risk) => `<li>${escapeHtml(risk)}</li>`).join("")}</ul>` : `<p>${currentLanguage === "fr" ? "Aucun risque majeur identifié dans les données." : "No major risk identified in the data."}</p>`}
     </section>
@@ -829,7 +893,7 @@ function renderActionsSection(data) {
     data
   ));
   return `
-    <section class="result-band wide">
+    <section id="recommendedActions" data-report-section="recommended-actions" class="result-band wide">
       <h2>${labels.actionsTitle}</h2>
       <ol class="decision-factors" style="padding-left:18px">${actions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}</ol>
       <h3>${labels.decisionJustificationTitle}</h3>
@@ -840,7 +904,7 @@ function renderActionsSection(data) {
 
 function renderSourcesSection(data) {
   const labels = copy[currentLanguage];
-  const sources = data.sources || [];
+  const sources = (data.sources || []).filter((source) => source && source.url && !String(source.data_used || "").toLowerCase().startsWith("context evidence"));
   const typeLabels = {
     china_sourcing: currentLanguage === "fr" ? "Sourcing Chine" : "China sourcing",
     tunisia_sourcing: currentLanguage === "fr" ? "Gros Tunisie" : "Tunisia wholesale",
@@ -854,7 +918,7 @@ function renderSourcesSection(data) {
       <td>${provenanceBadge("source")} ${confidenceInline(source.confidence)}</td>
     </tr>`).join("");
   return `
-    <section class="result-band wide">
+    <section id="sourcesEvidence" data-report-section="sources-evidence" class="result-band wide">
       <div class="section-head">
         <h2>${labels.sourcesTitle}</h2>
         <span class="pill">${sources.length}</span>

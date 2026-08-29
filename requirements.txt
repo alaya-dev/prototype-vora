@@ -7,3 +7,4 @@ httpx
 reportlab>=4.2,<5
 Pillow>=10,<12
 svglib==1.5.1
+pypdf>=5,<6

@@ -32,6 +32,7 @@
   body {
     margin: 0;
     min-height: 100vh;
+    overflow-x: hidden;
     font-family: Inter, "Segoe UI", system-ui, sans-serif;
     color: var(--text);
     background:
@@ -224,6 +225,8 @@
     border: 1px solid var(--line-strong);
     color: var(--text);
   }
+
+  #exportPdfButton[hidden] { display: none !important; }
 
   .topbar .button-secondary {
     background: rgba(255, 255, 255, 0.08);
@@ -602,11 +605,17 @@
 
   .page {
     display: none;
+    min-width: 0;
   }
 
   .page.active {
     display: grid;
     gap: 16px;
+  }
+
+  .result-grid,
+  .result-band {
+    min-width: 0;
   }
 
   .analytics-lock {
@@ -674,8 +683,33 @@
     gap: 10px;
   }
 
+  .report-header-facts {
+    margin-top: 4px;
+  }
+
+  .coverage-warning {
+    display: grid;
+    gap: 4px;
+    border: 1px solid rgba(181, 123, 42, 0.35);
+    background: rgba(181, 123, 42, 0.08);
+    color: #704b17;
+    border-radius: var(--radius);
+    padding: 12px 14px;
+  }
+
+  .data-quality-line {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
   .report-table {
     width: 100%;
+    min-width: 0;
+    table-layout: fixed;
     border-collapse: collapse;
     background: #fff;
     border: 1px solid var(--line);
@@ -689,6 +723,8 @@
     border-bottom: 1px solid rgba(31, 41, 55, 0.08);
     text-align: left;
     vertical-align: top;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .report-table th {
@@ -773,10 +809,18 @@
   }
 
   .decision-factors {
+    min-width: 0;
     margin: 0;
     padding-left: 18px;
     color: var(--muted);
     line-height: 1.5;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .result-band > *,
+  .analysis-copy > * {
+    min-width: 0;
   }
 
   .decision-header {
@@ -1029,18 +1073,30 @@
 
   @media (max-width: 760px) {
     .report-table {
-      display: block;
+      display: table;
+      table-layout: fixed;
       max-width: 100%;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
+      min-width: 0 !important;
+      width: 100%;
+      overflow: visible;
     }
 
     .report-table thead,
     .report-table tbody {
-      display: table;
-      min-width: 720px;
+      min-width: 0;
       width: 100%;
     }
+
+    .report-table tbody { display: table-row-group; }
+    .report-table th,
+    .report-table td {
+      padding: 8px 6px;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      font-size: 11px;
+    }
+
+    .report-table tr { width: 100%; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1168,11 +1224,15 @@
             <div class="hero-options">
               <div class="field">
                 <label for="targetMarketInput" data-i18n="targetMarketLabel">Target market</label>
-                <input id="targetMarketInput" type="text" value="Tunisia" placeholder="Tunisia" data-i18n-placeholder="targetMarketPlaceholder">
+                <select id="targetMarketInput">
+                  <option value="Tunisia">Tunisie</option>
+                </select>
               </div>
               <div class="field">
                 <label for="sourcingCountryInput" data-i18n="sourcingCountryLabel">Sourcing priority</label>
-                <input id="sourcingCountryInput" type="text" value="China" placeholder="China" data-i18n-placeholder="sourcingCountryPlaceholder">
+                <select id="sourcingCountryInput">
+                  <option value="China">Chine</option>
+                </select>
               </div>
             </div>
             <div class="action-row">
@@ -1302,6 +1362,8 @@ const analyticsLogin = document.getElementById("analyticsLogin");
 const analyticsPanel = document.getElementById("analyticsPanel");
 const adminPasswordInput = document.getElementById("adminPasswordInput");
 const unlockAnalyticsButton = document.getElementById("unlockAnalyticsButton");
+// Keep the PDF implementation available without exposing the export control in the prospect UI.
+const SHOW_PDF_EXPORT = false;
 let currentRunId = null;
 let currentAgents = [];
 let currentRevealAgents = [];
@@ -1535,7 +1597,8 @@ agentsNextButton.addEventListener("click", () => {
   agentsPage = Math.min(maxPage, agentsPage + 1);
   renderAgentsPage();
 });
-exportPdfButton.addEventListener("click", exportOpportunityPdf);
+exportPdfButton.hidden = !SHOW_PDF_EXPORT;
+if (SHOW_PDF_EXPORT) exportPdfButton.addEventListener("click", exportOpportunityPdf);
 applyStaticTranslations();
 if (window.location.pathname === "/analytics") {
   showPage("analyticsPage");
@@ -1935,9 +1998,9 @@ function deriveProfitability(data) {
   const budgetMin = finiteOrNull(profit.digital_ad_budget_min_tnd) ?? campaignBudget;
   const budgetMax = finiteOrNull(profit.digital_ad_budget_max_tnd) ?? campaignBudget;
   const landedCost = finiteOrNull(profit.estimated_landed_cost_per_unit_tnd);
-  const comparableMarketPrice = comparableRetailReference(data)
-    ?? finiteOrNull(profit.estimated_selling_price_tnd)
-    ?? finiteOrNull(retailSummary?.retail_avg_tnd);
+  // Keep displayed profitability aligned with the backend's confirmed
+  // comparable selling price; a retail average alone is not enough to invent a margin.
+  const comparableMarketPrice = finiteOrNull(profit.estimated_selling_price_tnd);
   const storedGrossMargin = Number(profit.gross_margin_per_unit_before_marketing_tnd);
   const grossMargin = Number.isFinite(landedCost) && Number.isFinite(comparableMarketPrice)
     ? Number((comparableMarketPrice - landedCost).toFixed(2))
