@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.prototype.schemas import PrototypeAnalysisDraft
+from app.services.gemini_client import GeminiClientError
 from app.services.groq_client import GroqClient, GroqClientError
 from app.services.groq_client import _normalize_client_analysis_payload
 
@@ -136,7 +137,7 @@ class GroqApiErrorTests(unittest.TestCase):
 
         class FailingPrototype:
             async def analyze(self, _request):
-                raise GroqClientError("429 rate_limit_exceeded secret-key")
+                raise GeminiClientError("429 rate_limit_exceeded secret-key")
 
         app = server.create_app(
             settings=Settings(gemini_api_key="", gemini_model="", analysis_timeout_seconds=45),

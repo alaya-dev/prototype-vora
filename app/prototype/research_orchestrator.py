@@ -92,7 +92,7 @@ class PrototypeResearchOrchestrator:
             errors=[],
             product_understanding=_product_dump(intent),
         )
-        self.store.log_api_usage(run_id, "groq_intent", 1)
+        self.store.log_api_usage(run_id, "gemini_intent", 1)
 
         if not intent.is_valid_product or not intent.normalized_product:
             response = PrototypeAnalyzeResponse(
@@ -134,7 +134,7 @@ class PrototypeResearchOrchestrator:
                     }
                 )
         analysis_result = await self._extract_analysis(product, evidence, request.quantity_scenarios)
-        self.store.log_api_usage(run_id, "groq_analysis", 1)
+        self.store.log_api_usage(run_id, "gemini_analysis", 1)
         validated = validate_provider_result(_as_provider_analysis(analysis_result), evidence.sources)
         response = _to_client_response(
             run_id=run_id,

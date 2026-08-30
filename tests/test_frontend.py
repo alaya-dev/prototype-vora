@@ -66,8 +66,14 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("Analytics", self.html)
         self.assertIn("/logo/Nexora_logo_transparent_clean_cropped.png", self.html)
         self.assertIn("Nexora product opportunity report", self.html)
-        self.assertIn("product_image_confidence", self.html)
         self.assertIn("No reliable source-backed product image was found.", self.html)
+        self.assertIn('id="vizyaExecutiveSummary"', self.html)
+        self.assertIn('id="vizyaInternationalSourcing"', self.html)
+        self.assertIn('id="vizyaLandedCost"', self.html)
+        self.assertIn('id="vizyaTunisiaMarket"', self.html)
+        self.assertIn('id="vizyaSourcesEvidence"', self.html)
+        self.assertIn('<details class="benchmark-compat" hidden>', self.html)
+        self.assertIn('const SHOW_PDF_EXPORT = false;', self.html)
 
     def test_client_prototype_analysis_uses_canonical_market_payload(self) -> None:
         analyzer = self.html.split("async function analyzePrototype()", 1)[1].split(
@@ -257,9 +263,20 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("finiteOrNull", self.html)
 
     def test_frontend_derives_retail_summary_from_examples_when_summary_fields_are_missing(self) -> None:
-        self.assertIn("function deriveRetailSummary(retail)", self.html)
-        self.assertIn("function retailExampleValues(item)", self.html)
-        self.assertIn("const retail = deriveRetailSummary(data.retail_market_summary || {});", self.html)
+        self.assertIn("function vizyaRetailMarket(data)", self.html)
+        self.assertIn("data.retail_offers", self.html)
+        self.assertIn("finiteOrNull(summary.retail_min_tnd)", self.html)
+        self.assertIn("finiteOrNull(summary.retail_max_tnd)", self.html)
+
+    def test_vizya_client_report_excludes_internal_and_advertising_sections(self) -> None:
+        result_renderer = self.html.split("function renderPrototypeResult(data)", 1)[1].split("function vizyaLabels", 1)[0]
+
+        self.assertNotIn("renderDecisionIllustration(data)", result_renderer)
+        self.assertNotIn("digitalAdvertisingBudget", result_renderer)
+        self.assertNotIn("estimated_ad_cost", result_renderer)
+        self.assertNotIn("reveal", result_renderer.lower())
+        self.assertNotIn("product_image_confidence", result_renderer)
+        self.assertIn("vizyaSourceLink", result_renderer)
 
     def test_frontend_derives_profitability_from_margin_and_1000_unit_scenario(self) -> None:
         self.assertIn("function deriveProfitability(data)", self.html)

@@ -1,4 +1,9 @@
+import asyncio
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from pydantic import BaseModel
 
 from app.agents.intent_classifier import IntentClassificationPayload
 from app.benchmark.schemas import (
@@ -10,11 +15,17 @@ from app.schemas import ProductUnderstanding
 from app.prototype.schemas import CostConfig, PrototypeAnalysisDraft
 from app.services.gemini_client import (
     GeminiAnalysisClient,
+    GeminiClient,
+    GeminiClientError,
     GeminiIntentClient,
     _build_gemini_error_message,
     _build_gemini_response_schema,
     _is_retryable_gemini_error,
 )
+
+
+class SimpleReply(BaseModel):
+    status: str
 
 
 class GeminiSchemaTests(unittest.TestCase):
@@ -63,6 +74,23 @@ class GeminiSchemaTests(unittest.TestCase):
         message = _build_gemini_error_message(error)
         self.assertIn("daily free-tier quota", message.lower())
         self.assertIn("billing", message.lower())
+
+
+class GeminiClientTimeoutTests(unittest.IsolatedAsyncioTestCase):
+    async def test_structured_generation_timeout_is_converted_to_safe_client_error(self) -> None:
+        class SlowModels:
+            async def generate_content(self, **_kwargs):
+                await asyncio.sleep(1)
+
+        client = object.__new__(GeminiClient)
+        client.model = "gemini-test"
+        client._client = SimpleNamespace(aio=SimpleNamespace(models=SlowModels()))
+
+        with patch("app.services.gemini_client._REQUEST_TIMEOUT_SECONDS", 0.001):
+            with self.assertRaises(GeminiClientError) as context:
+                await client.generate_json("Return a status.", SimpleReply)
+
+        self.assertEqual(str(context.exception), "Structured generation timed out.")
 
 
 class RecordingStructuredClient:

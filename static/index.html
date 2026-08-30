@@ -1321,7 +1321,7 @@
         </section>
       </section>
 
-      <details class="benchmark-compat">
+      <details class="benchmark-compat" hidden>
         <summary>Search Provider Benchmark Lab</summary>
         <p>/benchmark/analyze primary route</p>
         <button id="runAllButton">Run all configured providers</button>
@@ -1639,7 +1639,6 @@ const ANALYSIS_STEPS = [
   "stepCompetition",
   "stepProfitability",
   "stepPotential",
-  "stepAds",
   "stepScore",
   "stepDecision",
   "stepReport"
@@ -1675,7 +1674,7 @@ async function analyzePrototype() {
     currentRunId = data.run_id;
     currentPrototypeData = data;
     renderPrototypeResult(data);
-    loadAnalytics();
+    if (window.location.pathname === "/analytics" && adminPassword) loadAnalytics();
   } catch (error) {
     stopAnalysisStepAnimation();
     productPhoto.innerHTML = `<div class="placeholder">${copy[currentLanguage].noReliableProductImageFound}</div>`;
@@ -1730,105 +1729,330 @@ function renderAnalysisSteps(activeIndex) {
 
 function renderPrototypeResult(data) {
   productPhoto.innerHTML = renderProductImage(data);
-  const retail = deriveRetailSummary(data.retail_market_summary || {});
-  const profit = deriveProfitability(data);
-  const quantityUnits = analysisQuantityUnits(data);
-  const chinaTndRange = priceRangeTnd(
-    data.sourcing_summary?.china_price_min_tnd_estimate,
-    data.sourcing_summary?.china_price_max_tnd_estimate
-  );
-  const labels = copy[currentLanguage];
+  const labels = vizyaLabels();
+  const retail = vizyaRetailMarket(data);
+  const profit = data.profitability_estimate || {};
+  const retainedSupplier = vizyaRetainedSupplier(data);
+  const landedCost = finiteOrNull(data.landed_cost?.total_tnd ?? profit.estimated_landed_cost_per_unit_tnd);
+  const marketReference = finiteOrNull(profit.estimated_selling_price_tnd);
+  const grossMargin = Number.isFinite(landedCost) && Number.isFinite(marketReference)
+    ? Number((marketReference - landedCost).toFixed(2))
+    : finiteOrNull(profit.gross_margin_per_unit_before_marketing_tnd);
+  const marginPercent = Number.isFinite(grossMargin) && Number.isFinite(marketReference) && marketReference > 0
+    ? Number((grossMargin / marketReference * 100).toFixed(1))
+    : null;
+  const confidence = data.decision_scores?.confidence || data.sourcing_summary?.evidence_confidence || "low";
+  const recommendation = vizyaRecommendation(data, confidence);
+  const product = data.product_understanding || {};
+  const category = vizyaCategory(product);
+  const sourceOffers = vizyaSupplierOffers(data);
+  const wholesaleOffers = (data.tunisia_wholesale_offers || []).filter((offer) => offer.source_url);
+  const sourceReferences = vizyaSourceReferences(data);
+  const opportunityScore = finiteOrNull(data.detailed_scoring?.total);
+  const commercialPotential = finiteOrNull(data.commercial_potential_score);
+  const competition = vizyaCompetition(data, confidence);
   const productDescription = localizedText(
     data.localized_analysis,
     "product_description",
     data.product_description || labels.noDescription
   );
   prototypeResult.innerHTML = `
-    <section class="result-band product-card wide">
-      <div class="eyebrow">${labels.product}</div>
-      <h2>${escapeHtml(data.product_understanding?.normalized_product || labels.productAnalysis)}</h2>
-      <p>${escapeHtml(productDescription)}</p>
-      <p class="hidden-note">Image confidence: ${escapeHtml(data.product_image_confidence || "fallback")}. ${escapeHtml(data.product_image_notes || "")}</p>
-      <div class="metric-grid">
-        ${metric(labels.category, data.product_understanding?.product_category || "Not detected")}
-        ${metric(labels.frenchSearchName, data.product_understanding?.french_search_name || data.product_understanding?.normalized_product || "")}
-      </div>
-    </section>
-    <section class="result-band summary-card">
-      <h2>${labels.sourcingTitle}</h2>
-      <p>${escapeHtml(sourcingSentence(data.sourcing_summary))}</p>
-      <div class="metric-grid">
-        ${metric(labels.sourceUnitPrice, tnd(profit.source_unit_price_tnd) || chinaTndRange)}
-        ${metric(labels.landedCost, tnd(profit.estimated_landed_cost_per_unit_tnd))}
-        ${metric(labels.moq, data.sourcing_summary?.china_moq_summary || "Not found")}
-        ${metric(labels.tunisiaWholesale, data.sourcing_summary?.tunisia_wholesale_summary || "Not found")}
-      </div>
-      <p class="hidden-note">${labels.productLinksHidden}</p>
-    </section>
-    <section class="result-band summary-card">
-      <h2>${labels.retailTitle}</h2>
-      <p>${escapeHtml(retail.retail_price_range_tnd || "Retail price range was not found.")}</p>
-      ${retail.competition_notes ? `<p class="hidden-note">${escapeHtml(retail.competition_notes)}</p>` : ""}
-      <div class="metric-grid">
-        ${metric(labels.minPrice, tnd(retail.retail_min_tnd))}
-        ${metric(labels.maxPrice, tnd(retail.retail_max_tnd))}
-        ${metric(labels.averagePrice, tnd(retail.retail_avg_tnd))}
-      </div>
-      <div class="list">${(retail.example_retail_prices || []).map(renderRetailExample).join("")}</div>
-    </section>
-    <section id="profitabilityReport" class="result-band report-card wide">
+    <section id="vizyaExecutiveSummary" class="result-band report-card wide">
       <div class="report-header">
         <div>
-          <div class="eyebrow">${labels.reportEyebrow}</div>
-          <h2>${labels.reportTitle}</h2>
+          <div class="eyebrow">Vizya Consulting</div>
+          <h2>${labels.executiveSummary}</h2>
         </div>
-        <span class="pill">${labels.estimateOnly}</span>
-      </div>
-      <p>${labels.reportIntro}</p>
-      <div class="analysis-copy">
-        <article>
-          <h3>${labels.priceAnalysis}</h3>
-          <p>${escapeHtml(priceAnalysisText(data))}</p>
-        </article>
-        <article>
-          <h3>${labels.marketAnalysis}</h3>
-          <p>${escapeHtml(marketAnalysisText(data))}</p>
-        </article>
-        <article>
-          <h3>${labels.businessReading}</h3>
-          <p>${escapeHtml(businessReadingText(data))}</p>
-        </article>
+        <span class="pill">${escapeHtml(recommendation.label)}</span>
       </div>
       <div class="report-facts">
-        ${metric(labels.analysisQuantity, currentLanguage === "fr" ? `${quantityUnits} unités` : `${quantityUnits} units`)}
-        ${metric(labels.sourceUnitPrice, tnd(profit.source_unit_price_tnd))}
-        ${metric(labels.landedCost, tnd(profit.estimated_landed_cost_per_unit_tnd))}
-        ${metric(labels.retailSellingPrice, tnd(profit.estimated_selling_price_tnd))}
+        ${metric(labels.category, category)}
+        ${metric(labels.representativeProduct, product.original_product || product.normalized_product || labels.unavailable)}
+        ${metric(labels.targetMarket, data.target_market || "Tunisia")}
+        ${metric(labels.sourcingCountry, data.sourcing_country || "China")}
+        ${metric(labels.supplierPrice, vizyaSupplierPurchasePrice(retainedSupplier))}
+        ${metric(labels.landedCost, vizyaTnd(landedCost))}
+        ${metric(labels.retailRange, vizyaRange(retail.min, retail.max))}
+        ${metric(labels.wholesaleStatus, wholesaleOffers.length ? labels.wholesaleAvailable : labels.wholesaleUnavailable)}
+        ${metric(labels.estimatedMargin, Number.isFinite(marginPercent) ? `${formatNumber(marginPercent)}%` : labels.unavailable)}
+        ${metric(labels.competition, competition.level)}
+        ${metric(labels.commercialPotential, Number.isFinite(commercialPotential) ? `${formatNumber(commercialPotential)} / 100` : labels.unavailable)}
+        ${metric(labels.opportunityScore, Number.isFinite(opportunityScore) ? `${formatNumber(opportunityScore)} / 100` : labels.unavailable)}
+        ${metric(labels.confidence, confidenceText(confidence))}
+        ${metric(labels.finalRecommendation, recommendation.label)}
       </div>
-      <table class="report-table">
-        <thead>
-          <tr><th>${escapeHtml(labels.metricColumn)}</th><th>${escapeHtml(labels.valueColumn)}</th></tr>
-        </thead>
-        <tbody>
-          ${reportRow(labels.grossMarginPerUnit, tnd(profit.gross_margin_per_unit_before_marketing_tnd))}
-          ${reportRow(labels.grossProfitForScenario, tnd(profit.gross_profit_for_1000_before_marketing_tnd))}
-          ${reportRow(labels.totalDigitalAdvertisingBudget, digitalAdvertisingBudgetRange(data))}
-          ${profit.estimated_ad_cost_per_sold_unit_tnd !== null && profit.estimated_ad_cost_per_sold_unit_tnd !== undefined ? reportRow(labels.adAllocationPerSoldUnit, tnd(profit.estimated_ad_cost_per_sold_unit_tnd)) : ""}
-          ${reportRow(labels.netProfitForScenario, tnd(profit.net_profit_for_1000_after_marketing_tnd ?? profit.estimated_profit_for_1000_units_tnd))}
-        </tbody>
-      </table>
-      <p class="hidden-note">${escapeHtml(labels.analysisQuantityUnits)}. ${escapeHtml(profit.ad_cost_notes || "")}</p>
+      <p>${escapeHtml(vizyaSafeText(data.decision_summary || data.recommendation_reason || productDescription))}</p>
     </section>
-    <section class="result-band wide">
-      <h2>${labels.decisionTitle}</h2>
-      ${renderDecisionIllustration(data)}
-      <div class="action-row decision-bar">
-        <button class="button-go" onclick="revealGo()">${labels.goButton}</button>
-        <button class="button-nogo" onclick="showNoGo('${escapeAttribute(data.recommendation_reason || "")}')">${labels.noGoButton}</button>
+    <section id="vizyaProductCategory" class="result-band wide">
+      <h2>${labels.productCategory}</h2>
+      <div class="metric-grid">
+        ${metric(labels.category, category)}
+        ${metric(labels.representativeProduct, product.original_product || product.normalized_product || labels.unavailable)}
       </div>
-      <div id="decisionReveal" class="list"></div>
+      <p>${escapeHtml(vizyaSafeText(productDescription))}</p>
+      ${vizyaLubricantNote(product) ? `<p class="hidden-note">${escapeHtml(vizyaLubricantNote(product))}</p>` : ""}
+    </section>
+    <section id="vizyaInternationalSourcing" class="result-band wide">
+      <h2>${labels.internationalSourcing}</h2>
+      ${sourceOffers.length ? vizyaTable(
+        [labels.supplier, labels.product, labels.country, labels.price, labels.priceUnit, labels.moq, labels.source, labels.confidence],
+        sourceOffers.map((offer) => [
+          offer.name || labels.unavailable,
+          offer.product_title || labels.unavailable,
+          data.sourcing_country || "China",
+          vizyaOfferPrice(offer),
+          offer.price_unit || labels.unavailable,
+          offer.moq || labels.unavailable,
+          vizyaSourceLink(offer.source_url, labels.viewSource),
+          vizyaConfidence(offer.confidence),
+        ])
+      ) : `<p>${escapeHtml(labels.noSupplierEvidence)}</p>`}
+      ${retainedSupplier ? `
+        <div class="summary-card">
+          <h3>${labels.retainedSupplier}</h3>
+          <div class="metric-grid">
+            ${metric(labels.supplier, retainedSupplier.name || labels.unavailable)}
+            ${metric(labels.retainedPrice, vizyaSupplierPurchasePrice(retainedSupplier))}
+            ${metric(labels.priceUnit, retainedSupplier.price_unit || labels.unavailable)}
+            ${metric(labels.moq, retainedSupplier.moq || labels.unavailable)}
+            ${metricLink(labels.source, retainedSupplier.source_url, labels.viewSource)}
+          </div>
+          <p>${escapeHtml(vizyaSafeText(retainedSupplier.match_notes || labels.retainedSupplierReason))}</p>
+        </div>` : ""}
+    </section>
+    <section id="vizyaLandedCost" class="result-band wide">
+      <h2>${labels.landedCostTitle}</h2>
+      ${Number.isFinite(landedCost) ? `
+        ${vizyaTable(
+          [labels.component, labels.value, labels.dataStatus],
+          vizyaLandedCostRows(data, retainedSupplier).map((row) => [row.label, vizyaTnd(row.value), row.status])
+        )}
+        <div class="report-facts">${metric(labels.estimatedLandedCost, vizyaTnd(landedCost))}</div>
+        ${data.landed_cost?.note ? `<p class="hidden-note">${escapeHtml(vizyaSafeText(data.landed_cost.note))}</p>` : ""}`
+        : `<p>${escapeHtml(labels.landedCostUnavailable)}</p>`}
+    </section>
+    <section id="vizyaTunisiaMarket" class="result-band wide">
+      <h2>${labels.tunisiaMarket}</h2>
+      <h3>${labels.retailPrices}</h3>
+      ${retail.offers.length ? vizyaTable(
+        [labels.seller, labels.brand, labels.product, labels.volume, labels.price, labels.normalizedPrice, labels.source, labels.confidence],
+        retail.offers.map((offer) => [
+          offer.seller_name || labels.unavailable,
+          offer.brand || labels.unavailable,
+          offer.product_title || labels.unavailable,
+          offer.volume_text || labels.unavailable,
+          vizyaTnd(offer.price_tnd),
+          offer.normalized_price_text || (Number.isFinite(offer.normalized_price_per_unit_tnd) ? `${formatNumber(offer.normalized_price_per_unit_tnd)} TND/${vizyaUnit(offer)}` : labels.unavailable),
+          vizyaSourceLink(offer.source_url, labels.viewSource),
+          vizyaConfidence(offer.confidence),
+        ])
+      ) : `<p>${escapeHtml(labels.noRetailEvidence)}</p>`}
+      <div class="report-facts">
+        ${metric(labels.minimumRetailPrice, vizyaTnd(retail.min))}
+        ${metric(labels.maximumRetailPrice, vizyaTnd(retail.max))}
+        ${metric(labels.comparableMarketReference, vizyaTnd(marketReference))}
+      </div>
+      <h3>${labels.wholesalePrices}</h3>
+      ${wholesaleOffers.length ? vizyaTable(
+        [labels.supplier, labels.product, labels.wholesalePrice, labels.moq, labels.source, labels.confidence],
+        wholesaleOffers.slice(0, 5).map((offer) => [
+          offer.name || labels.unavailable,
+          offer.product_title || labels.unavailable,
+          vizyaOfferPrice(offer),
+          offer.moq || labels.unavailable,
+          vizyaSourceLink(offer.source_url, labels.viewSource),
+          vizyaConfidence(offer.confidence),
+        ])
+      ) : `<p>${escapeHtml(labels.noWholesaleEvidence)}</p>`}
+    </section>
+    <section id="vizyaCompetition" class="result-band wide">
+      <h2>${labels.competition}</h2>
+      <div class="report-facts">
+        ${metric(labels.competitionLevel, competition.level)}
+        ${metric(labels.observedSellers, String(competition.sellers))}
+        ${metric(labels.observedBrands, competition.brands.join(", ") || labels.unavailable)}
+        ${metric(labels.coverageConfidence, confidenceText(confidence))}
+      </div>
+      <p>${escapeHtml(competition.explanation)}</p>
+    </section>
+    <section id="vizyaCommercialPotential" class="result-band wide">
+      <h2>${labels.commercialPotential}</h2>
+      <div class="report-facts">${metric(labels.commercialPotential, Number.isFinite(commercialPotential) ? `${formatNumber(commercialPotential)} / 100` : labels.unavailable)}</div>
+      ${vizyaSignals(labels.positiveSignals, data.positive_signals || [], labels.noPositiveSignals)}
+      ${vizyaSignals(labels.limitations, data.risk_signals || [], labels.noLimitations)}
+    </section>
+    <section id="vizyaProfitabilityReport" class="result-band report-card wide">
+      <div class="report-header"><div><div class="eyebrow">${labels.estimated}</div><h2>${labels.profitability}</h2></div><span class="pill">${labels.estimateOnly}</span></div>
+      ${Number.isFinite(landedCost) && Number.isFinite(marketReference) && Number.isFinite(grossMargin) ? `
+        <div class="report-facts">
+          ${metric(labels.comparableMarketReference, vizyaTnd(marketReference))}
+          ${metric(labels.estimatedLandedCost, vizyaTnd(landedCost))}
+          ${metric(labels.grossMargin, vizyaTnd(grossMargin))}
+          ${metric(labels.estimatedMargin, `${formatNumber(marginPercent)}%`)}
+        </div>
+        <p>${escapeHtml(labels.marginFormula)}</p>`
+        : `<p>${escapeHtml(labels.marginUnavailable)}</p>`}
+    </section>
+    <section id="vizyaFinalRecommendation" class="result-band wide">
+      <h2>${labels.finalRecommendation}</h2>
+      <div class="report-facts">
+        ${metric(labels.opportunityScore, Number.isFinite(opportunityScore) ? `${formatNumber(opportunityScore)} / 100` : labels.unavailable)}
+        ${metric(labels.confidence, confidenceText(confidence))}
+        ${metric(labels.finalRecommendation, recommendation.label)}
+      </div>
+      <p>${escapeHtml(vizyaSafeText(data.recommendation_reason || data.decision_summary || labels.decisionUnavailable))}</p>
+    </section>
+    <section id="vizyaSourcesEvidence" class="result-band wide">
+      <h2>${labels.sourcesEvidence}</h2>
+      ${sourceReferences.length ? vizyaTable(
+        [labels.source, labels.dataUsed, labels.confidence, labels.viewSource],
+        sourceReferences.map((source) => [
+          source.title || labels.unavailable,
+          source.data_used || labels.unavailable,
+          vizyaConfidence(source.confidence),
+          vizyaSourceLink(source.url, labels.viewSource),
+        ])
+      ) : `<p>${escapeHtml(labels.noSources)}</p>`}
     </section>
   `;
+}
+
+function vizyaLabels() {
+  if (currentLanguage !== "fr") {
+    return {
+      executiveSummary: "Executive Summary", productCategory: "Product / Category Analyzed", internationalSourcing: "International Sourcing", landedCostTitle: "Estimated Landed Cost in Tunisia", tunisiaMarket: "Tunisia Market", competition: "Competition", commercialPotential: "Commercial Potential", profitability: "Estimated Profitability / Margin", finalRecommendation: "Final GO / NO GO Recommendation", sourcesEvidence: "Sources & Evidence", category: "Category", representativeProduct: "Representative product", targetMarket: "Target market", sourcingCountry: "Sourcing country", supplierPrice: "Supplier price", landedCost: "Estimated landed cost", retailRange: "Tunisia retail range", wholesaleStatus: "Tunisia wholesale status", estimatedMargin: "Estimated margin", opportunityScore: "Opportunity score", confidence: "Confidence", supplier: "Supplier", product: "Product", country: "Country", price: "Price", priceUnit: "Price unit", moq: "MOQ", source: "Source", dataUsed: "Data used", viewSource: "View source", retainedSupplier: "Retained supplier offer", retainedPrice: "Retained price", retainedSupplierReason: "Selected as the best price-backed supplier offer with a usable source.", component: "Component", value: "Value", dataStatus: "Data status", estimatedLandedCost: "Estimated landed cost", retailPrices: "Retail prices", seller: "Seller", brand: "Brand", volume: "Volume", normalizedPrice: "Normalized price", minimumRetailPrice: "Minimum retail price", maximumRetailPrice: "Maximum retail price", comparableMarketReference: "Comparable market reference", wholesalePrices: "Tunisia wholesale prices", wholesalePrice: "Wholesale price", competitionLevel: "Competition level", observedSellers: "Observed sellers", observedBrands: "Observed brands", coverageConfidence: "Coverage confidence", positiveSignals: "Positive signals", limitations: "Limitations", estimated: "ESTIMATED", grossMargin: "Estimated gross margin per unit", marginFormula: "Estimated gross margin = comparable Tunisia market reference − estimated landed cost.", marginUnavailable: "Margin cannot yet be reliably calculated because a comparable market reference or landed cost is missing.", noSupplierEvidence: "No reliable international supplier offer was identified in the available public evidence.", noRetailEvidence: "No reliable Tunisian retail reference was identified in the available public evidence.", noWholesaleEvidence: "No reliable public Tunisian wholesale price was identified in the available public evidence.", noPositiveSignals: "No additional positive signal was retained.", noLimitations: "No additional limitation was retained.", noSources: "No source used in this analysis is available.", unavailable: "Insufficient data", estimateOnly: "ESTIMATE", wholesaleAvailable: "Public wholesale evidence available", wholesaleUnavailable: "No public wholesale price identified", landedCostUnavailable: "Estimated landed cost cannot yet be calculated because a source price or import-cost assumption is missing.", decisionUnavailable: "The recommendation requires further evidence.", dataStatus: "Data status"
+    };
+  }
+  return {
+    executiveSummary: "Résumé exécutif", productCategory: "Produit / catégorie analysé", internationalSourcing: "Sourcing international", landedCostTitle: "Coût rendu estimé en Tunisie", tunisiaMarket: "Marché tunisien", competition: "Concurrence", commercialPotential: "Potentiel commercial", profitability: "Rentabilité / marge estimée", finalRecommendation: "Recommandation finale GO / NO GO", sourcesEvidence: "Sources & preuves", category: "Catégorie", representativeProduct: "Produit représentatif", targetMarket: "Marché cible", sourcingCountry: "Pays de sourcing", supplierPrice: "Prix fournisseur", landedCost: "Coût rendu estimé", retailRange: "Fourchette retail Tunisie", wholesaleStatus: "Statut grossiste Tunisie", estimatedMargin: "Marge estimée", opportunityScore: "Score d’opportunité", confidence: "Confiance", supplier: "Fournisseur", product: "Produit", country: "Pays", price: "Prix", priceUnit: "Unité de prix", moq: "MOQ", source: "Source", dataUsed: "Donnée utilisée", viewSource: "Voir la source", retainedSupplier: "Offre fournisseur retenue", retainedPrice: "Prix retenu", retainedSupplierReason: "Sélectionnée comme offre fournisseur sourcée avec un prix utilisable.", component: "Composant", value: "Valeur", dataStatus: "Statut de donnée", estimatedLandedCost: "Coût rendu estimé", retailPrices: "Prix retail", seller: "Vendeur", brand: "Marque", volume: "Volume", normalizedPrice: "Prix normalisé", minimumRetailPrice: "Prix retail minimum", maximumRetailPrice: "Prix retail maximum", comparableMarketReference: "Référence marché comparable", wholesalePrices: "Prix grossiste Tunisie", wholesalePrice: "Prix grossiste", competitionLevel: "Niveau de concurrence", observedSellers: "Vendeurs observés", observedBrands: "Marques observées", coverageConfidence: "Confiance de couverture", positiveSignals: "Signaux positifs", limitations: "Limites", estimated: "ESTIMÉ", grossMargin: "Marge brute estimée par unité", marginFormula: "Marge brute estimée = référence marché tunisien comparable − coût rendu estimé.", marginUnavailable: "La marge ne peut pas encore être calculée de façon fiable car la référence marché comparable ou le coût rendu manque.", noSupplierEvidence: "Aucune offre fournisseur internationale fiable n’a été identifiée dans les preuves publiques disponibles.", noRetailEvidence: "Aucune référence retail tunisienne fiable n’a été identifiée dans les preuves publiques disponibles.", noWholesaleEvidence: "Aucun prix grossiste tunisien public fiable n’a été identifié dans les preuves publiques disponibles.", noPositiveSignals: "Aucun signal positif supplémentaire n’a été retenu.", noLimitations: "Aucune limite supplémentaire n’a été retenue.", noSources: "Aucune source utilisée dans cette analyse n’est disponible.", unavailable: "Données insuffisantes", estimateOnly: "ESTIMATION", wholesaleAvailable: "Preuve grossiste publique disponible", wholesaleUnavailable: "Aucun prix grossiste public identifié", landedCostUnavailable: "Le coût rendu estimé ne peut pas encore être calculé car un prix source ou une hypothèse d’import manque.", decisionUnavailable: "La recommandation nécessite des preuves supplémentaires."
+  };
+}
+
+function vizyaSupplierOffers(data) {
+  return (data.china_offers || []).filter((offer) => offer?.source_url && (finiteOrNull(offer.price_min) !== null || finiteOrNull(offer.price_max) !== null || offer.price_text)).slice(0, 5);
+}
+
+function vizyaRetainedSupplier(data) {
+  const offers = vizyaSupplierOffers(data);
+  const exact = offers.filter((offer) => offer.product_match === "exact");
+  const candidates = exact.length ? exact : offers;
+  const reliable = candidates.filter((offer) => ["high", "medium"].includes(String(offer.confidence || "").toLowerCase()));
+  return (reliable.length ? reliable : candidates).sort((left, right) => (finiteOrNull(left.price_min) ?? Infinity) - (finiteOrNull(right.price_min) ?? Infinity))[0] || null;
+}
+
+function vizyaRetailMarket(data) {
+  const offers = (data.retail_offers || []).filter((offer) => offer?.source_url && finiteOrNull(offer.price_tnd) !== null).slice(0, 8);
+  const prices = offers.map((offer) => finiteOrNull(offer.price_tnd)).filter((value) => value !== null);
+  const summary = data.retail_market_summary || {};
+  return {
+    offers,
+    min: prices.length ? Math.min(...prices) : finiteOrNull(summary.retail_min_tnd),
+    max: prices.length ? Math.max(...prices) : finiteOrNull(summary.retail_max_tnd),
+  };
+}
+
+function vizyaCompetition(data, confidence) {
+  const labels = vizyaLabels();
+  const offers = data.retail_offers || [];
+  const sellers = new Set(offers.map((offer) => String(offer.seller_name || "").trim().toLowerCase()).filter(Boolean));
+  const brands = [...new Set(offers.map((offer) => String(offer.brand || "").trim()).filter(Boolean))];
+  const level = String(data.competition_level || "unknown").toLowerCase();
+  if (level === "unknown" || (!sellers.size && !brands.length)) {
+    return { level: labels.unavailable, sellers: sellers.size, brands, explanation: currentLanguage === "fr" ? "Données insuffisantes : la couverture observée ne permet pas de conclure sur l’intensité concurrentielle." : "Insufficient data: observed coverage does not support a conclusion on competitive intensity." };
+  }
+  const levelLabel = { low: currentLanguage === "fr" ? "Faible" : "Low", medium: currentLanguage === "fr" ? "Moyenne" : "Medium", high: currentLanguage === "fr" ? "Élevée" : "High" }[level] || labels.unavailable;
+  return { level: levelLabel, sellers: sellers.size, brands, explanation: currentLanguage === "fr" ? `Lecture basée sur ${sellers.size} vendeur(s) et ${brands.length} marque(s) observés ; confiance de couverture ${confidenceText(confidence).toLowerCase()}.` : `Reading based on ${sellers.size} observed seller(s) and ${brands.length} observed brand(s); coverage confidence ${confidenceText(confidence).toLowerCase()}.` };
+}
+
+function vizyaLandedCostRows(data, retainedSupplier) {
+  const labels = vizyaLabels();
+  const components = data.landed_cost?.components || [];
+  const componentLabels = { supplier_price: currentLanguage === "fr" ? "Coût fournisseur équivalent" : "Equivalent supplier cost", shipping: currentLanguage === "fr" ? "Expédition estimée" : "Estimated shipping", customs: currentLanguage === "fr" ? "Droits / taxes estimés" : "Estimated duties / taxes", handling: currentLanguage === "fr" ? "Manutention estimée" : "Estimated handling", misc: currentLanguage === "fr" ? "Autres charges estimées" : "Other estimated charges" };
+  const statuses = { observed: currentLanguage === "fr" ? "OBSERVÉ" : "OBSERVED", computed: currentLanguage === "fr" ? "CALCULÉ" : "CALCULATED", estimate: currentLanguage === "fr" ? "ESTIMÉ" : "ESTIMATED", unavailable: labels.unavailable };
+  return components.filter((component) => finiteOrNull(component.value_tnd) !== null).map((component) => ({
+    label: componentLabels[component.label_key] || component.label_key,
+    value: component.value_tnd,
+    status: component.label_key === "supplier_price" && /(?:\/\s*l|per\s*l|litre|liter)/i.test(String(retainedSupplier?.price_unit || "")) ? statuses.computed : (statuses[component.provenance] || labels.unavailable),
+  }));
+}
+
+function vizyaRecommendation(data, confidence) {
+  const raw = String(data.recommendation || "investigate_more").toLowerCase();
+  const partial = Boolean(data.landed_cost?.partial_estimate);
+  const normalized = raw === "go" && (confidence !== "high" || partial) ? "go_with_conditions" : raw;
+  return { key: normalized, label: recommendationText(normalized) };
+}
+
+function vizyaCategory(product) {
+  const text = [product.original_product, product.normalized_product, product.product_category].filter(Boolean).join(" ").toLowerCase();
+  if (/(huile|oil|lubric|lubrifiant|moteur|engine)/.test(text)) return currentLanguage === "fr" ? "Lubrifiants automobiles" : "Automotive lubricants";
+  return product.product_category || vizyaLabels().unavailable;
+}
+
+function vizyaLubricantNote(product) {
+  const text = [product.original_product, product.normalized_product].filter(Boolean).join(" ").toLowerCase();
+  if (!/(5w-30|huile|oil|lubric)/.test(text)) return "";
+  return currentLanguage === "fr" ? "L’huile moteur 5W-30 4L est utilisée comme SKU représentatif pour cette pré-étude des lubrifiants automobiles. Elle ne constitue pas une étude exhaustive de l’ensemble de la catégorie." : "Engine oil 5W-30 4L is used as a representative SKU for this initial automotive-lubricants pre-study. It is not an exhaustive study of the whole category.";
+}
+
+function vizyaSupplierPurchasePrice(offer) {
+  const labels = vizyaLabels();
+  if (!offer) return labels.unavailable;
+  const price = vizyaOfferPrice(offer);
+  return offer.price_unit ? `${price} / ${offer.price_unit}` : price;
+}
+
+function vizyaOfferPrice(offer) {
+  const labels = vizyaLabels();
+  if (offer?.price_text) return vizyaSafeText(offer.price_text);
+  const value = finiteOrNull(offer?.price_min) ?? finiteOrNull(offer?.price_max);
+  if (value === null) return labels.unavailable;
+  return `${formatNumber(value)} ${offer.currency || ""}`.trim();
+}
+
+function vizyaRange(min, max) {
+  const labels = vizyaLabels();
+  if (!Number.isFinite(min)) return labels.unavailable;
+  if (!Number.isFinite(max) || min === max) return vizyaTnd(min);
+  return `${formatNumber(min)}–${formatNumber(max)} TND`;
+}
+
+function vizyaTnd(value) {
+  return Number.isFinite(value) ? `${formatNumber(value)} TND` : vizyaLabels().unavailable;
+}
+
+function vizyaUnit(offer) {
+  return /kg/i.test(`${offer.volume_text || ""} ${offer.product_title || ""}`) ? "kg" : "L";
+}
+
+function vizyaConfidence(value) {
+  return confidenceText(value || "low").toUpperCase();
+}
+
+function vizyaSourceLink(url, label) {
+  if (!/^https?:\/\//i.test(String(url || ""))) return vizyaLabels().unavailable;
+  return `<a href="${escapeAttribute(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+}
+
+function vizyaTable(headers, rows) {
+  return `<table class="report-table"><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${cell && String(cell).startsWith("<a ") ? cell : escapeHtml(vizyaSafeText(cell))}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+function vizyaSignals(title, values, fallback) {
+  const retained = Array.from(new Set((values || []).map(vizyaSafeText).filter((value) => value && value !== vizyaSafeText("")).filter((value) => !/gemini|groq|tavily|firecrawl|exa|provider|api error|rate limit|quota|429/i.test(value)))).slice(0, 4);
+  return `<div class="analysis-copy"><article><h3>${escapeHtml(title)}</h3>${retained.length ? `<ul class="decision-factors">${retained.map((value) => `<li>${escapeHtml(value)}</li>`).join("")}</ul>` : `<p>${escapeHtml(fallback)}</p>`}</article></div>`;
+}
+
+function vizyaSourceReferences(data) {
+  return (data.sources || []).filter((source) => source?.url && !/gemini|groq|tavily|firecrawl|exa|provider/i.test(`${source.title || ""} ${source.data_used || ""}`)).slice(0, 12);
+}
+
+function vizyaSafeText(value) {
+  const text = String(value || "").trim();
+  if (/gemini|groq|tavily|firecrawl|exa|provider error|api error|raw json|stack trace|rate limit|quota|\b429\b/i.test(text)) {
+    return currentLanguage === "fr" ? "Informations internes non affichées dans le rapport client." : "Internal information is not displayed in the client report.";
+  }
+  return text;
 }
 
 function renderAnalysisPendingState() {
@@ -2838,6 +3062,10 @@ function metric(label, value) {
   return `<div class="metric"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(value)}</span></div>`;
 }
 
+function metricLink(label, url, linkLabel) {
+  return `<div class="metric"><strong>${escapeHtml(label)}</strong><span>${vizyaSourceLink(url, linkLabel)}</span></div>`;
+}
+
 function detailPair(label, value) {
   return `<div class="detail-pair"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(String(value))}</span></div>`;
 }
@@ -2975,6 +3203,5 @@ async function loadProviders() { return fetch("/providers"); }
 async function runBenchmarkProvider() { return fetch("/benchmark/analyze", { method: "POST" }); }
 async function runAllConfigured() { return fetch("/benchmark/analyze", { method: "POST" }); }
 </script>
-<script src="/report.js"></script>
 </body>
 </html>

@@ -37,16 +37,12 @@ from app.prototype.schemas import (
 from app.prototype.storage import PrototypeStore
 from app.schemas import AnalyzeRequest, ProductAnalysisResponse
 from app.services.gemini_client import (
+    GeminiAnalysisClient,
     GeminiClient,
     GeminiClientError,
+    GeminiIntentClient,
 )
 from app.services.gemini_search_client import GeminiSearchClient, GeminiSearchClientError
-from app.services.groq_client import (
-    GroqAnalysisClient,
-    GroqClient,
-    GroqClientError,
-    GroqIntentClient,
-)
 from app.services.pdf_report import build_opportunity_pdf, opportunity_pdf_filename
 
 
@@ -71,7 +67,7 @@ def create_app(
         resolved_settings,
         provider_registry,
     )
-    intent_client, analysis_client = _build_groq_role_clients(resolved_settings)
+    intent_client, analysis_client = _build_gemini_role_clients(resolved_settings)
     resolved_benchmark_pipeline = benchmark_pipeline or _build_benchmark_pipeline(
         resolved_settings,
         provider_registry,
@@ -117,8 +113,8 @@ def create_app(
                 request.product,
                 request.providers,
             )
-        except (GroqClientError, RuntimeError) as error:
-            _log_groq_failure(error)
+        except (GeminiClientError, RuntimeError) as error:
+            _log_analysis_failure(error)
             raise HTTPException(status_code=503, detail=ANALYSIS_TEMPORARILY_UNAVAILABLE) from error
 
     @app.post("/analyze", response_model=ProductAnalysisResponse)
@@ -142,16 +138,12 @@ def create_app(
         try:
             resolved_prototype_orchestrator.cost_config = resolved_store.get_cost_config()
             return await resolved_prototype_orchestrator.analyze(request)
-        except GroqClientError as error:
-            _log_groq_failure(error)
+        except (GeminiClientError, GeminiSearchClientError) as error:
+            _log_analysis_failure(error)
             raise HTTPException(status_code=503, detail=ANALYSIS_TEMPORARILY_UNAVAILABLE) from error
-        except GeminiSearchClientError as error:
-            raise HTTPException(status_code=503, detail="Analysis is temporarily unavailable.") from error
         except RuntimeError as error:
-            _log_groq_failure(error)
-            if str(error).startswith("GROQ_"):
-                raise HTTPException(status_code=503, detail=ANALYSIS_TEMPORARILY_UNAVAILABLE) from error
-            raise HTTPException(status_code=502, detail="Prototype analysis failed.") from error
+            _log_analysis_failure(error)
+            raise HTTPException(status_code=503, detail=ANALYSIS_TEMPORARILY_UNAVAILABLE) from error
 
     @app.get("/prototype/runs/{run_id}/reveal", response_model=PrototypeRevealResponse)
     async def prototype_reveal(run_id: str) -> PrototypeRevealResponse:
@@ -252,18 +244,18 @@ def create_app(
     return app
 
 
-class MissingGroqRoleClient:
+class MissingGeminiRoleClient:
     def __init__(self, variable_name: str) -> None:
         self.variable_name = variable_name
 
     async def classify(self, product: str):
-        raise GroqClientError("Groq intent configuration is unavailable.")
+        raise GeminiClientError("Gemini intent configuration is unavailable.")
 
     async def extract(self, product: str, evidence):
-        raise GroqClientError("Groq analysis configuration is unavailable.")
+        raise GeminiClientError("Gemini analysis configuration is unavailable.")
 
     async def extract_client_analysis(self, product, evidence, cost_config, quantity_scenarios):
-        raise GroqClientError("Groq analysis configuration is unavailable.")
+        raise GeminiClientError("Gemini analysis configuration is unavailable.")
 
 
 def _build_provider_infos(
@@ -271,8 +263,10 @@ def _build_provider_infos(
     provider_registry,
 ) -> ProvidersResponse:
     global_missing = []
-    if not settings.groq_intent_api_key:
-        global_missing.append("GROQ_INTENT_API_KEY")
+    if not settings.gemini_intent_api_key:
+        global_missing.append("GEMINI_INTENT_API_KEY")
+    if not settings.gemini_analysis_api_key:
+        global_missing.append("GEMINI_ANALYSIS_API_KEY")
     return ProvidersResponse(
         providers=[adapter.info() for adapter in provider_registry.values()],
         global_missing_config=global_missing,
@@ -286,7 +280,7 @@ def _build_benchmark_pipeline(
     analysis_client=None,
 ) -> BenchmarkPipeline:
     if intent_client is None or analysis_client is None:
-        intent_client, analysis_client = _build_groq_role_clients(settings)
+        intent_client, analysis_client = _build_gemini_role_clients(settings)
     return BenchmarkPipeline(
         intent_client,
         analysis_client,
@@ -302,7 +296,7 @@ def _build_prototype_orchestrator(
     analysis_client=None,
 ) -> PrototypeResearchOrchestrator:
     if intent_client is None or analysis_client is None:
-        intent_client, analysis_client = _build_groq_role_clients(settings)
+        intent_client, analysis_client = _build_gemini_role_clients(settings)
     return PrototypeResearchOrchestrator(
         intent_client=intent_client,
         analysis_client=analysis_client,
@@ -315,22 +309,22 @@ def _build_prototype_orchestrator(
     )
 
 
-def _build_groq_role_clients(settings: Settings):
+def _build_gemini_role_clients(settings: Settings):
     intent_client = (
-        GroqIntentClient(GroqClient(settings.groq_intent_api_key, settings.groq_intent_model))
-        if settings.groq_intent_api_key
-        else MissingGroqRoleClient("GROQ_INTENT_API_KEY")
+        GeminiIntentClient(GeminiClient(settings.gemini_intent_api_key, settings.gemini_intent_model))
+        if settings.gemini_intent_api_key
+        else MissingGeminiRoleClient("GEMINI_INTENT_API_KEY")
     )
     analysis_client = (
-        GroqAnalysisClient(GroqClient(settings.groq_analysis_api_key, settings.groq_analysis_model))
-        if settings.groq_analysis_api_key
-        else MissingGroqRoleClient("GROQ_ANALYSIS_API_KEY")
+        GeminiAnalysisClient(GeminiClient(settings.gemini_analysis_api_key, settings.gemini_analysis_model))
+        if settings.gemini_analysis_api_key
+        else MissingGeminiRoleClient("GEMINI_ANALYSIS_API_KEY")
     )
     return intent_client, analysis_client
 
 
-def _log_groq_failure(error: Exception) -> None:
-    logger.warning("Groq-backed analysis did not complete (%s).", error.__class__.__name__)
+def _log_analysis_failure(error: Exception) -> None:
+    logger.warning("Client analysis did not complete (%s).", error.__class__.__name__)
 
 
 def _build_pipeline(settings: Settings) -> ProductAnalysisPipeline:

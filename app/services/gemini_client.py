@@ -23,6 +23,7 @@ except ImportError:  # pragma: no cover - exercised only when dependency is miss
 
 
 T = TypeVar("T", bound=BaseModel)
+_REQUEST_TIMEOUT_SECONDS = 30
 
 
 class GeminiClientError(RuntimeError):
@@ -50,16 +51,24 @@ class GeminiClient:
                 )
 
             try:
-                response = await self._client.aio.models.generate_content(
-                    model=self.model,
-                    contents=attempt_prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=0.1,
-                        response_mime_type="application/json",
-                        response_schema=_build_gemini_response_schema(response_model),
+                response = await asyncio.wait_for(
+                    self._client.aio.models.generate_content(
+                        model=self.model,
+                        contents=attempt_prompt,
+                        config=types.GenerateContentConfig(
+                            temperature=0.1,
+                            response_mime_type="application/json",
+                            response_schema=_build_gemini_response_schema(response_model),
+                        ),
                     ),
+                    timeout=_REQUEST_TIMEOUT_SECONDS,
                 )
                 return _coerce_model_response(response, response_model)
+            except asyncio.TimeoutError as error:
+                primary_error = error
+                if attempt == 0:
+                    continue
+                raise GeminiClientError("Structured generation timed out.") from error
             except (ValidationError, ValueError, AttributeError, TypeError) as error:
                 primary_error = error
                 continue
