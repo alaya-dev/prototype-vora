@@ -2151,7 +2151,14 @@ function vizyaSourceReferences(data) {
   const references = (data.sources || []).filter((source) => source?.url && !/gemini|groq|tavily|firecrawl|exa|provider/i.test(`${source.title || ""} ${source.data_used || ""}`)).map((source) => ({ ...source }));
   const known = new Set(references.map((source) => source.url));
   for (const offer of (data.retail_offers || [])) {
-    if (!offer?.source_url || known.has(offer.source_url)) continue;
+    if (!offer?.source_url) continue;
+    const existing = references.find((source) => source.url === offer.source_url);
+    const usage = offer.comparable === false ? "Prix de détail observé — non utilisé dans la référence comparable" : "Prix de détail observé";
+    if (existing) {
+      existing.title = offer.seller_name || existing.title;
+      existing.data_used = usage;
+      continue;
+    }
     known.add(offer.source_url);
     references.push({
       title: offer.seller_name || offer.name || offer.source_url,
@@ -2161,7 +2168,13 @@ function vizyaSourceReferences(data) {
     });
   }
   for (const offer of (data.china_offers || [])) {
-    if (!offer?.source_url || known.has(offer.source_url)) continue;
+    if (!offer?.source_url) continue;
+    const existing = references.find((source) => source.url === offer.source_url);
+    if (existing) {
+      existing.title = vizyaSupplierLabel(offer);
+      existing.data_used = "Fournisseur Chine / prix / MOQ";
+      continue;
+    }
     known.add(offer.source_url);
     references.push({
       title: vizyaSupplierLabel(offer),
