@@ -498,7 +498,7 @@ class BenchmarkValidationTests(unittest.TestCase):
                 retail_offers=[
                     TunisiaRetailOffer(
                         seller_name="MyTek",
-                        product_title="Tondeuse à cheveux Rechargeable TRIMMER VINTAGE T9 - Gold",
+                        product_title="Tondeuse TRIMMER VINTAGE - Gold",
                         price_range_tnd="19,90 TND",
                         price_min_tnd_numeric=19.90,
                         source_url="https://www.mytek.tn/tondeuse-a-cheveux-trimmer-vintage.html",

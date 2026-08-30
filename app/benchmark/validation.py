@@ -284,7 +284,10 @@ def _correct_known_t9_retail_price(offer: TunisiaRetailOffer) -> TunisiaRetailOf
         str(value or "")
         for value in (offer.seller_name, offer.product_title, offer.source_url)
     ).lower()
-    if not re.search(r"\bt9\b", evidence) or not re.search(r"trimmer|vintage", evidence):
+    has_t9 = re.search(r"\bt9\b", evidence)
+    has_vintage_t9 = has_t9 and "vintage" in evidence
+    has_vintage_trimmer = "trimmer" in evidence and "vintage" in evidence
+    if not has_vintage_t9 and not has_vintage_trimmer:
         return offer
 
     seller = offer.seller_name.lower()
