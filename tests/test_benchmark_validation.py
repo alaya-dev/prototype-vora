@@ -329,9 +329,9 @@ class BenchmarkValidationTests(unittest.TestCase):
                 ChinaSourcingOffer(name="C2", price_min_usd_numeric=2, price_range_usd="US$2", source_url="https://china.example/2", price_evidence="direct", evidence_level="direct", confidence="high", product_match="close"),
             ],
             tunisia_sourcing_offers=[
-                TunisiaSourcingOffer(name="TS3", type="wholesaler", price_min_tnd_numeric=30, price_range_tnd="30 TND", source_url="https://tn.example/source-3", price_evidence="direct", evidence_level="direct", confidence="high", product_match="exact"),
-                TunisiaSourcingOffer(name="TS1", type="wholesaler", price_min_tnd_numeric=10, price_range_tnd="10 TND", source_url="https://tn.example/source-1", price_evidence="direct", evidence_level="direct", confidence="high", product_match="exact"),
-                TunisiaSourcingOffer(name="TS2", type="distributor", price_min_tnd_numeric=20, price_range_tnd="20 TND", source_url="https://tn.example/source-2", price_evidence="direct", evidence_level="direct", confidence="high", product_match="close"),
+                TunisiaSourcingOffer(name="TS3", type="wholesaler", price_min_tnd_numeric=30, price_range_tnd="30 TND", source_url="https://tn.example/source-3", price_evidence="direct", evidence_level="direct", confidence="high", product_match="exact", notes="prix de gros"),
+                TunisiaSourcingOffer(name="TS1", type="wholesaler", price_min_tnd_numeric=10, price_range_tnd="10 TND", source_url="https://tn.example/source-1", price_evidence="direct", evidence_level="direct", confidence="high", product_match="exact", notes="prix de gros"),
+                TunisiaSourcingOffer(name="TS2", type="distributor", price_min_tnd_numeric=20, price_range_tnd="20 TND", source_url="https://tn.example/source-2", price_evidence="direct", evidence_level="direct", confidence="high", product_match="close", notes="prix de gros"),
                 TunisiaSourcingOffer(name="Retail fallback", type="marketplace_source", price_min_tnd_numeric=5, price_range_tnd="5 TND", source_url="https://tn.example/retail", price_evidence="direct", evidence_level="direct", confidence="high", product_match="exact"),
             ],
             tunisia_retail_market=TunisiaRetailMarket(
@@ -347,12 +347,12 @@ class BenchmarkValidationTests(unittest.TestCase):
 
         self.assertEqual([offer.name for offer in validated.china_sourcing_offers], ["C1", "C2", "C3"])
         self.assertEqual([offer.name for offer in validated.tunisia_sourcing_offers], ["TS1", "TS2", "TS3"])
-        self.assertEqual([offer.seller_name for offer in validated.tunisia_retail_market.retail_offers], ["Seller A", "Seller B", "Seller C"])
-        self.assertEqual(validated.tunisia_retail_market.price_min_tnd, 15)
+        self.assertEqual([offer.seller_name for offer in validated.tunisia_retail_market.retail_offers], ["Retail fallback", "Seller A", "Seller B", "Seller C"])
+        self.assertEqual(validated.tunisia_retail_market.price_min_tnd, 5)
         self.assertEqual(validated.tunisia_retail_market.price_max_tnd, 35)
-        self.assertEqual(validated.tunisia_retail_market.price_avg_tnd, 25)
-        self.assertEqual(validated.tunisia_retail_market.unique_sellers_count, 3)
-        self.assertEqual(validated.tunisia_retail_market.retail_sources_count, 3)
+        self.assertEqual(validated.tunisia_retail_market.price_avg_tnd, 20)
+        self.assertEqual(validated.tunisia_retail_market.unique_sellers_count, 4)
+        self.assertEqual(validated.tunisia_retail_market.retail_sources_count, 4)
         self.assertEqual(validated.tunisia_retail_market.seller_density, "medium")
 
     def test_tunisia_retail_intervals_use_both_endpoints_and_midpoint_average(self) -> None:

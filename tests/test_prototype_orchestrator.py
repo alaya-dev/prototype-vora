@@ -1004,7 +1004,7 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.retail_market_summary.retail_min_tnd, 13.9)
         self.assertEqual(result.retail_market_summary.retail_max_tnd, 35)
         self.assertEqual(result.retail_market_summary.retail_avg_tnd, 24.45)
-        self.assertEqual(result.retail_market_summary.retail_price_range_tnd, "13.9 to 35 TND")
+        self.assertEqual(result.retail_market_summary.retail_price_range_tnd, "13,9–35 TND")
 
     async def test_localized_analysis_fallback_stays_product_and_evidence_specific(self) -> None:
         seeded = _analysis()

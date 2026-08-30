@@ -44,8 +44,18 @@ def validate_provider_result(
     }
     warnings = list(analysis.warnings)
     validated_tunisia_sourcing = []
+    retail_candidates_from_sourcing: list[TunisiaRetailOffer] = []
     for offer in _dedupe_suppliers_by_url(analysis.tunisia_sourcing_offers):
         if not _supplier_has_valid_or_empty_url(offer.source_url):
+            continue
+        raw_source = raw_sources_by_url.get(_normalize_url(offer.source_url))
+        has_b2b_proof = _has_explicit_b2b_signal(offer, raw_source)
+        # A Tunisia offer without explicit B2B evidence must not enter the
+        # wholesale section. Preserve its public price as a retail reference
+        # when possible, regardless of the model-provided offer type.
+        if not has_b2b_proof:
+            if offer.price_min_tnd_numeric is not None or offer.price_range_tnd:
+                retail_candidates_from_sourcing.append(_retail_offer_from_sourcing(offer))
             continue
         validated_offer = _validate_tunisia_sourcing_offer(
             offer,
@@ -64,7 +74,12 @@ def validate_provider_result(
             if _supplier_has_valid_or_empty_url(offer.source_url)
         ]
     )
-    retail_market = _validate_tunisia_retail_market(analysis.tunisia_retail_market, raw_source_types)
+    retail_market = _validate_tunisia_retail_market(
+        analysis.tunisia_retail_market.model_copy(
+            update={"retail_offers": [*analysis.tunisia_retail_market.retail_offers, *retail_candidates_from_sourcing]}
+        ),
+        raw_source_types,
+    )
     tunisia_compat = _rank_tunisia(
         [
             _validate_tunisia_supplier(supplier, raw_source_types)
@@ -204,7 +219,7 @@ def _validate_tunisia_sourcing_offer(
     raw_source = raw_sources_by_url.get(normalized_url)
     if _is_non_tunisian_maghrib_or_foreign_source(offer.source_url, raw_source):
         return None
-    if _is_retail_source(offer.source_url, raw_source) and not _has_explicit_b2b_signal(offer, raw_source):
+    if _is_retail_source(offer.source_url, raw_source, offer) and not _has_explicit_b2b_signal(offer, raw_source):
         return None
     if not has_tunisia_sourcing_signal(offer, raw_source):
         return None
@@ -260,6 +275,31 @@ def _validate_tunisia_retail_offer(
     )
     update.update(_product_match_downgrades(offer.product_match, update.get("confidence", offer.confidence)))
     return offer.model_copy(update=update)
+
+
+def _retail_offer_from_sourcing(offer: TunisiaSourcingOffer) -> TunisiaRetailOffer:
+    numbers = [value for value in (offer.price_min_tnd_numeric, offer.price_max_tnd_numeric) if value is not None]
+    source_price_type = "range" if len(numbers) == 2 and numbers[0] != numbers[1] else "single"
+    return TunisiaRetailOffer(
+        seller_name=offer.name,
+        seller_type="retail_store",
+        product_title=offer.product_title,
+        source_price_type=source_price_type,
+        source_page_type="product",
+        price_range_tnd=offer.price_range_tnd,
+        price_min_tnd_numeric=offer.price_min_tnd_numeric,
+        price_max_tnd_numeric=offer.price_max_tnd_numeric,
+        original_price_text=offer.original_price_text,
+        normalized_price_numeric=offer.normalized_price_numeric,
+        price_normalization_notes=offer.price_normalization_notes,
+        source_url=offer.source_url,
+        evidence_level=offer.evidence_level,
+        price_evidence=offer.price_evidence,
+        product_match=offer.product_match,
+        match_notes=offer.match_notes,
+        confidence=offer.confidence,
+        notes=offer.notes,
+    )
 
 
 def _validate_tunisia_retail_market(
@@ -393,8 +433,15 @@ def _is_french_source_about_tunisia(url: str, raw_source: ProviderRawSource | No
     return hostname.endswith(".fr") and _is_tunisian_source(url, raw_source)
 
 
-def _is_retail_source(url: str, raw_source: ProviderRawSource | None) -> bool:
-    text = _source_text(raw_source)
+def _is_retail_source(
+    url: str,
+    raw_source: ProviderRawSource | None,
+    offer: TunisiaSourcingOffer | None = None,
+) -> bool:
+    offer_text = ""
+    if offer is not None:
+        offer_text = f"{offer.name} {offer.product_title} {offer.notes}"
+    text = f"{_source_text(raw_source)} {offer_text}".lower()
     hostname = (urlparse(url).hostname or "").lower()
     retail_domains = ("mytek", "tunisianet", "spacenet", "tayara", "wikishop", "shopiwell", "keyshop", "affariyet")
     retail_signals = (
@@ -402,9 +449,18 @@ def _is_retail_source(url: str, raw_source: ProviderRawSource | None) -> bool:
         "achat",
         "shop",
         "panier",
+        "ajouter au panier",
+        "ajout au panier",
+        "add to cart",
+        "commande",
+        "commander",
+        "order",
+        "buy now",
         "livraison",
         "local store",
         "retail store",
+        "retail",
+        "client final",
         "magasin",
     )
     return any(domain in hostname for domain in retail_domains) or any(signal in text for signal in retail_signals)
@@ -414,7 +470,9 @@ def _has_explicit_b2b_signal(offer: TunisiaSourcingOffer, raw_source: ProviderRa
     text = f"{_source_text(raw_source)} {offer.name} {offer.type} {offer.notes}".lower()
     return any(signal in text for signal in (
         "grossiste", "prix gros", "vente en gros", "tarif professionnel", "quantité minimale",
-        "moq", "prix par quantité", "offre revendeur", "distributeur b2b", "importateur b2b", "b2b",
+        "moq", "prix par quantité", "offre revendeur", "revendeur", "distributeur b2b",
+        "importateur b2b", "b2b", "prix de gros", "prix professionnel", "tarif pro",
+        "offre distributeur professionnel", "prix en volume", "bulk price", "price by quantity",
     ))
 
 
