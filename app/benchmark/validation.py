@@ -467,7 +467,9 @@ def _is_retail_source(
 
 
 def _has_explicit_b2b_signal(offer: TunisiaSourcingOffer, raw_source: ProviderRawSource | None) -> bool:
-    text = f"{_source_text(raw_source)} {offer.name} {offer.type} {offer.notes}".lower()
+    # The model-provided type is a classification, not proof. Only wording
+    # present in the source evidence or offer text can establish B2B status.
+    text = f"{_source_text(raw_source)} {offer.name} {offer.product_title} {offer.notes}".lower()
     return any(signal in text for signal in (
         "grossiste", "prix gros", "vente en gros", "tarif professionnel", "quantité minimale",
         "moq", "prix par quantité", "offre revendeur", "revendeur", "distributeur b2b",
