@@ -2122,7 +2122,8 @@ function vizyaRange(min, max) {
 }
 
 function vizyaTnd(value) {
-  return Number.isFinite(value) ? `${formatMoney(value)} TND` : vizyaLabels().notFoundPublicly;
+  if (!Number.isFinite(value)) return vizyaLabels().notFoundPublicly;
+  return value === 0 ? "0 TND" : `${formatMoney(value)} TND`;
 }
 
 function vizyaUnit(offer) {
