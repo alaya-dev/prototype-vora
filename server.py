@@ -41,6 +41,7 @@ from app.services.gemini_client import (
     GeminiClient,
     GeminiClientError,
     GeminiIntentClient,
+    _extract_gemini_status_code,
 )
 from app.services.gemini_search_client import GeminiSearchClient, GeminiSearchClientError
 from app.services.pdf_report import build_opportunity_pdf, opportunity_pdf_filename
@@ -324,7 +325,11 @@ def _build_gemini_role_clients(settings: Settings):
 
 
 def _log_analysis_failure(error: Exception) -> None:
-    logger.warning("Client analysis did not complete (%s).", error.__class__.__name__)
+    logger.warning(
+        "Client analysis did not complete exception_type=%s provider_http_code=%s.",
+        error.__class__.__name__,
+        _extract_gemini_status_code(error),
+    )
 
 
 def _build_pipeline(settings: Settings) -> ProductAnalysisPipeline:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 import re
 from statistics import median
 import time
@@ -16,7 +17,7 @@ from app.benchmark.schemas import (
     TunisiaSourcingOffer,
 )
 from app.benchmark.validation import validate_provider_result
-from app.services.gemini_client import GeminiClientError
+from app.services.gemini_client import _extract_gemini_status_code
 from app.prototype.schemas import (
     ComparabilityAssessment,
     CostConfig,
@@ -53,6 +54,7 @@ IMAGE_MARKDOWN_RE = re.compile(r"!\[[^\]]*\]\((https?://[^)\s]+)\)", re.IGNORECA
 IMAGE_HTML_RE = re.compile(r"""<img[^>]+src=["'](https?://[^"']+)["']""", re.IGNORECASE)
 META_IMAGE_RE = re.compile(r"""(?:og:image|twitter:image)[^"'=:\n\r>]*[:=]\s*["']?(https?://[^"'\s>]+)""", re.IGNORECASE)
 IMAGE_URL_RE = re.compile(r"""https?://[^\s"'()<>]+\.(?:png|jpe?g|webp|gif|svg)(?:\?[^\s"'()<>]*)?""", re.IGNORECASE)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -85,7 +87,13 @@ class PrototypeResearchOrchestrator:
     async def analyze(self, request: PrototypeAnalyzeRequest) -> PrototypeAnalyzeResponse:
         started = time.perf_counter()
         product_input = request.product.strip()
-        intent = await self.intent_client.classify(product_input)
+        _log_analysis_stage("intent")
+        intent_started = time.perf_counter()
+        try:
+            intent = await self.intent_client.classify(product_input)
+        except Exception as error:
+            _log_stage_failure("intent", error, intent_started)
+            raise
         run_id = self.store.create_run(
             product_input=product_input,
             normalized_product=intent.normalized_product or "",
@@ -125,7 +133,13 @@ class PrototypeResearchOrchestrator:
             english_search_name=intent.normalized_product,
             french_search_name=intent.normalized_product,
         )
-        evidence, warnings = await self._collect_evidence(run_id, product)
+        _log_analysis_stage("recherche")
+        research_started = time.perf_counter()
+        try:
+            evidence, warnings = await self._collect_evidence(run_id, product)
+        except Exception as error:
+            _log_stage_failure("recherche", error, research_started)
+            raise
         if _best_source_image(evidence, product) is None:
             image_evidence = await self._collect_image_evidence(run_id, product)
             if image_evidence.sources:
@@ -137,25 +151,52 @@ class PrototypeResearchOrchestrator:
                     }
                 )
         try:
+            _log_analysis_stage("extraction")
+            extraction_started = time.perf_counter()
             analysis_result = await self._extract_analysis(product, evidence, request.quantity_scenarios)
             self.store.log_api_usage(run_id, "gemini_analysis", 1)
-        except GeminiClientError:
+            logger.info(
+                "ANALYSE_STAGE=extraction status=success duration_ms=%s",
+                _elapsed_ms(extraction_started),
+            )
+        except Exception as error:
+            _log_stage_failure("extraction", error, extraction_started)
             # Do not turn a technical extraction failure into an empty business
             # result. The HTTP layer normalizes this exception to a temporary
             # unavailability response; no score or decision is calculated.
             raise
-        validated = validate_provider_result(_as_provider_analysis(analysis_result), evidence.sources)
-        response = _to_client_response(
-            run_id=run_id,
-            product=product,
-            draft=analysis_result,
-            validated=validated,
-            evidence=evidence,
-            cost_config=self.cost_config,
-            quantity_scenarios=request.quantity_scenarios,
-            warnings=list(dict.fromkeys(intent.warnings + warnings + validated.warnings)),
-            target_market=request.market,
-            sourcing_country=request.sourcing_country,
+        _log_analysis_stage("validation")
+        validation_started = time.perf_counter()
+        try:
+            validated = validate_provider_result(_as_provider_analysis(analysis_result), evidence.sources)
+        except Exception as error:
+            _log_stage_failure("validation", error, validation_started)
+            raise
+        logger.info(
+            "ANALYSE_STAGE=validation status=success duration_ms=%s",
+            _elapsed_ms(validation_started),
+        )
+        _log_analysis_stage("calcul")
+        calculation_started = time.perf_counter()
+        try:
+            response = _to_client_response(
+                run_id=run_id,
+                product=product,
+                draft=analysis_result,
+                validated=validated,
+                evidence=evidence,
+                cost_config=self.cost_config,
+                quantity_scenarios=request.quantity_scenarios,
+                warnings=list(dict.fromkeys(intent.warnings + warnings + validated.warnings)),
+                target_market=request.market,
+                sourcing_country=request.sourcing_country,
+            )
+        except Exception as error:
+            _log_stage_failure("calcul", error, calculation_started)
+            raise
+        logger.info(
+            "ANALYSE_STAGE=calcul status=success duration_ms=%s",
+            _elapsed_ms(calculation_started),
         )
         self.store.update_run_payload(
             run_id,
@@ -310,6 +351,20 @@ def _is_group_sufficient(group: str, sources: list[ProviderRawSource]) -> bool:
         ]
         return len({source.url for source in retail_sources}) >= 2
     return False
+
+
+def _log_analysis_stage(stage: str) -> None:
+    logger.info("ANALYSE_STAGE=%s", stage)
+
+
+def _log_stage_failure(stage: str, error: Exception, started: float) -> None:
+    logger.warning(
+        "ANALYSE_STAGE=%s exception_type=%s provider_http_code=%s duration_ms=%s",
+        stage,
+        error.__class__.__name__,
+        _extract_gemini_status_code(error),
+        _elapsed_ms(started),
+    )
 
 
 def _has_price(source: ProviderRawSource) -> bool:

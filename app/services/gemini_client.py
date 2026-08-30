@@ -43,8 +43,14 @@ class GeminiClient:
         self.model = model
         self._client = genai.Client(api_key=api_key)
 
-    async def generate_json(self, prompt: str, response_model: type[T]) -> T:
+    async def generate_json(
+        self,
+        prompt: str,
+        response_model: type[T],
+        schema_builder=None,
+    ) -> T:
         primary_error: Exception | None = None
+        build_schema = schema_builder or _build_gemini_response_schema
         for attempt in range(2):
             attempt_prompt = prompt
             if attempt == 1:
@@ -62,7 +68,7 @@ class GeminiClient:
                         config=types.GenerateContentConfig(
                             temperature=0.1,
                             response_mime_type="application/json",
-                            response_schema=_build_gemini_response_schema(response_model),
+                            response_schema=build_schema(response_model),
                         ),
                     ),
                     timeout=_REQUEST_TIMEOUT_SECONDS,
@@ -149,6 +155,12 @@ class GeminiAnalysisClient:
         quantity_scenarios: list[int],
     ) -> PrototypeAnalysisDraft:
         prompt = _build_client_analysis_prompt(product, evidence, cost_config, quantity_scenarios)
+        if isinstance(self.structured_client, GeminiClient):
+            return await self.structured_client.generate_json(
+                prompt,
+                PrototypeAnalysisDraft,
+                schema_builder=_build_client_analysis_response_schema,
+            )
         return await self.structured_client.generate_json(prompt, PrototypeAnalysisDraft)
 
 
@@ -169,6 +181,49 @@ def _coerce_model_response(response, response_model: type[T]) -> T:
 
 def _build_gemini_response_schema(response_model: type[T]) -> dict:
     return _strip_unsupported_schema_keys(response_model.model_json_schema())
+
+
+def _build_client_analysis_response_schema(response_model: type[T]) -> dict:
+    """Build a Gemini-safe shape schema for the large client-analysis draft.
+
+    Gemini rejects the fully constrained PrototypeAnalysisDraft schema with HTTP
+    400 because its nested enums and nullable unions create too many constrained
+    decoding states. Keep the complete Pydantic model for validation, while using
+    the same field/type shape with provider-safe scalar constraints for generation.
+    """
+    source_schema = _build_gemini_response_schema(response_model)
+    definitions = source_schema.get("$defs", {})
+    return _relax_gemini_schema(source_schema, definitions)
+
+
+def _relax_gemini_schema(schema, definitions):
+    if not isinstance(schema, dict):
+        return {"type": "string"}
+    if "$ref" in schema:
+        definition_name = schema["$ref"].split("/")[-1]
+        return _relax_gemini_schema(definitions[definition_name], definitions)
+    if "anyOf" in schema:
+        non_null = [item for item in schema["anyOf"] if item.get("type") != "null"]
+        return _relax_gemini_schema(non_null[0], definitions) if non_null else {"type": "string"}
+
+    schema_type = schema.get("type")
+    if schema_type == "object" or "properties" in schema:
+        relaxed = {
+            "type": "object",
+            "properties": {
+                name: _relax_gemini_schema(value, definitions)
+                for name, value in schema.get("properties", {}).items()
+            },
+        }
+        required = [name for name in schema.get("required", []) if name in relaxed["properties"]]
+        if required:
+            relaxed["required"] = required
+        return relaxed
+    if schema_type == "array":
+        return {"type": "array", "items": _relax_gemini_schema(schema.get("items", {}), definitions)}
+    if schema_type in {"string", "integer", "number", "boolean"}:
+        return {"type": schema_type}
+    return {"type": "string"}
 
 
 def _strip_unsupported_schema_keys(value):
@@ -511,6 +566,17 @@ def _build_client_analysis_prompt(
         "landed cost is missing, margin is negative, or product equivalence is broad/weak, "
         "lean the score toward NO GO or investigate_more and do not produce a confident GO. "
         "recommendation should be investigate_more or no_go, not go.\n\n"
+        "Use exactly these enum values wherever applicable: China offer type is manufacturer, "
+        "trading_company, marketplace_source, supplier_profile, factory, or unknown; Tunisia "
+        "sourcing offer type is wholesaler, importer, distributor, manufacturer, b2b_seller, "
+        "marketplace_source, or unknown; evidence level is direct, indirect, or weak; price "
+        "evidence and MOQ evidence are direct, snippet, or not_found; confidence is high, "
+        "medium, or low; product match is exact, close, broad, or weak; retail seller type is "
+        "marketplace, local_shop, retail_store, classified, social_listing, or unknown; retail "
+        "price source type is single, range, or unknown; retail page type is product, "
+        "category_or_listing, or unknown; seller density is low, medium, high, or unknown; "
+        "recommendation is go, go_with_conditions, no_go, or investigate_more; decision "
+        "confidence is low, medium, or high; decision dominant_side is go, no_go, or balanced.\n\n"
         f"Product understanding:\n{_format_product_for_prompt(product)}\n\n"
         f"Cost assumptions: {cost_config.model_dump()}\n"
         f"Quantity scenarios: {quantity_scenarios}\n\n"
