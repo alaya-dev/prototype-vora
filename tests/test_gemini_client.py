@@ -18,6 +18,7 @@ from app.services.gemini_client import (
     GeminiClient,
     GeminiClientError,
     GeminiIntentClient,
+    _build_client_analysis_prompt,
     _build_gemini_error_message,
     _build_gemini_response_schema,
     _is_retryable_gemini_error,
@@ -314,3 +315,39 @@ class GeminiRoleWrapperTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Do not mix languages", prompt)
         self.assertIn("Avoid generic filler such as 'insufficient data'", prompt)
         self.assertIn("say exactly which evidence is missing", prompt)
+
+    async def test_client_analysis_prompt_keeps_diverse_evidence_with_bounded_content(self) -> None:
+        sources = []
+        for group in ("china_sourcing", "tunisia_sourcing", "tunisia_retail"):
+            for index in range(4):
+                sources.append(
+                    ProviderRawSource(
+                        title=f"{group}-{index}",
+                        url=f"https://example.com/{group}/{index}",
+                        snippet=f"snippet-{group}-{index} " + "s" * 2_000,
+                        content=f"content-{group}-{index} " + "c" * 4_000,
+                        region_hint=group,
+                        source_type="product_page",
+                    )
+                )
+        evidence = ProviderEvidence(provider_id="tavily", sources=sources)
+
+        prompt = _build_client_analysis_prompt(
+            ProductUnderstanding(
+                original_product="engine oil",
+                normalized_product="engine oil",
+                english_search_name="engine oil",
+                french_search_name="huile moteur",
+            ),
+            evidence,
+            CostConfig(),
+            [1000],
+        )
+
+        self.assertIn("china_sourcing-0", prompt)
+        self.assertIn("tunisia_sourcing-0", prompt)
+        self.assertIn("tunisia_retail-0", prompt)
+        self.assertNotIn("china_sourcing-3", prompt)
+        self.assertNotIn("tunisia_sourcing-3", prompt)
+        self.assertNotIn("tunisia_retail-3", prompt)
+        self.assertLess(len(prompt), 20_000)

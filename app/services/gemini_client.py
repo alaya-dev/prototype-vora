@@ -10,7 +10,7 @@ from app.agents.intent_classifier import (
     IntentClassificationPayload,
     _looks_like_blocked_request,
 )
-from app.benchmark.schemas import ProviderAnalysisResult, ProviderEvidence
+from app.benchmark.schemas import ProviderAnalysisResult, ProviderEvidence, ProviderRawSource
 from app.prototype.schemas import CostConfig, PrototypeAnalysisDraft
 from app.schemas import IntentResult, ProductUnderstanding
 
@@ -24,6 +24,10 @@ except ImportError:  # pragma: no cover - exercised only when dependency is miss
 
 T = TypeVar("T", bound=BaseModel)
 _REQUEST_TIMEOUT_SECONDS = 30
+_CLIENT_ANALYSIS_MAX_SOURCES_PER_GROUP = 3
+_CLIENT_ANALYSIS_MAX_SNIPPET_CHARS = 480
+_CLIENT_ANALYSIS_MAX_CONTENT_CHARS = 900
+_CLIENT_ANALYSIS_MAX_IMAGE_URLS = 2
 
 
 class GeminiClientError(RuntimeError):
@@ -430,18 +434,18 @@ def _build_client_analysis_prompt(
     quantity_scenarios: list[int],
 ) -> str:
     source_lines = []
-    for index, source in enumerate(evidence.sources, start=1):
+    for index, source in enumerate(_client_analysis_sources(evidence), start=1):
         source_lines.append(
             "\n".join(
                 [
                     f"Source {index}:",
-                    f"Title: {source.title}",
+                    f"Title: {_compact_evidence_text(source.title, _CLIENT_ANALYSIS_MAX_SNIPPET_CHARS)}",
                     f"URL: {source.url}",
                     f"Region hint: {source.region_hint}",
                     f"Source type: {source.source_type}",
-                    f"Snippet: {source.snippet}",
-                    f"Content: {source.content or ''}",
-                    f"Image URLs: {', '.join(source.image_urls)}",
+                    f"Snippet: {_compact_evidence_text(source.snippet, _CLIENT_ANALYSIS_MAX_SNIPPET_CHARS)}",
+                    f"Content: {_compact_evidence_text(source.content, _CLIENT_ANALYSIS_MAX_CONTENT_CHARS)}",
+                    f"Image URLs: {', '.join(source.image_urls[:_CLIENT_ANALYSIS_MAX_IMAGE_URLS])}",
                 ]
             )
         )
@@ -506,3 +510,31 @@ def _build_client_analysis_prompt(
         "Evidence:\n"
         f"{chr(10).join(source_lines)}"
     )
+
+
+def _client_analysis_sources(evidence: ProviderEvidence) -> list[ProviderRawSource]:
+    selected: list[ProviderRawSource] = []
+    selected_urls: set[str] = set()
+    groups = ("china_sourcing", "tunisia_sourcing", "tunisia_retail")
+
+    for group in groups:
+        for source in evidence.sources:
+            if source.region_hint != group or source.url in selected_urls:
+                continue
+            selected.append(source)
+            selected_urls.add(source.url)
+            if sum(item.region_hint == group for item in selected) >= _CLIENT_ANALYSIS_MAX_SOURCES_PER_GROUP:
+                break
+
+    maximum = len(groups) * _CLIENT_ANALYSIS_MAX_SOURCES_PER_GROUP
+    for source in evidence.sources:
+        if len(selected) >= maximum or source.url in selected_urls:
+            continue
+        selected.append(source)
+        selected_urls.add(source.url)
+    return selected
+
+
+def _compact_evidence_text(value: str | None, maximum: int) -> str:
+    text = " ".join(str(value or "").split())
+    return text if len(text) <= maximum else f"{text[:maximum].rstrip()}…"
