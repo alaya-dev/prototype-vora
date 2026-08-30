@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+from statistics import median
 import time
 from typing import Iterable
 from urllib.parse import urlparse
@@ -15,6 +16,7 @@ from app.benchmark.schemas import (
     TunisiaSourcingOffer,
 )
 from app.benchmark.validation import validate_provider_result
+from app.services.gemini_client import GeminiClientError
 from app.prototype.schemas import (
     ComparabilityAssessment,
     CostConfig,
@@ -42,7 +44,7 @@ from app.schemas import IntentResult, ProductUnderstanding
 
 
 EVIDENCE_GROUPS = ("china_sourcing", "tunisia_sourcing", "tunisia_retail")
-TUNISIA_WHOLESALE_NOT_FOUND = "No reliable Tunisian wholesale sourcing offer was found for this product."
+TUNISIA_WHOLESALE_NOT_FOUND = "Aucun prix grossiste tunisien public fiable n’a été identifié pour ce produit."
 ANALYSIS_QUANTITY_UNITS = 1000
 DIGITAL_AD_BUDGET_MIN_TND = 300.0
 DIGITAL_AD_BUDGET_MAX_TND = 500.0
@@ -61,6 +63,7 @@ class DecisionScoreContext:
     gross_margin: float | None
     validated: ProviderAnalysisResult
     profitability: ProfitabilityEstimate | None
+    product: ProductUnderstanding | None = None
 
 
 class PrototypeResearchOrchestrator:
@@ -133,8 +136,17 @@ class PrototypeResearchOrchestrator:
                         "provider_api_calls": evidence.provider_api_calls + image_evidence.provider_api_calls,
                     }
                 )
-        analysis_result = await self._extract_analysis(product, evidence, request.quantity_scenarios)
-        self.store.log_api_usage(run_id, "gemini_analysis", 1)
+        try:
+            analysis_result = await self._extract_analysis(product, evidence, request.quantity_scenarios)
+            self.store.log_api_usage(run_id, "gemini_analysis", 1)
+        except GeminiClientError:
+            # Research evidence remains usable when the optional narrative call
+            # is rate-limited or temporarily unavailable. Calculations below
+            # are rebuilt from validated evidence and never from Gemini output.
+            analysis_result = ProviderAnalysisResult(
+                warnings=["La synthèse automatique est indisponible ; les preuves exploitables sont conservées pour validation."]
+            )
+            warnings.append("La synthèse automatique est indisponible ; les preuves exploitables sont conservées pour validation.")
         validated = validate_provider_result(_as_provider_analysis(analysis_result), evidence.sources)
         response = _to_client_response(
             run_id=run_id,
@@ -393,16 +405,16 @@ def _to_client_response(
                     ),
                     computed.profitability_estimate,
                     validated,
-                    draft.recommendation,
-                    draft.recommendation_reason,
+                    computed.recommendation,
+                    computed.recommendation_reason,
                 ),
                 "retail_market_summary": (
                     draft_retail
                     if validated.tunisia_retail_market.retail_offers
                     else _retail_summary_with_fallbacks(draft.retail_market_summary)
                 ),
-                "recommendation": draft.recommendation,
-                "recommendation_reason": draft.recommendation_reason,
+                "recommendation": computed.recommendation,
+                "recommendation_reason": computed.recommendation_reason,
                 "warnings": list(dict.fromkeys(warnings + draft.warnings)),
                 "links_hidden": True,
             }
@@ -436,29 +448,31 @@ def _to_client_response(
     profitability = _reconcile_profitability_supplier_price(profitability, validated, cost_config, product)
     profitability = _reconcile_profitability_market_price(profitability, validated, cost_config, product)
     recommendation, recommendation_reason = _conservative_recommendation(
-        base.recommendation,
-        profitability.gross_margin_per_unit_before_marketing_tnd,
+        "investigate_more",
+        profitability.gross_margin_min_tnd if profitability.gross_margin_min_tnd is not None else profitability.gross_margin_per_unit_before_marketing_tnd,
         validated,
         profitability,
     )
     decision_scores = _decision_scores(
         DecisionScoreContext(
-            model_recommendation=base.recommendation,
+            model_recommendation="investigate_more",
             final_recommendation=recommendation,
             recommendation_reason=recommendation_reason,
-            gross_margin=profitability.gross_margin_per_unit_before_marketing_tnd,
+            gross_margin=profitability.gross_margin_min_tnd if profitability.gross_margin_min_tnd is not None else profitability.gross_margin_per_unit_before_marketing_tnd,
             validated=validated,
             profitability=profitability,
+            product=product,
         )
     )
     decision_fields = _client_decision_fields(
         DecisionScoreContext(
-            model_recommendation=base.recommendation,
+            model_recommendation="investigate_more",
             final_recommendation=recommendation,
             recommendation_reason=recommendation_reason,
-            gross_margin=profitability.gross_margin_per_unit_before_marketing_tnd,
+            gross_margin=profitability.gross_margin_min_tnd if profitability.gross_margin_min_tnd is not None else profitability.gross_margin_per_unit_before_marketing_tnd,
             validated=validated,
             profitability=profitability,
+            product=product,
         ),
         decision_scores,
     )
@@ -495,13 +509,26 @@ def _response_from_validated(
     ]
     china_prices = _china_price_points(comparable_china_offers)
     china_tnd = [round(price * cost_config.usd_to_tnd_rate, 2) for price in china_prices]
-    source_unit_price, selling_price, pricing_basis = _comparable_prices(validated, cost_config, product)
+    source_min, source_max, source_offer = _canonical_supplier_price_range(validated, cost_config, product)
+    # Keep the legacy scalar as the lower observed source bound; the complete
+    # interval below is authoritative for client-facing profitability.
+    source_unit_price = source_min if source_min is not None else source_max
+    retail_target_prices = _retail_target_package_prices(validated.tunisia_retail_market.retail_offers, product)
+    selling_min = min(retail_target_prices) if retail_target_prices else None
+    selling_max = max(retail_target_prices) if retail_target_prices else None
+    selling_price = round(median(retail_target_prices), 2) if retail_target_prices else None
+    pricing_basis = (
+        "Prix fournisseur et prix retail comparables normalisés au conditionnement cible."
+        if source_min is not None and selling_price is not None
+        else "Référence de prix comparable insuffisante pour calculer une rentabilité fiable."
+    )
+    landed_min, landed_max, landed_notes, landed_parts = _landed_cost_breakdown_range(source_min, source_max, cost_config)
     source_offer = _canonical_supplier_offer(validated, product)
-    landed_cost, landed_notes, landed_parts = _landed_cost_breakdown(source_unit_price, cost_config)
     ad_allocation, ad_notes = _ad_allocation(cost_config)
-    gross_margin = None
-    if landed_cost is not None and selling_price is not None:
-        gross_margin = round(selling_price - landed_cost, 2)
+    landed_cost = landed_min
+    gross_margin_min = round(selling_min - landed_max, 2) if selling_min is not None and landed_max is not None else None
+    gross_margin_max = round(selling_max - landed_min, 2) if selling_max is not None and landed_min is not None else None
+    gross_margin = round(selling_price - landed_cost, 2) if selling_price is not None and landed_cost is not None else None
     gross_profit_1000 = (
         round(gross_margin * ANALYSIS_QUANTITY_UNITS, 2)
         if gross_margin is not None
@@ -523,12 +550,7 @@ def _response_from_validated(
         if gross_profit_1000 is not None
         else None
     )
-    recommendation, recommendation_reason = _conservative_recommendation(
-        "investigate_more",
-        gross_margin,
-        validated,
-        None,
-    )
+    recommendation, recommendation_reason = _conservative_recommendation("investigate_more", gross_margin, validated, None)
     decision_context = DecisionScoreContext(
         model_recommendation="investigate_more",
         final_recommendation=recommendation,
@@ -536,20 +558,23 @@ def _response_from_validated(
         gross_margin=gross_margin,
         validated=validated,
         profitability=None,
+        product=product,
     )
     decision_scores = _decision_scores(decision_context)
     sourcing_summary = SourcingSummary(
-        china_price_range=_range_text("US$", china_prices),
+        china_price_range=_range_text("TND", china_tnd),
         china_price_min_tnd_estimate=min(china_tnd) if china_tnd else None,
         china_price_max_tnd_estimate=max(china_tnd) if china_tnd else None,
         china_moq_summary=", ".join([offer.moq for offer in validated.china_sourcing_offers if offer.moq]) or "MOQ not found.",
         tunisia_wholesale_summary=_tunisia_wholesale_summary(validated.tunisia_sourcing_offers),
         tunisia_wholesale_found=bool(validated.tunisia_sourcing_offers),
-        evidence_confidence=_overall_confidence(validated),
+        evidence_confidence=_overall_confidence(validated, product),
     )
     retail_summary = _retail_summary_from_validated(validated, product)
     profitability_estimate = ProfitabilityEstimate(
         source_unit_price_tnd=source_unit_price,
+        source_unit_price_min_tnd=source_min,
+        source_unit_price_max_tnd=source_max,
         source_price_unit=source_offer.price_unit if source_offer else None,
         source_price_unit_confirmed=bool(source_offer and source_offer.price_unit),
         estimated_shipping_per_unit_tnd=landed_parts["shipping"],
@@ -557,6 +582,8 @@ def _response_from_validated(
         estimated_handling_per_unit_tnd=landed_parts["handling"],
         estimated_misc_per_unit_tnd=landed_parts["misc"],
         estimated_landed_cost_per_unit_tnd=landed_cost,
+        estimated_landed_cost_min_tnd=landed_min,
+        estimated_landed_cost_max_tnd=landed_max,
         landed_cost_breakdown_notes=landed_notes,
         estimated_meta_campaign_budget_tnd=campaign_budget,
         digital_ad_budget_min_tnd=_digital_ad_budget_min(cost_config),
@@ -567,9 +594,15 @@ def _response_from_validated(
         ad_cost_notes=ad_notes,
         estimated_source_cost_tnd=landed_cost,
         estimated_selling_price_tnd=selling_price,
+        estimated_selling_price_min_tnd=selling_min,
+        estimated_selling_price_max_tnd=selling_max,
         pricing_basis=pricing_basis,
         estimated_meta_ads_cost_per_sale_tnd=ad_allocation,
         gross_margin_per_unit_before_marketing_tnd=gross_margin,
+        gross_margin_min_tnd=gross_margin_min,
+        gross_margin_max_tnd=gross_margin_max,
+        gross_margin_percent_min=(round(gross_margin_min / selling_max * 100, 1) if gross_margin_min is not None and selling_max else None),
+        gross_margin_percent_max=(round(gross_margin_max / selling_min * 100, 1) if gross_margin_max is not None and selling_min else None),
         gross_profit_for_1000_before_marketing_tnd=gross_profit_1000,
         net_profit_for_1000_after_marketing_tnd=net_profit_1000,
         net_profit_for_1000_after_advertising_min_tnd=net_profit_min,
@@ -675,7 +708,38 @@ def _target_package_retail_price(
     if not matching:
         return None
     comparable_prices = [price / volume * target_volume for price, _, volume in matching]
-    return round(sum(comparable_prices) / len(comparable_prices), 2)
+    return round(median(comparable_prices), 2)
+
+
+def _retail_target_package_prices(offers: list, product: ProductUnderstanding | None) -> list[float]:
+    if product is None:
+        return []
+    prices: list[float] = []
+    for offer in offers:
+        prices.extend(_retail_target_package_price_range(offer, product))
+    return prices
+
+
+def _retail_target_package_price_range(offer, product: ProductUnderstanding | None) -> list[float]:
+    minimum = _retail_target_package_price(offer, product)
+    if minimum is None:
+        return []
+    values = [minimum]
+    raw = str(offer.price_range_tnd or "").replace(",", ".")
+    numbers = [float(value) for value in re.findall(r"\d+(?:\.\d+)?", raw)]
+    if len(numbers) >= 2 and offer.price_min_tnd_numeric:
+        maximum = offer.price_max_tnd_numeric or max(numbers[:2])
+        if maximum != offer.price_min_tnd_numeric:
+            target_min = offer.price_min_tnd_numeric
+            target_max = maximum
+            quantity, unit = _parse_volume(offer.product_title or "")
+            target_volume, target_unit = _product_target_volume(product) if product else (None, None)
+            offer_volume = _base_volume(quantity, unit)
+            if target_volume and target_unit and offer_volume and _base_unit(unit) == target_unit:
+                values.append(round(target_max / offer_volume * target_volume, 2))
+            else:
+                values.append(round(target_max, 2))
+    return values
 
 
 def _source_price_points(
@@ -816,13 +880,13 @@ def _fallback_localized_analysis(
         f"{seller_count} référence(s) retail en Tunisie."
     ).strip()
     return LocalizedClientAnalysis(
-        product_description_en=product_description_en,
+        product_description_en=product_description_fr,
         product_description_fr=product_description_fr,
-        price_analysis_en=_fallback_price_analysis_en(product_name, sourcing_summary, retail_summary, profitability),
+        price_analysis_en=_fallback_price_analysis_fr(product_name, sourcing_summary, retail_summary, profitability),
         price_analysis_fr=_fallback_price_analysis_fr(product_name, sourcing_summary, retail_summary, profitability),
-        market_analysis_en=_fallback_market_analysis_en(product_name, retail_summary, validated),
+        market_analysis_en=_fallback_market_analysis_fr(product_name, retail_summary, validated),
         market_analysis_fr=_fallback_market_analysis_fr(product_name, retail_summary, validated),
-        business_reading_en=_fallback_business_reading_en(product_name, profitability, recommendation, recommendation_reason),
+        business_reading_en=_fallback_business_reading_fr(product_name, profitability, recommendation, recommendation_reason),
         business_reading_fr=_fallback_business_reading_fr(product_name, profitability, recommendation, recommendation_reason),
     )
 
@@ -1061,6 +1125,39 @@ def _landed_cost_breakdown(source_unit_price: float | None, cost_config: CostCon
     return landed, note, parts
 
 
+def _landed_cost_breakdown_range(
+    source_min: float | None,
+    source_max: float | None,
+    cost_config: CostConfig,
+) -> tuple[float | None, float | None, str, dict[str, float | None]]:
+    """Calculate the full source-price interval without collapsing evidence to a raw minimum."""
+    if source_min is None or source_max is None:
+        landed, note, parts = _landed_cost_breakdown(source_min, cost_config)
+        return landed, landed, note, parts
+    shipping = float(cost_config.default_shipping_per_unit_tnd or 0)
+    handling = float(cost_config.default_handling_per_unit_tnd or 0)
+    misc = float(cost_config.default_misc_cost_per_unit_tnd or 0)
+    customs_rate = float(cost_config.default_customs_or_import_rate_percent or 0) / 100
+    if shipping == 0 and handling == 0 and misc == 0 and customs_rate == 0:
+        return None, None, "Le coût rendu ne peut pas encore être estimé : les hypothèses de transport, d’import et de manutention sont absentes.", {"shipping": 0, "customs": 0, "handling": 0, "misc": 0}
+    min_customs = round(source_min * customs_rate, 2)
+    max_customs = round(source_max * customs_rate, 2)
+    landed_min = round(source_min + shipping + min_customs + handling + misc, 2)
+    landed_max = round(source_max + shipping + max_customs + handling + misc, 2)
+    parts = {
+        "shipping": shipping,
+        "customs": min_customs,
+        "handling": handling,
+        "misc": misc,
+    }
+    note = (
+        f"Prix fournisseur comparable : {source_min:g} TND à {source_max:g} TND par unité ; "
+        f"coût rendu : {landed_min:g} TND à {landed_max:g} TND par unité. "
+        "Transport, droits/taxes, manutention et autres charges sont des hypothèses estimées."
+    )
+    return landed_min, landed_max, note, parts
+
+
 def _enrichment_fields(
     validated: ProviderAnalysisResult,
     evidence: ProviderEvidence,
@@ -1074,10 +1171,10 @@ def _enrichment_fields(
         "retail_offers": _retail_offer_views(validated.tunisia_retail_market.retail_offers, product),
         "landed_cost": _landed_cost_view(profitability),
         "comparability": _comparability_assessment(product, validated),
-        "competition_level": _competition_level(validated),
-        "detailed_scoring": _detailed_scoring(validated, profitability),
-        "commercial_potential_score": _commercial_potential_score(validated),
-        "ads_potential_score": _ads_potential_score(validated),
+        "competition_level": _competition_level(validated, product),
+        "detailed_scoring": _detailed_scoring(validated, profitability, product),
+        "commercial_potential_score": _commercial_potential_score(validated, product),
+        "ads_potential_score": None,
         "sources": _source_references(validated, evidence),
     }
 
@@ -1272,7 +1369,7 @@ def _extract_city(text: str) -> str:
     return ""
 
 
-VOLUME_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(ml|l\b|ltr|litres?|liters?|kg|kgs|g\b|gr\b|pcs\.?|pieces?|units?|unités?)", re.IGNORECASE)
+VOLUME_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(ml|l\b|ltr|litres?|liters?|kg|kgs|g\b|gr\b|pcs\.?|pieces?|units?|unités?|pack|packs)", re.IGNORECASE)
 
 
 def _parse_volume(title: str) -> tuple[float | None, str]:
@@ -1286,6 +1383,7 @@ def _parse_volume(title: str) -> tuple[float | None, str]:
         "liter": "L", "liters": "L", "kg": "kg", "kgs": "kg",
         "g": "g", "gr": "g", "pcs": "pcs", "piece": "pcs", "pieces": "pcs",
         "unit": "pcs", "units": "pcs", "unités": "pcs",
+        "pack": "pack", "packs": "pack",
     }
     return quantity, unit_map.get(unit, unit.upper() if len(unit) <= 3 else unit)
 
@@ -1351,7 +1449,23 @@ def _landed_cost_view(profitability: ProfitabilityEstimate) -> LandedCostView:
         "Estimation partielle — certaines charges d'importation ne sont pas incluses."
         if partial else ""
     )
-    return LandedCostView(total_tnd=total, components=components, partial_estimate=partial, note=note)
+    minimum = profitability.estimated_landed_cost_min_tnd
+    maximum = profitability.estimated_landed_cost_max_tnd
+    range_text = _range_text("TND", [minimum, maximum]) if minimum is not None and maximum is not None else ""
+    for component in components:
+        if component.label_key == "supplier_price":
+            component.min_tnd = profitability.source_unit_price_min_tnd
+            component.max_tnd = profitability.source_unit_price_max_tnd
+        elif component.label_key == "customs" and profitability.source_unit_price_min_tnd is not None:
+            rate = (customs / profitability.source_unit_price_tnd) if customs and profitability.source_unit_price_tnd else None
+            component.min_tnd = round(profitability.source_unit_price_min_tnd * rate, 2) if rate is not None else customs
+            component.max_tnd = customs
+        else:
+            component.min_tnd = component.value_tnd
+            component.max_tnd = component.value_tnd
+        if component.min_tnd is not None and component.max_tnd is not None:
+            component.range_text = _range_text("TND", [component.min_tnd, component.max_tnd])
+    return LandedCostView(total_tnd=total, min_tnd=minimum, max_tnd=maximum, range_text=range_text, components=components, partial_estimate=partial, note=note)
 
 
 def _comparability_assessment(product: ProductUnderstanding, validated: ProviderAnalysisResult) -> ComparabilityAssessment:
@@ -1446,16 +1560,17 @@ def _comparability_assessment(product: ProductUnderstanding, validated: Provider
     )
 
 
-def _competition_level(validated: ProviderAnalysisResult) -> str:
+def _competition_level(validated: ProviderAnalysisResult, product: ProductUnderstanding | None = None) -> str:
     retail = validated.tunisia_retail_market
-    sellers = {offer.seller_name.lower() for offer in retail.retail_offers if offer.seller_name}
-    brands = {_extract_brand(offer.product_title or "").lower() for offer in retail.retail_offers}
+    relevant_offers = [offer for offer in retail.retail_offers if product is None or _retail_target_package_price(offer, product) is not None]
+    sellers = {offer.seller_name.lower() for offer in relevant_offers if offer.seller_name}
+    brands = {_extract_brand(offer.product_title or "").lower() for offer in relevant_offers}
     brands.discard("")
     # A small result set is insufficient coverage, not proof of low competition.
     if len(sellers) < 3:
         return "unknown"
     signals = len(sellers) + len(brands)
-    if not retail.retail_offers:
+    if not relevant_offers:
         return "unknown"
     if signals >= 8:
         return "high"
@@ -1497,79 +1612,75 @@ def _margin_percent(profitability: ProfitabilityEstimate | None) -> float | None
     return margin / selling * 100
 
 
-def _detailed_scoring(validated: ProviderAnalysisResult, profitability: ProfitabilityEstimate | None) -> DetailedScoring:
+def _detailed_scoring(validated: ProviderAnalysisResult, profitability: ProfitabilityEstimate | None, product: ProductUnderstanding | None = None) -> DetailedScoring:
     retail = validated.tunisia_retail_market
-    unique_sellers = {offer.seller_name.lower() for offer in retail.retail_offers if offer.seller_name}
+    comparable_retail = _retail_target_package_prices(retail.retail_offers, product) if product else [
+        offer.price_min_tnd_numeric for offer in retail.retail_offers if offer.price_min_tnd_numeric is not None
+    ]
+    unique_sellers = {offer.seller_name.lower() for offer in retail.retail_offers if offer.seller_name and (not product or _retail_target_package_price(offer, product) is not None)}
 
-    demand_score = min(20, len(unique_sellers) * 4 + min(len(retail.retail_offers), 5))
+    demand_score = min(25, len(unique_sellers) * 5 + min(len(comparable_retail), 5))
     demand_note = (
-        f"{len(unique_sellers)} distinct seller(s) and {len(retail.retail_offers)} retail reference(s) observed."
-        if retail.retail_offers
-        else "No Tunisia retail evidence observed yet."
+        f"{len(unique_sellers)} vendeur(s) distinct(s) et {len(comparable_retail)} référence(s) retail comparable(s) observés."
+        if comparable_retail else "Aucune référence retail tunisienne comparable observée."
     )
 
     margin_percent = _margin_percent(profitability)
     if margin_percent is None:
-        margin_score, margin_note = 0, "Marge non calculable : l’unité du prix fournisseur n’est pas confirmée."
+        margin_score, margin_note = 0, "Marge non calculable : l’unité du prix fournisseur n’est pas confirmée ou le marché comparable manque."
     elif margin_percent >= 30:
-        margin_score, margin_note = 20, f"Gross margin is about {margin_percent:.0f}% of selling price."
+        margin_score, margin_note = 25, f"La marge brute représente environ {margin_percent:.0f} % du prix de vente."
     elif margin_percent >= 20:
-        margin_score, margin_note = 15, f"Gross margin is about {margin_percent:.0f}% of selling price."
+        margin_score, margin_note = 18, f"La marge brute représente environ {margin_percent:.0f} % du prix de vente."
     elif margin_percent >= 10:
-        margin_score, margin_note = 10, f"Gross margin is about {margin_percent:.0f}% of selling price — thin buffer."
+        margin_score, margin_note = 10, f"La marge brute représente environ {margin_percent:.0f} % du prix de vente ; la sécurité reste limitée."
     elif margin_percent > 0:
-        margin_score, margin_note = 5, f"Gross margin is only about {margin_percent:.0f}% of selling price."
+        margin_score, margin_note = 5, f"La marge brute ne représente qu’environ {margin_percent:.0f} % du prix de vente."
     else:
-        margin_score, margin_note = 0, "Estimated margin is zero or negative."
+        margin_score, margin_note = 0, "La marge brute est nulle ou négative."
 
     if margin_percent is not None:
         margin_penalty = _margin_confidence_penalty(validated, profitability)
         margin_score = max(0, margin_score - margin_penalty)
         if margin_score > 0:
             margin_note = (
-                f"Gross margin is about {margin_percent:.0f}% of selling price. "
-                f"Economic score was adjusted by a data reliability penalty of -{margin_penalty} point(s)."
+                f"La marge brute représente environ {margin_percent:.0f} % du prix de vente. "
+                f"Le score économique est réduit de {margin_penalty} point(s) pour fiabilité des données."
             )
 
     confidences = [offer.confidence for offer in validated.china_sourcing_offers]
     if "high" in confidences and len(validated.china_sourcing_offers) >= 2:
-        sourcing_score, sourcing_note = 14, f"{len(validated.china_sourcing_offers)} sourcing offer(s) with high-confidence evidence."
+        sourcing_score, sourcing_note = 18, f"{len(validated.china_sourcing_offers)} offre(s) de sourcing avec preuves de confiance élevée."
     elif "medium" in confidences or validated.china_sourcing_offers:
-        sourcing_score, sourcing_note = 9, f"{len(validated.china_sourcing_offers)} sourcing offer(s); logistics cost remains an estimate."
+        sourcing_score, sourcing_note = 12, f"{len(validated.china_sourcing_offers)} offre(s) de sourcing ; la logistique reste estimée."
     else:
-        sourcing_score, sourcing_note = 3, "No reliable sourcing offer found yet."
+        sourcing_score, sourcing_note = 0, "Aucune offre de sourcing fiable trouvée."
 
-    competition_level = _competition_level(validated)
-    competition_scores = {"unknown": 7, "low": 14, "medium": 9, "high": 4}
+    competition_level = _competition_level(validated, product)
+    competition_scores = {"unknown": 0, "low": 8, "medium": 6, "high": 3}
     competition_note = {
-        "unknown": "Competition intensity unknown due to missing market evidence.",
-        "low": "Few competing sellers/brands observed.",
-        "medium": "Moderate number of competing sellers/brands observed.",
-        "high": "Many established sellers/brands compete on this product.",
+        "unknown": "Intensité concurrentielle non déterminable avec la couverture observée.",
+        "low": "Peu de vendeurs ou de marques concurrents observés.",
+        "medium": "Nombre modéré de vendeurs ou de marques concurrents observés.",
+        "high": "De nombreux vendeurs ou marques établis concurrencent ce produit.",
     }[competition_level]
-
-    ads_score = 6 if retail.retail_offers else 3
-    ads_note = "Qualitative reading only — no CPC/CPA/ROAS data available."
 
     recurring = _offers_look_recurring(validated)
     recurrence_score = 8 if recurring else 5
     recurrence_note = (
-        "Product looks consumable/recurring based on category signals."
-        if recurring else "Repurchase frequency unclear from available evidence."
+        "Le produit présente des signaux de réachat ou de consommation récurrente."
+        if recurring else "La fréquence de réachat reste incertaine selon les preuves disponibles."
     )
 
-    differentiation_score = 2
     risk_score, risk_note = _risk_management_score(validated, profitability, len(unique_sellers))
 
     criteria = [
-        ScoreCriterion(key="market_demand", score=demand_score, max_score=20, justification=demand_note),
-        ScoreCriterion(key="margin", score=margin_score, max_score=20, justification=margin_note),
-        ScoreCriterion(key="sourcing", score=sourcing_score, max_score=15, justification=sourcing_note),
-        ScoreCriterion(key="competition", score=competition_scores[competition_level], max_score=15, justification=competition_note),
-        ScoreCriterion(key="ads_potential", score=ads_score, max_score=10, justification=ads_note),
+        ScoreCriterion(key="market_demand", score=demand_score, max_score=25, justification=demand_note),
+        ScoreCriterion(key="margin", score=margin_score, max_score=25, justification=margin_note),
+        ScoreCriterion(key="sourcing", score=sourcing_score, max_score=20, justification=sourcing_note),
+        ScoreCriterion(key="competition", score=competition_scores[competition_level], max_score=10, justification=competition_note),
         ScoreCriterion(key="recurrence", score=recurrence_score, max_score=10, justification=recurrence_note),
-        ScoreCriterion(key="differentiation", score=differentiation_score, max_score=5, justification="No clear differentiator evidenced; assume limited differentiation."),
-        ScoreCriterion(key="risk", score=risk_score, max_score=5, justification=risk_note),
+        ScoreCriterion(key="risk", score=risk_score, max_score=10, justification=risk_note),
     ]
     return DetailedScoring(total=min(100, sum(c.score for c in criteria)), criteria=criteria)
 
@@ -1596,13 +1707,13 @@ def _risk_management_score(
     profitability: ProfitabilityEstimate | None,
     seller_count: int,
 ) -> tuple[int, str]:
-    score = 5
+    score = 10
     limits: list[str] = []
     risk_limits = [
-        (_overall_confidence(validated) == "low", 2, "confiance globale faible"),
-        (not profitability or not profitability.source_price_unit_confirmed, 2, "unité du prix fournisseur inconnue"),
-        (len(validated.china_sourcing_offers) < 3, 1, "moins de trois fournisseurs"),
-        (seller_count < 3 or _competition_level(validated) == "unknown", 1, "couverture de la concurrence insuffisante"),
+        (_overall_confidence(validated) == "low", 3, "confiance globale faible"),
+        (not profitability or not profitability.source_price_unit_confirmed, 3, "unité du prix fournisseur inconnue"),
+        (len(validated.china_sourcing_offers) < 3, 2, "moins de trois fournisseurs"),
+        (seller_count < 3 or _competition_level(validated) == "unknown", 2, "couverture de la concurrence insuffisante"),
     ]
     for limited, deduction, label in risk_limits:
         if limited:
@@ -1613,10 +1724,10 @@ def _risk_management_score(
     return max(0, score), "Maîtrise du risque limitée : " + "; ".join(limits) + "."
 
 
-def _commercial_potential_score(validated: ProviderAnalysisResult) -> int:
-    scoring = _detailed_scoring(validated, None)
+def _commercial_potential_score(validated: ProviderAnalysisResult, product: ProductUnderstanding | None = None) -> int:
+    scoring = _detailed_scoring(validated, None, product)
     by_key = {criterion.key: criterion for criterion in scoring.criteria}
-    relevant = [by_key[k] for k in ("market_demand", "recurrence", "competition", "differentiation") if k in by_key]
+    relevant = [by_key[k] for k in ("market_demand", "competition", "recurrence") if k in by_key]
     max_total = sum(c.max_score for c in relevant)
     raw = sum(c.score for c in relevant)
     return round(raw / max_total * 100) if max_total else 0
@@ -1906,7 +2017,7 @@ def _tunisia_wholesale_summary(offers: list[TunisiaSourcingOffer]) -> str:
     prices = [offer.price_min_tnd_numeric for offer in offers if offer.price_min_tnd_numeric is not None]
     if not prices:
         return TUNISIA_WHOLESALE_NOT_FOUND
-    return f"Tunisian wholesale/importer/distributor evidence was found around {min(prices):g} to {max(prices):g} TND per unit."
+    return f"Des preuves grossiste/importateur/distributeur tunisiennes ont été trouvées entre {min(prices):g} et {max(prices):g} TND par unité."
 
 
 def _digital_ad_budget_min(cost_config: CostConfig) -> float:
@@ -1921,14 +2032,16 @@ def _digital_ad_budget_default(cost_config: CostConfig) -> float:
     return DIGITAL_AD_BUDGET_DEFAULT_TND
 
 
-def _overall_confidence(validated: ProviderAnalysisResult) -> str:
+def _overall_confidence(validated: ProviderAnalysisResult, product: ProductUnderstanding | None = None) -> str:
     supplier_count = sum(
         1 for offer in validated.china_sourcing_offers
         if offer.source_url and offer.confidence in {"high", "medium"}
+        and (product is None or _supplier_target_package_price(offer, CostConfig(), product)[0] is not None)
     )
     retail_count = sum(
         1 for offer in validated.tunisia_retail_market.retail_offers
         if offer.source_url and offer.confidence in {"high", "medium"}
+        and (product is None or _retail_target_package_price(offer, product) is not None)
     )
     if supplier_count >= 3 and retail_count >= 3:
         return "high"
@@ -1953,15 +2066,17 @@ def _conservative_recommendation(
         return "investigate_more", "La rentabilité reste à valider car les preuves de sourcing comprennent des offres équivalentes ou faiblement correspondantes."
     if gross_margin is None:
         return "investigate_more", "La rentabilité reste à valider parce que la comparabilité du coût fournisseur et de la référence tunisienne est insuffisante."
-    if current == "go" or gross_margin >= 5:
+    if gross_margin >= 10 and _overall_confidence(validated) in {"medium", "high"}:
         return "go", "La marge brute estimée est positive et les preuves de prix fournisseur permettent de passer à la vérification du fournisseur et au test d’échantillon."
+    if gross_margin > 0:
+        return "go_with_conditions", "La marge brute estimée est positive, mais un meilleur niveau de preuve fournisseur et un test limité sont nécessaires avant tout engagement de volume."
     if not validated.tunisia_sourcing_offers:
         return "investigate_more", "Le produit présente un potentiel commercial, mais la compétitivité du sourcing et le positionnement marché doivent encore être renforcés."
     return "investigate_more", "Le produit présente un potentiel commercial, mais les preuves disponibles ne justifient pas encore un GO immédiat."
 
 
 def _decision_scores(context: DecisionScoreContext) -> DecisionScores:
-    confidence = _overall_confidence(context.validated)
+    confidence = _overall_confidence(context.validated, context.product)
     factors = _decision_factors(context, confidence)
     go_percent = _bounded_go_percent(context, confidence)
     if context.final_recommendation != "go" and go_percent > 40:
@@ -1995,9 +2110,10 @@ def _client_decision_fields(context: DecisionScoreContext, scores: DecisionScore
 def _decision_summary(context: DecisionScoreContext, scores: DecisionScores) -> str:
     if context.final_recommendation == "go":
         return (
-            "The opportunity shows enough price-backed margin buffer to support a cautious GO "
-            "and move into supplier verification and sample testing."
+            "Les preuves de prix montrent une marge brute suffisante pour avancer prudemment vers la vérification du fournisseur et le test d’un échantillon."
         )
+    if context.final_recommendation == "go_with_conditions":
+        return "La marge brute est positive, mais le passage à un volume significatif reste conditionné à la confirmation du fournisseur et à un test limité."
     if context.final_recommendation == "no_go":
         return (
             "Les risques dominent car la marge brute comparable est nulle ou négative face au risque d’exécution."
@@ -2020,8 +2136,8 @@ def _positive_signals(context: DecisionScoreContext) -> list[str]:
     signals: list[str] = []
     retail = context.validated.tunisia_retail_market
     if retail.retail_offers and context.gross_margin is not None and context.gross_margin > 0:
-        signals.append("Retail prices appear higher than the estimated source price.")
-        signals.append("There may be room for margin before marketing and logistics.")
+        signals.append("Les prix retail comparables sont supérieurs au coût fournisseur estimé.")
+        signals.append("Un espace de marge brute existe avant publicité et logistique.")
     elif retail.retail_offers:
         signals.append("Des références de prix retail tunisiennes sont disponibles pour comparaison.")
     if context.validated.china_sourcing_offers:
@@ -2032,33 +2148,33 @@ def _positive_signals(context: DecisionScoreContext) -> list[str]:
 def _risk_signals(context: DecisionScoreContext) -> list[str]:
     signals: list[str] = []
     if not context.validated.tunisia_sourcing_offers:
-        signals.append("Local Tunisia wholesale competitiveness is not visible in the evidence.")
+        signals.append("La compétitivité grossiste locale en Tunisie n’est pas visible dans les preuves.")
     if context.profitability and context.profitability.estimated_landed_cost_per_unit_tnd is None:
         signals.append("La rentabilité reste à valider car le coût fournisseur comparable n’est pas confirmé.")
     if context.gross_margin is None:
         signals.append("La rentabilité reste à valider parce que le coût fournisseur et la référence tunisienne ne sont pas comparables de façon suffisante.")
     elif context.gross_margin <= 0:
-        signals.append("Estimated margin is weak or negative.")
+        signals.append("La marge estimée est faible ou négative.")
     elif context.gross_margin < 5:
-        signals.append("Estimated margin is thin once campaign and fulfillment pressure are considered.")
+        signals.append("La marge estimée reste faible après prise en compte de la pression publicitaire et logistique.")
     if _has_equivalent_or_weak_china_sourcing(context.validated):
-        signals.append("Supplier evidence still relies on equivalent or weak matching.")
-    signals.append("Campaign economics still need market validation.")
+        signals.append("Les preuves fournisseur reposent encore sur une correspondance équivalente ou faible.")
+    signals.append("L’économie d’une campagne doit encore être validée sur le marché.")
     return list(dict.fromkeys(signals))[:5]
 
 
 def _main_decision_factors(context: DecisionScoreContext) -> list[str]:
     factors = [
-        "Tunisia retail price range",
-        "Landed-cost scenario",
-        "Campaign economics",
-        "Sourcing competitiveness",
-        "Market differentiation",
+        "Fourchette de prix retail en Tunisie",
+        "Scénario de coût rendu",
+        "Économie de la campagne",
+        "Compétitivité du sourcing",
+        "Différenciation sur le marché",
     ]
     if not context.validated.tunisia_retail_market.retail_offers:
-        factors[0] = "Missing Tunisia retail evidence"
+        factors[0] = "Preuves retail tunisiennes manquantes"
     if not context.validated.china_sourcing_offers:
-        factors[3] = "Missing China sourcing evidence"
+        factors[3] = "Preuves de sourcing Chine manquantes"
     return factors
 
 
@@ -2100,11 +2216,13 @@ def _dominant_side(go_percent: int, no_go_percent: int) -> str:
 
 
 def _starting_go_percent(context: DecisionScoreContext) -> int:
-    if context.model_recommendation == "no_go":
-        return 20
     if context.final_recommendation == "go":
-        return 60 if context.model_recommendation != "go" else 65
-    return 35 if context.model_recommendation != "go" else 40
+        return 60
+    if context.final_recommendation == "go_with_conditions":
+        return 45
+    if context.final_recommendation == "no_go":
+        return 10
+    return 35
 
 
 def _go_score_caps(context: DecisionScoreContext, confidence: str) -> list[int]:
@@ -2135,15 +2253,15 @@ def _go_score_caps(context: DecisionScoreContext, confidence: str) -> list[int]:
 def _decision_factors(context: DecisionScoreContext, confidence: str) -> list[str]:
     factors = _margin_decision_factors(context.gross_margin)
     if context.profitability and context.profitability.estimated_landed_cost_per_unit_tnd is None:
-        factors.append("Estimated landed cost is missing or incomplete.")
+        factors.append("Le coût rendu estimé est manquant ou incomplet.")
     if not context.validated.tunisia_retail_market.retail_offers:
-        factors.append("Tunisia retail evidence is missing.")
+        factors.append("Les preuves retail tunisiennes sont manquantes.")
     if not context.validated.china_sourcing_offers:
-        factors.append("China sourcing price evidence is missing.")
+        factors.append("Les preuves de prix du sourcing Chine sont manquantes.")
     if not context.validated.tunisia_sourcing_offers:
         factors.append(TUNISIA_WHOLESALE_NOT_FOUND)
     if _has_equivalent_or_weak_china_sourcing(context.validated):
-        factors.append("China sourcing evidence relies on broad, weak, or equivalent OEM matching.")
+        factors.append("Les preuves de sourcing Chine reposent sur une correspondance large, faible ou seulement équivalente.")
     if confidence == "low":
         factors.append("Evidence confidence is low.")
     return factors or [context.recommendation_reason or "Available evidence supports a conservative decision."]
@@ -2151,12 +2269,12 @@ def _decision_factors(context: DecisionScoreContext, confidence: str) -> list[st
 
 def _margin_decision_factors(gross_margin: float | None) -> list[str]:
     if gross_margin is None:
-        return ["Gross margin could not be calculated from source-backed landed cost and retail price."]
+        return ["La marge brute ne peut pas être calculée à partir d’un coût rendu et d’un prix retail comparables."]
     if gross_margin <= 0:
-        return ["Estimated gross margin is negative or too close to zero."]
+        return ["La marge brute estimée est négative ou trop proche de zéro."]
     if gross_margin < 5:
-        return ["Estimated gross margin is positive but thin before marketing and logistics variance."]
-    return ["Estimated gross margin is positive before marketing."]
+        return ["La marge brute estimée est positive mais faible avant les variations de publicité et de logistique."]
+    return ["La marge brute estimée est positive avant publicité."]
 
 
 def _go_score_reason(context: DecisionScoreContext, confidence: str) -> str:
@@ -2184,11 +2302,11 @@ def _score_explanation(
             "La rentabilité reste à valider parce que le coût fournisseur comparable ou la référence tunisienne comparable "
             "n’est pas confirmé. Les preuves retail et sourcing disponibles ne suffisent pas encore pour conclure."
         )
-    retail_range = _range_text("", [retail.price_min_tnd, retail.price_max_tnd], suffix=" TND") or "the visible retail range"
+    retail_range = _range_text("", [retail.price_min_tnd, retail.price_max_tnd], suffix=" TND") or "une fourchette retail comparable non confirmée"
     landed_cost = (
-        f"{profitability.estimated_landed_cost_per_unit_tnd:g} TND/unit"
+        f"{profitability.estimated_landed_cost_per_unit_tnd:g} TND/unité"
         if profitability and profitability.estimated_landed_cost_per_unit_tnd is not None
-        else "the current landed-cost scenario"
+        else "le scénario de coût rendu actuel"
     )
     margin_text = (
         f"{context.gross_margin:g} TND par unité avant publicité"
@@ -2196,9 +2314,9 @@ def _score_explanation(
         else "une rentabilité encore non confirmée"
     )
     campaign_budget = (
-        f"{profitability.estimated_meta_campaign_budget_tnd:g} TND total campaign budget"
+        f"{profitability.estimated_meta_campaign_budget_tnd:g} TND de budget publicitaire total"
         if profitability and profitability.estimated_meta_campaign_budget_tnd is not None
-        else "the current campaign economics"
+        else "l’économie de campagne actuelle"
     )
     if dominant_side == "go":
         return (
@@ -2330,6 +2448,10 @@ def _reconcile_profitability_supplier_price(
     cost_config: CostConfig,
     product: ProductUnderstanding,
 ) -> ProfitabilityEstimate:
+    # The validated response already carries the complete min/max interval.
+    # Never collapse it back to a model-provided or minimum-only scalar.
+    if profitability.source_unit_price_min_tnd is not None or profitability.source_unit_price_max_tnd is not None:
+        return profitability
     supplier_offer = _canonical_supplier_offer(validated, product)
     supplier_price = _canonical_supplier_price(validated, cost_config, product)
     if not supplier_offer or not supplier_offer.price_unit or supplier_price is None:
@@ -2382,6 +2504,35 @@ def _reconcile_profitability_market_price(
     product: ProductUnderstanding,
 ) -> ProfitabilityEstimate:
     """Keep the final profitability payload aligned with retained retail offers."""
+    if profitability.estimated_selling_price_min_tnd is not None and profitability.estimated_selling_price_max_tnd is not None:
+        landed_min = profitability.estimated_landed_cost_min_tnd
+        landed_max = profitability.estimated_landed_cost_max_tnd
+        if landed_min is None or landed_max is None:
+            return profitability.model_copy(update={
+            "estimated_selling_price_tnd": profitability.estimated_selling_price_tnd or round(median([profitability.estimated_selling_price_min_tnd, profitability.estimated_selling_price_max_tnd]), 2),
+                "gross_margin_per_unit_before_marketing_tnd": None,
+                "estimated_margin_per_unit_tnd": None,
+            })
+        selling_min = profitability.estimated_selling_price_min_tnd
+        selling_max = profitability.estimated_selling_price_max_tnd
+        margin_min = round(selling_min - landed_max, 2)
+        margin_max = round(selling_max - landed_min, 2)
+        prudent = margin_min
+        scalar_margin = profitability.gross_margin_per_unit_before_marketing_tnd or round((selling_min + selling_max) / 2 - (profitability.estimated_landed_cost_min_tnd or landed_min), 2)
+        gross_profit = round(scalar_margin * ANALYSIS_QUANTITY_UNITS, 2)
+        budget = profitability.digital_ad_budget_default_tnd or DIGITAL_AD_BUDGET_DEFAULT_TND
+        return profitability.model_copy(update={
+            "estimated_selling_price_tnd": round(median([selling_min, selling_max]), 2),
+            "gross_margin_per_unit_before_marketing_tnd": scalar_margin,
+            "gross_margin_min_tnd": margin_min,
+            "gross_margin_max_tnd": margin_max,
+            "gross_margin_percent_min": round(margin_min / selling_max * 100, 1) if selling_max else None,
+            "gross_margin_percent_max": round(margin_max / selling_min * 100, 1) if selling_min else None,
+            "estimated_margin_per_unit_tnd": scalar_margin,
+            "gross_profit_for_1000_before_marketing_tnd": gross_profit,
+            "net_profit_for_1000_after_marketing_tnd": round(gross_profit - budget, 2),
+            "estimated_profit_for_1000_units_tnd": round(gross_profit - budget, 2),
+        })
     _, selling_price, pricing_basis = _comparable_prices(validated, cost_config, product)
     landed_cost = profitability.estimated_landed_cost_per_unit_tnd
     if selling_price is None or landed_cost is None:
@@ -2421,6 +2572,34 @@ def _canonical_supplier_price(
         return price_tnd
     equivalent_price, _ = _supplier_target_package_price(offer, cost_config, product)
     return equivalent_price
+
+
+def _canonical_supplier_price_range(
+    validated: ProviderAnalysisResult,
+    cost_config: CostConfig,
+    product: ProductUnderstanding | None = None,
+) -> tuple[float | None, float | None, ChinaSourcingOffer | None]:
+    offer = _canonical_supplier_offer(validated, product)
+    if not offer:
+        return None, None, None
+    if offer.price_min_usd_numeric is None and offer.price_max_usd_numeric is None:
+        return None, None, offer
+    rate = float(cost_config.usd_to_tnd_rate or 0)
+    if rate <= 0:
+        return None, None, offer
+    minimum_usd = offer.price_min_usd_numeric or offer.price_max_usd_numeric
+    maximum_usd = offer.price_max_usd_numeric or minimum_usd
+    if minimum_usd is None or maximum_usd is None:
+        return None, None, offer
+    minimum = round(minimum_usd * rate, 2)
+    maximum = round(maximum_usd * rate, 2)
+    if product is not None:
+        minimum_target, _ = _supplier_target_package_price(offer.model_copy(update={"price_min_usd_numeric": minimum_usd}), cost_config, product)
+        maximum_target, _ = _supplier_target_package_price(offer.model_copy(update={"price_min_usd_numeric": maximum_usd}), cost_config, product)
+        if minimum_target is None or maximum_target is None:
+            return None, None, offer
+        minimum, maximum = minimum_target, maximum_target
+    return min(minimum, maximum), max(minimum, maximum), offer
 
 
 def _product_target_volume(product: ProductUnderstanding) -> tuple[float | None, str | None]:

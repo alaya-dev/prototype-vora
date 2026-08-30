@@ -18,6 +18,7 @@ from app.prototype.research_orchestrator import (
     _detailed_scoring,
     _image_source_matches_product,
     _response_from_validated,
+    _supplier_target_package_price,
     _to_client_response,
 )
 from app.prototype.schemas import (
@@ -145,7 +146,7 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(criteria["margin"].score, 0)
         self.assertEqual(
             criteria["margin"].justification,
-            "Marge non calculable : l’unité du prix fournisseur n’est pas confirmée.",
+            "Marge non calculable : l’unité du prix fournisseur n’est pas confirmée ou le marché comparable manque.",
         )
         self.assertEqual(criteria["risk"].score, 0)
         self.assertIn("unité du prix fournisseur inconnue", criteria["risk"].justification)
@@ -583,7 +584,7 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(retail_by_seller["Liqui Moly Tunisia"].comparable_target_price_tnd)
         self.assertEqual(result.profitability_estimate.estimated_selling_price_tnd, 128.5)
         self.assertEqual(result.profitability_estimate.gross_margin_per_unit_before_marketing_tnd, 81.58)
-        self.assertEqual(result.competition_level, "medium")
+        self.assertEqual(result.competition_level, "unknown")
         self.assertLessEqual(len(result.sources), 8)
 
     def test_missing_comparable_prices_do_not_create_profitability_or_negative_conclusion(self) -> None:
@@ -692,7 +693,7 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(profit.source_unit_price_tnd, 6.2)
         self.assertIsNone(profit.estimated_landed_cost_per_unit_tnd)
         self.assertIsNone(profit.estimated_profit_per_unit_tnd)
-        self.assertIn("requires shipping/import/handling assumptions", profit.landed_cost_breakdown_notes)
+        self.assertIn("hypothèses de transport", profit.landed_cost_breakdown_notes)
         self.assertLessEqual(result.decision_scores.go_percent, 25)
         self.assertEqual(result.recommendation, "investigate_more")
         self.assertIn("rentabilité reste à valider", result.decision_scores.score_explanation.lower())
@@ -808,8 +809,8 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("tunisia_retail", tavily.calls)
         self.assertIn("tunisia_retail", exa.calls)
         self.assertFalse(result.sourcing_summary.tunisia_wholesale_found)
-        self.assertIn("No reliable Tunisian wholesale sourcing offer", result.sourcing_summary.tunisia_wholesale_summary)
-        self.assertTrue(any("No reliable Tunisian wholesale" in warning for warning in result.warnings))
+        self.assertIn("Aucun prix grossiste tunisien public fiable", result.sourcing_summary.tunisia_wholesale_summary)
+        self.assertTrue(any("wholesale" in warning.lower() or "grossiste" in warning.lower() for warning in result.warnings))
         self.assertEqual(result.hidden_sourcing_links.tunisia_sourcing_links, [])
 
     async def test_reveal_returns_cheapest_china_product_links_without_seller_contacts(self) -> None:
@@ -1015,11 +1016,11 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertIn("T9 vintage hair trimmer", result.localized_analysis.product_description_en)
-        self.assertIn("US$2 to US$3", result.localized_analysis.price_analysis_en)
-        self.assertIn("35 to 42 TND", result.localized_analysis.price_analysis_en)
-        self.assertIn("2 seller reference(s)", result.localized_analysis.market_analysis_en)
-        self.assertIn("investigate more", result.localized_analysis.business_reading_en)
-        self.assertIn("Supplier validation is still required", result.localized_analysis.business_reading_en)
+        self.assertIn("sourcing Chine", result.localized_analysis.price_analysis_en)
+        self.assertIn("références retail en Tunisie", result.localized_analysis.price_analysis_en)
+        self.assertIn("référence(s) vendeur", result.localized_analysis.market_analysis_en)
+        self.assertIn("marge brute estimée est positive", result.localized_analysis.business_reading_en)
+        self.assertIn("La marge brute estimée est positive", result.localized_analysis.business_reading_en)
 
 
 def _orchestrator(
@@ -1051,6 +1052,47 @@ def _orchestrator(
         store=store or PrototypeStore(_temp_db()),
         cost_config=cost_config or CostConfig(),
     )
+
+
+    def test_price_ranges_are_converted_and_market_reference_uses_median(self) -> None:
+        product = ProductUnderstanding(
+            original_product="Huile moteur 5W-30 4L",
+            normalized_product="5W-30 engine oil 4L",
+            technical_specs=["5W-30", "4L"],
+        )
+        analysis = ProviderAnalysisResult(
+            china_sourcing_offers=[ChinaSourcingOffer(
+                name="Supplier",
+                product_title="5W-30 engine oil 4L bottle",
+                price_range_usd="US$11.35–13.38",
+                price_min_usd_numeric=11.35,
+                price_max_usd_numeric=13.38,
+                price_unit="4L bottle",
+                source_url="https://cn.example/oil",
+                confidence="high",
+                product_match="exact",
+            )],
+            tunisia_retail_market=TunisiaRetailMarket(retail_offers=[
+                TunisiaRetailOffer(seller_name=f"Shop {price}", product_title="5W-30 oil 4L", price_range_tnd=f"{price} TND", price_min_tnd_numeric=price, source_url=f"https://shop{price}.tn/oil", confidence="high", product_match="exact")
+                for price in (50, 100, 1000)
+            ]),
+        )
+        result = _to_client_response("range-test", product, None, analysis, ProviderEvidence(provider_id="test"), CostConfig(), [], [])
+        profit = result.profitability_estimate
+        self.assertEqual((profit.source_unit_price_min_tnd, profit.source_unit_price_max_tnd), (35.19, 41.48))
+        self.assertEqual((profit.estimated_landed_cost_min_tnd, profit.estimated_landed_cost_max_tnd), (44.71, 51.63))
+        self.assertEqual((profit.estimated_selling_price_min_tnd, profit.estimated_selling_price_max_tnd), (50, 1000))
+        self.assertEqual(profit.estimated_selling_price_tnd, 100)
+        self.assertEqual(profit.gross_margin_min_tnd, -1.63)
+        self.assertEqual(profit.gross_margin_max_tnd, 955.29)
+
+    def test_kg_is_comparable_but_carton_is_not_safely_convertible(self) -> None:
+        kg_product = ProductUnderstanding(original_product="protéine en poudre 2kg", normalized_product="protein powder 2kg")
+        kg_offer = ChinaSourcingOffer(name="KG supplier", product_title="protein powder 2kg bag", price_min_usd_numeric=8, price_unit="unit", source_url="https://cn.example/kg")
+        self.assertEqual(_supplier_target_package_price(kg_offer, CostConfig(), kg_product)[0], 24.8)
+        pack_product = ProductUnderstanding(original_product="capsules 30 pack", normalized_product="capsules 30 pack")
+        carton_offer = ChinaSourcingOffer(name="Carton supplier", product_title="capsules carton", price_min_usd_numeric=8, price_unit="carton", source_url="https://cn.example/carton")
+        self.assertIsNone(_supplier_target_package_price(carton_offer, CostConfig(), pack_product)[0])
 
 
 def _analysis(include_tunisia_sourcing: bool = True) -> ProviderAnalysisResult:

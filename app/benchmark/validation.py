@@ -204,7 +204,7 @@ def _validate_tunisia_sourcing_offer(
     raw_source = raw_sources_by_url.get(normalized_url)
     if _is_non_tunisian_maghrib_or_foreign_source(offer.source_url, raw_source):
         return None
-    if _is_retail_source(offer.source_url, raw_source):
+    if _is_retail_source(offer.source_url, raw_source) and not _has_explicit_b2b_signal(offer, raw_source):
         return None
     if not has_tunisia_sourcing_signal(offer, raw_source):
         return None
@@ -408,6 +408,14 @@ def _is_retail_source(url: str, raw_source: ProviderRawSource | None) -> bool:
         "magasin",
     )
     return any(domain in hostname for domain in retail_domains) or any(signal in text for signal in retail_signals)
+
+
+def _has_explicit_b2b_signal(offer: TunisiaSourcingOffer, raw_source: ProviderRawSource | None) -> bool:
+    text = f"{_source_text(raw_source)} {offer.name} {offer.type} {offer.notes}".lower()
+    return any(signal in text for signal in (
+        "grossiste", "prix gros", "vente en gros", "tarif professionnel", "quantité minimale",
+        "moq", "prix par quantité", "offre revendeur", "distributeur b2b", "importateur b2b", "b2b",
+    ))
 
 
 def has_tunisia_sourcing_signal(

@@ -250,8 +250,15 @@
   .photo-slot img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
   }
+
+  .product-image-trigger { border: 0; padding: 0; width: 100%; height: 100%; background: transparent; cursor: zoom-in; }
+  .product-image-trigger img { object-fit: contain; }
+  .image-lightbox { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: rgba(8, 18, 32, .84); }
+  .image-lightbox[hidden] { display: none; }
+  .image-lightbox img { max-width: min(94vw, 1100px); max-height: 88vh; object-fit: contain; border-radius: 12px; background: #fff; }
+  .image-lightbox button { position: absolute; top: 18px; right: 22px; border: 0; border-radius: 999px; padding: 8px 13px; font-size: 22px; cursor: pointer; }
 
   .placeholder {
     padding: 22px;
@@ -641,7 +648,7 @@
   .report-cover-image {
     width: 112px;
     height: 82px;
-    object-fit: cover;
+    object-fit: contain;
     border-radius: var(--radius);
     border: 1px solid var(--line-strong);
     background: var(--panel-strong);
@@ -1374,6 +1381,20 @@ let selectedAnalyticsRunId = null;
 let adminPassword = localStorage.getItem("Nexora_admin_password") || "";
 let currentLanguage = "fr";
 let currentPrototypeData = null;
+
+productPhoto.addEventListener("click", (event) => {
+  const image = event.target.closest("img");
+  if (!image || !image.src || image.src.startsWith("data:")) return;
+  const lightbox = document.createElement("div");
+  lightbox.className = "image-lightbox";
+  lightbox.setAttribute("role", "dialog");
+  lightbox.setAttribute("aria-label", "Aperçu de l’image du produit");
+  lightbox.innerHTML = `<button type="button" aria-label="Fermer">×</button><img src="${escapeAttribute(image.src)}" alt="${escapeAttribute(image.alt)}">`;
+  const close = () => lightbox.remove();
+  lightbox.addEventListener("click", (click) => { if (click.target === lightbox || click.target.tagName === "BUTTON") close(); });
+  document.addEventListener("keydown", function closeOnEscape(keyEvent) { if (keyEvent.key === "Escape") { close(); document.removeEventListener("keydown", closeOnEscape); } });
+  document.body.appendChild(lightbox);
+});
 const copy = {
   en: {
     clientEyebrow: "Client Analysis",
@@ -1735,7 +1756,11 @@ function renderPrototypeResult(data) {
   const product = data.product_understanding || {};
   const retainedSupplier = vizyaRetainedSupplier(data);
   const landedCost = finiteOrNull(data.landed_cost?.total_tnd ?? profit.estimated_landed_cost_per_unit_tnd);
+  const landedCostMin = finiteOrNull(data.landed_cost?.min_tnd ?? profit.estimated_landed_cost_min_tnd);
+  const landedCostMax = finiteOrNull(data.landed_cost?.max_tnd ?? profit.estimated_landed_cost_max_tnd);
   const marketReference = finiteOrNull(profit.estimated_selling_price_tnd);
+  const marketReferenceMin = finiteOrNull(profit.estimated_selling_price_min_tnd);
+  const marketReferenceMax = finiteOrNull(profit.estimated_selling_price_max_tnd);
   const grossMargin = Number.isFinite(landedCost) && Number.isFinite(marketReference)
     ? Number((marketReference - landedCost).toFixed(2))
     : finiteOrNull(profit.gross_margin_per_unit_before_marketing_tnd);
@@ -1768,10 +1793,10 @@ function renderPrototypeResult(data) {
       <div class="report-facts">
         ${metric(labels.category, category)}
         ${metric(labels.representativeProduct, product.original_product || product.normalized_product || labels.unavailable)}
-        ${metric(labels.targetMarket, data.target_market || "Tunisia")}
-        ${metric(labels.sourcingCountry, data.sourcing_country || "China")}
+        ${metric(labels.targetMarket, vizyaCountryLabel(data.target_market || "Tunisia"))}
+        ${metric(labels.sourcingCountry, vizyaCountryLabel(data.sourcing_country || "China"))}
         ${metric(labels.supplierPrice, vizyaSupplierPurchasePrice(retainedSupplier, product))}
-        ${metric(labels.landedCost, vizyaTnd(landedCost))}
+        ${metric(labels.landedCost, vizyaAmountRange(landedCostMin, landedCostMax, landedCost))}
         ${metric(labels.retailRange, vizyaRange(retail.min, retail.max))}
         ${metric(labels.wholesaleStatus, wholesaleOffers.length ? labels.wholesaleAvailable : labels.wholesaleUnavailable)}
         ${metric(labels.estimatedMargin, Number.isFinite(marginPercent) ? `${formatNumber(marginPercent)}%` : labels.unavailable)}
@@ -1799,9 +1824,9 @@ function renderPrototypeResult(data) {
         sourceOffers.map((offer) => [
           offer.name || labels.unavailable,
           offer.product_title || labels.unavailable,
-          data.sourcing_country || "China",
+          vizyaCountryLabel(data.sourcing_country || "China"),
           vizyaOfferPrice(offer),
-          `${offer.price_unit || labels.unavailable}${offer.comparable === false ? " — NON COMPARABLE" : ""}`,
+          `${vizyaPriceUnit(offer)}${offer.comparable === false ? " — NON COMPARABLE" : ""}`,
           offer.moq || labels.unavailable,
           vizyaSourceLink(offer.source_url, labels.viewSource),
           vizyaConfidence(offer.confidence),
@@ -1813,7 +1838,7 @@ function renderPrototypeResult(data) {
           <div class="metric-grid">
             ${metric(labels.supplier, retainedSupplier.name || labels.unavailable)}
             ${metric(labels.retainedPrice, vizyaSupplierPurchasePrice(retainedSupplier, product))}
-            ${metric(labels.priceUnit, retainedSupplier.price_unit || labels.unavailable)}
+            ${metric(labels.priceUnit, vizyaPriceUnit(retainedSupplier))}
             ${metric(labels.moq, retainedSupplier.moq || labels.unavailable)}
             ${metricLink(labels.source, retainedSupplier.source_url, labels.viewSource)}
           </div>
@@ -1825,9 +1850,9 @@ function renderPrototypeResult(data) {
       ${Number.isFinite(landedCost) ? `
         ${vizyaTable(
           [labels.component, labels.value, labels.dataStatus],
-          vizyaLandedCostRows(data, retainedSupplier).map((row) => [row.label, vizyaTnd(row.value), row.status])
+          vizyaLandedCostRows(data, retainedSupplier).map((row) => [row.label, row.display, row.status])
         )}
-        <div class="report-facts">${metric(labels.estimatedLandedCost, vizyaTnd(landedCost))}</div>
+        <div class="report-facts">${metric(labels.estimatedLandedCost, vizyaAmountRange(landedCostMin, landedCostMax, landedCost))}</div>
         ${data.landed_cost?.note ? `<p class="hidden-note">${escapeHtml(vizyaSafeText(data.landed_cost.note))}</p>` : ""}`
         : `<p>${escapeHtml(labels.landedCostUnavailable)}</p>`}
     </section>
@@ -1841,7 +1866,7 @@ function renderPrototypeResult(data) {
           offer.brand || labels.unavailable,
           offer.product_title || labels.unavailable,
           offer.volume_text || labels.unavailable,
-          vizyaTnd(offer.price_tnd),
+          vizyaRetailPrice(offer),
           offer.normalized_price_text || (Number.isFinite(offer.normalized_price_per_unit_tnd) ? `${formatNumber(offer.normalized_price_per_unit_tnd)} TND/${vizyaUnit(offer)}` : (offer.comparability_note || labels.unavailable)),
           vizyaSourceLink(offer.source_url, labels.viewSource),
           vizyaConfidence(offer.confidence),
@@ -1850,7 +1875,7 @@ function renderPrototypeResult(data) {
       <div class="report-facts">
         ${metric(labels.minimumRetailPrice, vizyaTnd(retail.min))}
         ${metric(labels.maximumRetailPrice, vizyaTnd(retail.max))}
-        ${metric(labels.comparableMarketReference, vizyaTnd(marketReference))}
+        ${metric(labels.comparableMarketReference, vizyaAmountRange(marketReferenceMin, marketReferenceMax, marketReference))}
       </div>
       <h3>${labels.wholesalePrices}</h3>
       ${wholesaleOffers.length ? vizyaTable(
@@ -1885,9 +1910,9 @@ function renderPrototypeResult(data) {
       <div class="report-header"><div><div class="eyebrow">${labels.estimated}</div><h2>${labels.profitability}</h2></div><span class="pill">${labels.estimateOnly}</span></div>
       ${Number.isFinite(landedCost) && Number.isFinite(marketReference) && Number.isFinite(grossMargin) ? `
         <div class="report-facts">
-          ${metric(labels.comparableMarketReference, vizyaTnd(marketReference))}
-          ${metric(labels.estimatedLandedCost, vizyaTnd(landedCost))}
-          ${metric(labels.grossMargin, vizyaTnd(grossMargin))}
+          ${metric(labels.comparableMarketReference, vizyaAmountRange(marketReferenceMin, marketReferenceMax, marketReference))}
+          ${metric(labels.estimatedLandedCost, vizyaAmountRange(landedCostMin, landedCostMax, landedCost))}
+          ${metric(labels.grossMargin, vizyaAmountRange(profit.gross_margin_min_tnd, profit.gross_margin_max_tnd, grossMargin))}
           ${metric(labels.estimatedMargin, `${formatNumber(marginPercent)}%`)}
         </div>
         <p>${escapeHtml(labels.marginFormula)}</p>`
@@ -1920,7 +1945,7 @@ function renderPrototypeResult(data) {
 function vizyaLabels() {
   if (currentLanguage !== "fr") {
     return {
-      executiveSummary: "Executive Summary", productCategory: "Product / Category Analyzed", internationalSourcing: "International Sourcing", landedCostTitle: "Estimated Landed Cost in Tunisia", tunisiaMarket: "Tunisia Market", competition: "Competition", commercialPotential: "Commercial Potential", profitability: "Estimated Profitability / Margin", finalRecommendation: "Final GO / NO GO Recommendation", sourcesEvidence: "Sources & Evidence", category: "Category", representativeProduct: "Representative product", targetMarket: "Target market", sourcingCountry: "Sourcing country", supplierPrice: "Supplier price", landedCost: "Estimated landed cost", retailRange: "Tunisia retail range", wholesaleStatus: "Tunisia wholesale status", estimatedMargin: "Estimated margin", opportunityScore: "Opportunity score", confidence: "Confidence", supplier: "Supplier", product: "Product", country: "Country", price: "Price", priceUnit: "Price unit", moq: "MOQ", source: "Source", dataUsed: "Data used", viewSource: "View source", retainedSupplier: "Retained supplier offer", retainedPrice: "Retained price", retainedSupplierReason: "Selected as the best price-backed supplier offer with a usable source.", component: "Component", value: "Value", dataStatus: "Data status", estimatedLandedCost: "Estimated landed cost", retailPrices: "Retail prices", seller: "Seller", brand: "Brand", volume: "Volume", normalizedPrice: "Normalized price", minimumRetailPrice: "Minimum retail price", maximumRetailPrice: "Maximum retail price", comparableMarketReference: "Comparable market reference", wholesalePrices: "Tunisia wholesale prices", wholesalePrice: "Wholesale price", competitionLevel: "Competition level", observedSellers: "Observed sellers", observedBrands: "Observed brands", coverageConfidence: "Coverage confidence", positiveSignals: "Positive signals", limitations: "Limitations", estimated: "ESTIMATED", grossMargin: "Estimated gross margin per unit", marginFormula: "Estimated gross margin = comparable Tunisia market reference − estimated landed cost.", marginUnavailable: "Margin cannot yet be reliably calculated because a comparable market reference or landed cost is missing.", noSupplierEvidence: "No reliable international supplier offer was identified in the available public evidence.", noRetailEvidence: "No reliable Tunisian retail reference was identified in the available public evidence.", noWholesaleEvidence: "No reliable public Tunisian wholesale price was identified in the available public evidence.", noPositiveSignals: "No additional positive signal was retained.", noLimitations: "No additional limitation was retained.", noSources: "No source used in this analysis is available.", unavailable: "Insufficient data", estimateOnly: "ESTIMATE", wholesaleAvailable: "Public wholesale evidence available", wholesaleUnavailable: "No public wholesale price identified", landedCostUnavailable: "Estimated landed cost cannot yet be calculated because a source price or import-cost assumption is missing.", decisionUnavailable: "The recommendation requires further evidence.", dataStatus: "Data status"
+      executiveSummary: "Executive Summary", productCategory: "Product / Category Analyzed", internationalSourcing: "International Sourcing", landedCostTitle: "Estimated Landed Cost in Tunisia", tunisiaMarket: "Tunisia Market", competition: "Competition", commercialPotential: "Commercial Potential", profitability: "Estimated Profitability / Margin", finalRecommendation: "Final GO / NO GO Recommendation", sourcesEvidence: "Sources & Evidence", category: "Category", representativeProduct: "Representative product", targetMarket: "Target market", sourcingCountry: "Sourcing country", supplierPrice: "Supplier price", landedCost: "Estimated landed cost", retailRange: "Tunisia retail range", wholesaleStatus: "Tunisia wholesale status", estimatedMargin: "Estimated margin", opportunityScore: "Opportunity score", confidence: "Confidence", supplier: "Supplier", product: "Product", country: "Country", price: "Price", priceUnit: "Price unit", moq: "MOQ", source: "Source", dataUsed: "Data used", viewSource: "View source", retainedSupplier: "Retained supplier offer", retainedPrice: "Retained price", retainedSupplierReason: "Selected as the best price-backed supplier offer with a usable source.", component: "Component", value: "Value", dataStatus: "Data status", estimatedLandedCost: "Estimated landed cost", retailPrices: "Retail prices", seller: "Seller", brand: "Brand", volume: "Volume", normalizedPrice: "Normalized price", minimumRetailPrice: "Minimum retail price", maximumRetailPrice: "Maximum retail price", comparableMarketReference: "Comparable market reference", wholesalePrices: "Tunisia wholesale prices", wholesalePrice: "Wholesale price", competitionLevel: "Competition level", observedSellers: "Observed sellers", observedBrands: "Observed brands", coverageConfidence: "Coverage confidence", positiveSignals: "Positive signals", limitations: "Limitations", estimated: "ESTIMATED", grossMargin: "Estimated gross margin per unit", marginFormula: "Estimated gross margin = comparable Tunisia market reference − estimated landed cost.", marginUnavailable: "Margin cannot yet be reliably calculated because a comparable market reference or landed cost is missing.", noSupplierEvidence: "No reliable international supplier offer was identified in the available public evidence.", noRetailEvidence: "No reliable Tunisian retail reference was identified in the available public evidence.", noWholesaleEvidence: "No reliable public Tunisian wholesale price was identified in the available public evidence.", noPositiveSignals: "No additional positive signal was retained.", noLimitations: "No additional limitation was retained.", noSources: "No source used in this analysis is available.", unavailable: "Not communicated", estimateOnly: "ESTIMATE", wholesaleAvailable: "Public wholesale evidence available", wholesaleUnavailable: "No public wholesale price identified", landedCostUnavailable: "Estimated landed cost cannot yet be calculated because a source price or import-cost assumption is missing.", decisionUnavailable: "The recommendation requires further evidence.", dataStatus: "Data status"
     };
   }
   return {
@@ -1929,7 +1954,7 @@ function vizyaLabels() {
 }
 
 function vizyaSupplierOffers(data) {
-  return (data.china_offers || []).filter((offer) => offer?.source_url && (finiteOrNull(offer.price_min) !== null || finiteOrNull(offer.price_max) !== null || offer.price_text)).slice(0, 5);
+  return (data.china_offers || []).filter((offer) => offer?.source_url && (finiteOrNull(offer.price_min_tnd) !== null || finiteOrNull(offer.price_max_tnd) !== null)).slice(0, 5);
 }
 
 function vizyaRetainedSupplier(data) {
@@ -1938,7 +1963,7 @@ function vizyaRetainedSupplier(data) {
   const exact = comparable.filter((offer) => offer.product_match === "exact");
   const candidates = exact.length ? exact : comparable;
   const reliable = candidates.filter((offer) => ["high", "medium"].includes(String(offer.confidence || "").toLowerCase()));
-  return (reliable.length ? reliable : candidates).sort((left, right) => (finiteOrNull(left.price_min) ?? Infinity) - (finiteOrNull(right.price_min) ?? Infinity))[0] || null;
+  return (reliable.length ? reliable : candidates).sort((left, right) => (finiteOrNull(left.equivalent_target_package_price_tnd) ?? Infinity) - (finiteOrNull(right.equivalent_target_package_price_tnd) ?? Infinity))[0] || null;
 }
 
 function vizyaRetailMarket(data) {
@@ -1974,6 +1999,7 @@ function vizyaLandedCostRows(data, retainedSupplier) {
   return components.filter((component) => finiteOrNull(component.value_tnd) !== null).map((component) => ({
     label: componentLabels[component.label_key] || component.label_key,
     value: component.value_tnd,
+    display: component.range_text || vizyaTnd(component.value_tnd),
     status: component.label_key === "supplier_price" && /(?:\/\s*l|per\s*l|litre|liter)/i.test(String(retainedSupplier?.price_unit || "")) ? statuses.computed : (statuses[component.provenance] || labels.unavailable),
   }));
 }
@@ -2004,15 +2030,42 @@ function vizyaSupplierPurchasePrice(offer, product = {}) {
   const target = parseVolume([product.original_product, product.normalized_product, ...(product.technical_specs || [])].filter(Boolean).join(" "));
   const equivalent = finiteOrNull(offer.equivalent_target_package_price_tnd);
   const targetLabel = target ? `${formatNumber(target.value)}${target.unit}` : "format cible";
-  return `${offer.price_unit ? `${price} / ${offer.price_unit}` : price}${Number.isFinite(equivalent) ? ` — équivalent ${targetLabel}: ${formatNumber(equivalent)} TND` : ""}`;
+  return `${Number.isFinite(equivalent) ? `${formatNumber(equivalent)} TND` : price}${offer.price_unit ? ` / ${offer.price_unit}` : ""}${Number.isFinite(equivalent) ? ` — équivalent ${targetLabel}` : ""}`;
 }
 
 function vizyaOfferPrice(offer) {
   const labels = vizyaLabels();
-  if (offer?.price_text) return vizyaSafeText(offer.price_text);
+  const minimum = finiteOrNull(offer?.price_min_tnd);
+  const maximum = finiteOrNull(offer?.price_max_tnd);
+  if (minimum !== null) return vizyaRange(minimum, maximum);
   const value = finiteOrNull(offer?.price_min) ?? finiteOrNull(offer?.price_max);
   if (value === null) return labels.unavailable;
-  return `${formatNumber(value)} ${offer.currency || ""}`.trim();
+  return vizyaTnd(value);
+}
+
+function vizyaPriceUnit(offer) {
+  const raw = String(offer?.price_unit || "").replace(/USD|US\$|EUR|TND|DT|\$/gi, "").replace(/\s+/g, " ").trim();
+  return raw ? `par ${raw.replace(/^[/@]/, "")}` : "par unité";
+}
+
+function vizyaRetailPrice(offer) {
+  const range = String(offer?.price_range_tnd || "").trim();
+  const numbers = [...range.matchAll(/\d+(?:[.,]\d+)?/g)].map((match) => Number(match[0].replace(",", "."))).filter(Number.isFinite);
+  if (numbers.length >= 2) return vizyaRange(Math.min(numbers[0], numbers[1]), Math.max(numbers[0], numbers[1]));
+  return vizyaTnd(finiteOrNull(offer?.price_tnd));
+}
+
+function vizyaAmountRange(minimum, maximum, fallback = null) {
+  const low = finiteOrNull(minimum);
+  const high = finiteOrNull(maximum);
+  if (low !== null) return vizyaRange(low, high);
+  return fallback !== null && fallback !== undefined ? vizyaTnd(fallback) : vizyaLabels().unavailable;
+}
+
+function vizyaCountryLabel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (currentLanguage !== "fr") return value || "";
+  return { tunisia: "Tunisie", tunisie: "Tunisie", china: "Chine", chine: "Chine" }[normalized] || value || "";
 }
 
 function vizyaRange(min, max) {
@@ -2055,7 +2108,7 @@ function vizyaSourceReferences(data) {
 function vizyaSafeText(value) {
   const text = String(value || "").trim();
   if (/gemini|groq|tavily|firecrawl|exa|provider error|api error|raw json|stack trace|rate limit|quota|\b429\b/i.test(text)) {
-    return currentLanguage === "fr" ? "Informations internes non affichées dans le rapport client." : "Internal information is not displayed in the client report.";
+    return "";
   }
   return text;
 }
@@ -2217,7 +2270,7 @@ function displayedRecommendation(recommendation, scores, data = null) {
     data?.landed_cost?.partial_estimate ||
     ["medium", "low", "unknown"].includes(data?.comparability?.level)
   )) return "go_with_conditions";
-  return ["go", "no_go", "investigate_more"].includes(recommendation) ? recommendation : "investigate_more";
+  return ["go", "go_with_conditions", "no_go", "investigate_more"].includes(recommendation) ? recommendation : "investigate_more";
 }
 
 function recommendationText(recommendation) {
@@ -2574,7 +2627,7 @@ function renderProductImage(data) {
   if (!imageUrl) {
     return `<div class="placeholder"><img src="${fallbackProductImage(productLabel)}" alt="${escapeAttribute(copy[currentLanguage].noReliableProductImageFound)}"><p>${copy[currentLanguage].noReliableProductImageFound}</p></div>`;
   }
-  return `<img src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(productLabel)}" onerror="handleProductImageError(this, '${escapeAttribute(productLabel)}')">`;
+  return `<button class="product-image-trigger" type="button" aria-label="Agrandir l’image du produit"><img src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(productLabel)}" onerror="handleProductImageError(this, '${escapeAttribute(productLabel)}')"></button>`;
 }
 
 function priceAnalysisText(data) {

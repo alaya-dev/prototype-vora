@@ -8,7 +8,7 @@ from app.schemas import ProductUnderstanding, StrictModel
 from app.benchmark.schemas import ChinaSourcingOffer, TunisiaRetailMarket, TunisiaSourcingOffer
 
 
-Recommendation = Literal["go", "no_go", "investigate_more"]
+Recommendation = Literal["go", "go_with_conditions", "no_go", "investigate_more"]
 SellerDensity = Literal["low", "medium", "high", "unknown"]
 DecisionConfidence = Literal["low", "medium", "high"]
 DominantDecisionSide = Literal["go", "no_go", "balanced"]
@@ -96,6 +96,8 @@ class RetailMarketSummary(StrictModel):
 
 class ProfitabilityEstimate(StrictModel):
     source_unit_price_tnd: float | None = None
+    source_unit_price_min_tnd: float | None = None
+    source_unit_price_max_tnd: float | None = None
     source_price_unit: str | None = None
     source_price_unit_confirmed: bool = False
     estimated_shipping_per_unit_tnd: float | None = None
@@ -103,6 +105,8 @@ class ProfitabilityEstimate(StrictModel):
     estimated_handling_per_unit_tnd: float | None = None
     estimated_misc_per_unit_tnd: float | None = None
     estimated_landed_cost_per_unit_tnd: float | None = None
+    estimated_landed_cost_min_tnd: float | None = None
+    estimated_landed_cost_max_tnd: float | None = None
     landed_cost_breakdown_notes: str = ""
     estimated_meta_campaign_budget_tnd: float | None = None
     digital_ad_budget_min_tnd: float | None = None
@@ -113,9 +117,15 @@ class ProfitabilityEstimate(StrictModel):
     ad_cost_notes: str = ""
     estimated_source_cost_tnd: float | None = None
     estimated_selling_price_tnd: float | None = None
+    estimated_selling_price_min_tnd: float | None = None
+    estimated_selling_price_max_tnd: float | None = None
     pricing_basis: str = ""
     estimated_meta_ads_cost_per_sale_tnd: float | None = None
     gross_margin_per_unit_before_marketing_tnd: float | None = None
+    gross_margin_min_tnd: float | None = None
+    gross_margin_max_tnd: float | None = None
+    gross_margin_percent_min: float | None = None
+    gross_margin_percent_max: float | None = None
     gross_profit_for_1000_before_marketing_tnd: float | None = None
     net_profit_for_1000_after_marketing_tnd: float | None = None
     net_profit_for_1000_after_advertising_min_tnd: float | None = None
@@ -202,12 +212,18 @@ class RetailOfferView(StrictModel):
 class LandedCostComponentView(StrictModel):
     label_key: str = ""
     value_tnd: float | None = None
+    min_tnd: float | None = None
+    max_tnd: float | None = None
+    range_text: str = ""
     provenance: ProvenanceLevel = "unavailable"
     note: str = ""
 
 
 class LandedCostView(StrictModel):
     total_tnd: float | None = None
+    min_tnd: float | None = None
+    max_tnd: float | None = None
+    range_text: str = ""
     components: list[LandedCostComponentView] = Field(default_factory=list)
     partial_estimate: bool = True
     note: str = ""
