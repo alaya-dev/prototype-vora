@@ -75,6 +75,12 @@ class GeminiSchemaTests(unittest.TestCase):
         self.assertIn("daily free-tier quota", message.lower())
         self.assertIn("billing", message.lower())
 
+    def test_rate_limit_is_not_retried_immediately(self) -> None:
+        class RateLimitError(Exception):
+            status_code = 429
+
+        self.assertFalse(_is_retryable_gemini_error(RateLimitError()))
+
 
 class GeminiClientTimeoutTests(unittest.IsolatedAsyncioTestCase):
     async def test_structured_generation_timeout_is_converted_to_safe_client_error(self) -> None:

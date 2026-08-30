@@ -182,9 +182,9 @@ def _strip_unsupported_schema_keys(value):
 
 def _is_retryable_gemini_error(error: Exception) -> bool:
     status_code = _extract_gemini_status_code(error)
-    if status_code == 429 and _is_daily_quota_error(error):
+    if status_code == 429:
         return False
-    return status_code in {429, 500, 503}
+    return status_code in {500, 503}
 
 
 def _build_gemini_error_message(error: Exception) -> str:
