@@ -101,6 +101,12 @@ class StubPrototypeOrchestrator:
         )
 
 
+class FailingPrototypeOrchestrator:
+    async def analyze(self, request):
+        from app.services.gemini_client import GeminiClientError
+        raise GeminiClientError("Gemini quota 429 must stay internal")
+
+
 class ApiTests(unittest.TestCase):
     def test_providers_returns_status_without_secrets(self) -> None:
         server_module = importlib.import_module("server")
@@ -245,6 +251,25 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(prototype.calls[0].product, "tondeuse cheveux t9 vintage")
         self.assertEqual(prototype.calls[0].market, "Tunisia")
         self.assertEqual(prototype.calls[0].sourcing_country, "China")
+
+    def test_prototype_gemini_failure_is_normalized_without_empty_business_result(self) -> None:
+        server_module = importlib.import_module("server")
+        app = server_module.create_app(
+            settings=_settings(),
+            benchmark_pipeline=_benchmark_pipeline(),
+            provider_infos=ProvidersResponse(providers=[]),
+            prototype_orchestrator=FailingPrototypeOrchestrator(),
+        )
+
+        response = TestClient(app).post(
+            "/prototype/analyze",
+            json={"product": "Huile moteur 5W-30 4L", "market": "Tunisia", "sourcing_country": "China"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn("gemini", response.text.lower())
+        self.assertNotIn("429", response.text)
+        self.assertNotIn("score", response.text.lower())
 
     def test_analytics_and_agent_routes_do_not_expose_keys(self) -> None:
         server_module = importlib.import_module("server")

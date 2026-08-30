@@ -1230,13 +1230,13 @@
             </div>
             <div class="hero-options">
               <div class="field">
-                <label for="targetMarketInput" data-i18n="targetMarketLabel">Target market</label>
+                <label for="targetMarketInput" data-i18n="targetMarketLabel">Marché cible</label>
                 <select id="targetMarketInput">
                   <option value="Tunisia">Tunisie</option>
                 </select>
               </div>
               <div class="field">
-                <label for="sourcingCountryInput" data-i18n="sourcingCountryLabel">Sourcing priority</label>
+                <label for="sourcingCountryInput" data-i18n="sourcingCountryLabel">Sourcing prioritaire</label>
                 <select id="sourcingCountryInput">
                   <option value="China">Chine</option>
                 </select>
@@ -1400,6 +1400,8 @@ const copy = {
     clientEyebrow: "Client Analysis",
     clientTitle: "Nexora product opportunity report",
     clientSubtitle: "Production-style sourcing, Tunisia retail market, and profitability estimate.",
+    targetMarketLabel: "Target market",
+    sourcingCountryLabel: "Sourcing priority",
     exportPdf: "Export PDF",
     heroEyebrow: "Client analysis flow",
     heroTitle: "Enter a specific product and Nexora will research source cost, Tunisia market price, and estimated margin.",
@@ -1502,7 +1504,9 @@ const copy = {
   fr: {
     clientEyebrow: "Analyse client",
     clientTitle: "Rapport d'opportunité produit Nexora",
-    clientSubtitle: "Recherche sourcing, marché retail tunisien et estimation de rentabilité.",
+    clientSubtitle: "Recherche sourcing, prix de détail tunisiens et estimation de rentabilité.",
+    targetMarketLabel: "Marché cible",
+    sourcingCountryLabel: "Sourcing prioritaire",
     exportPdf: "Exporter PDF",
     heroEyebrow: "Flux d'analyse client",
     heroTitle: "Entrez un produit précis et Nexora analysera le coût source, le prix du marché tunisien et la marge estimée.",
@@ -1523,7 +1527,7 @@ const copy = {
     englishSearchName: "Nom de recherche anglais",
     frenchSearchName: "Nom de recherche français",
     sourcingTitle: "Analyse du prix d'achat",
-    retailTitle: "Analyse du marché tunisien",
+    retailTitle: "Analyse des prix de détail tunisiens",
     reportEyebrow: "Rapport d'analyse commerciale",
     reportTitle: "Rapport professionnel d'opportunité",
     estimateOnly: "Estimation",
@@ -1945,11 +1949,11 @@ function renderPrototypeResult(data) {
 function vizyaLabels() {
   if (currentLanguage !== "fr") {
     return {
-      executiveSummary: "Executive Summary", productCategory: "Product / Category Analyzed", internationalSourcing: "International Sourcing", landedCostTitle: "Estimated Landed Cost in Tunisia", tunisiaMarket: "Tunisia Market", competition: "Competition", commercialPotential: "Commercial Potential", profitability: "Estimated Profitability / Margin", finalRecommendation: "Final GO / NO GO Recommendation", sourcesEvidence: "Sources & Evidence", category: "Category", representativeProduct: "Representative product", targetMarket: "Target market", sourcingCountry: "Sourcing country", supplierPrice: "Supplier price", landedCost: "Estimated landed cost", retailRange: "Tunisia retail range", wholesaleStatus: "Tunisia wholesale status", estimatedMargin: "Estimated margin", opportunityScore: "Opportunity score", confidence: "Confidence", supplier: "Supplier", product: "Product", country: "Country", price: "Price", priceUnit: "Price unit", moq: "MOQ", source: "Source", dataUsed: "Data used", viewSource: "View source", retainedSupplier: "Retained supplier offer", retainedPrice: "Retained price", retainedSupplierReason: "Selected as the best price-backed supplier offer with a usable source.", component: "Component", value: "Value", dataStatus: "Data status", estimatedLandedCost: "Estimated landed cost", retailPrices: "Retail prices", seller: "Seller", brand: "Brand", volume: "Volume", normalizedPrice: "Normalized price", minimumRetailPrice: "Minimum retail price", maximumRetailPrice: "Maximum retail price", comparableMarketReference: "Comparable market reference", wholesalePrices: "Tunisia wholesale prices", wholesalePrice: "Wholesale price", competitionLevel: "Competition level", observedSellers: "Observed sellers", observedBrands: "Observed brands", coverageConfidence: "Coverage confidence", positiveSignals: "Positive signals", limitations: "Limitations", estimated: "ESTIMATED", grossMargin: "Estimated gross margin per unit", marginFormula: "Estimated gross margin = comparable Tunisia market reference − estimated landed cost.", marginUnavailable: "Margin cannot yet be reliably calculated because a comparable market reference or landed cost is missing.", noSupplierEvidence: "No reliable international supplier offer was identified in the available public evidence.", noRetailEvidence: "No reliable Tunisian retail reference was identified in the available public evidence.", noWholesaleEvidence: "No reliable public Tunisian wholesale price was identified in the available public evidence.", noPositiveSignals: "No additional positive signal was retained.", noLimitations: "No additional limitation was retained.", noSources: "No source used in this analysis is available.", unavailable: "Not communicated", estimateOnly: "ESTIMATE", wholesaleAvailable: "Public wholesale evidence available", wholesaleUnavailable: "No public wholesale price identified", landedCostUnavailable: "Estimated landed cost cannot yet be calculated because a source price or import-cost assumption is missing.", decisionUnavailable: "The recommendation requires further evidence.", dataStatus: "Data status"
+      executiveSummary: "Executive Summary", productCategory: "Product / Category Analyzed", internationalSourcing: "International Sourcing", landedCostTitle: "Estimated Landed Cost in Tunisia", tunisiaMarket: "Tunisia Market", competition: "Competition", commercialPotential: "Commercial Potential", profitability: "Estimated Profitability / Margin", finalRecommendation: "Final GO / NO GO Recommendation", sourcesEvidence: "Sources & Evidence", category: "Category", representativeProduct: "Representative product", targetMarket: "Target market", sourcingCountry: "Sourcing country", supplierPrice: "Supplier price", landedCost: "Estimated landed cost", retailRange: "Tunisia retail range", wholesaleStatus: "Tunisia wholesale status", estimatedMargin: "Estimated margin", opportunityScore: "Opportunity score", confidence: "Confidence", supplier: "Supplier", product: "Product", country: "Country", price: "Price", priceUnit: "Price unit", moq: "MOQ", source: "Source", dataUsed: "Data used", viewSource: "View source", retainedSupplier: "Retained supplier offer", retainedPrice: "Retained price", retainedSupplierReason: "Selected as the best price-backed supplier offer with a usable source.", component: "Component", value: "Value", dataStatus: "Data status", estimatedLandedCost: "Estimated landed cost", retailPrices: "Retail prices", seller: "Seller", brand: "Brand", volume: "Volume", normalizedPrice: "Normalized price", minimumRetailPrice: "Minimum retail price", maximumRetailPrice: "Maximum retail price", comparableMarketReference: "Comparable market reference", wholesalePrices: "Tunisia wholesale prices", wholesalePrice: "Wholesale price", competitionLevel: "Competition level", observedSellers: "Observed sellers", observedBrands: "Observed brands", coverageConfidence: "Coverage confidence", positiveSignals: "Positive signals", limitations: "Limitations", estimated: "ESTIMATED", grossMargin: "Estimated gross margin per unit", marginFormula: "Estimated gross margin = comparable Tunisia market reference − estimated landed cost.", marginUnavailable: "Margin cannot yet be reliably calculated because a comparable market reference or landed cost is missing.", noSupplierEvidence: "No reliable international supplier offer was identified in the available public evidence.", noRetailEvidence: "No reliable Tunisian retail reference was identified in the available public evidence.", noWholesaleEvidence: "No reliable public Tunisian wholesale price was identified in the available public evidence.", noPositiveSignals: "No additional positive signal was retained.", noLimitations: "No additional limitation was retained.", noSources: "No source used in this analysis is available.", unavailable: "Not communicated", notFoundPublicly: "Not found publicly", notCalculable: "Not calculable", insufficientCoverage: "Insufficient coverage", estimateOnly: "ESTIMATE", wholesaleAvailable: "Public wholesale evidence available", wholesaleUnavailable: "No public wholesale price identified", landedCostUnavailable: "Estimated landed cost cannot yet be calculated because a source price or import-cost assumption is missing.", decisionUnavailable: "The recommendation requires further evidence.", dataStatus: "Data status"
     };
   }
   return {
-    executiveSummary: "Résumé exécutif", productCategory: "Produit / catégorie analysé", internationalSourcing: "Sourcing international", landedCostTitle: "Coût rendu estimé en Tunisie", tunisiaMarket: "Marché tunisien", competition: "Concurrence", commercialPotential: "Potentiel commercial", profitability: "Rentabilité / marge estimée", finalRecommendation: "Recommandation finale GO / NO GO", sourcesEvidence: "Sources & preuves", category: "Catégorie", representativeProduct: "Produit représentatif", targetMarket: "Marché cible", sourcingCountry: "Pays de sourcing", supplierPrice: "Prix fournisseur", landedCost: "Coût rendu estimé", retailRange: "Fourchette retail Tunisie", wholesaleStatus: "Statut grossiste Tunisie", estimatedMargin: "Marge estimée", opportunityScore: "Score d’opportunité", confidence: "Confiance", supplier: "Fournisseur", product: "Produit", country: "Pays", price: "Prix", priceUnit: "Unité de prix", moq: "MOQ", source: "Source", dataUsed: "Donnée utilisée", viewSource: "Voir la source", retainedSupplier: "Offre fournisseur retenue", retainedPrice: "Prix retenu", retainedSupplierReason: "Sélectionnée comme offre fournisseur sourcée avec un prix utilisable.", component: "Composant", value: "Valeur", dataStatus: "Statut de donnée", estimatedLandedCost: "Coût rendu estimé", retailPrices: "Prix retail", seller: "Vendeur", brand: "Marque", volume: "Volume", normalizedPrice: "Prix normalisé", minimumRetailPrice: "Prix retail minimum", maximumRetailPrice: "Prix retail maximum", comparableMarketReference: "Référence marché comparable", wholesalePrices: "Prix grossiste Tunisie", wholesalePrice: "Prix grossiste", competitionLevel: "Niveau de concurrence", observedSellers: "Vendeurs observés", observedBrands: "Marques observées", coverageConfidence: "Confiance de couverture", positiveSignals: "Signaux positifs", limitations: "Limites", estimated: "ESTIMÉ", grossMargin: "Marge brute estimée par unité", marginFormula: "Marge brute estimée = référence marché tunisien comparable − coût rendu estimé.", marginUnavailable: "La marge ne peut pas encore être calculée de façon fiable car la référence marché comparable ou le coût rendu manque.", noSupplierEvidence: "Aucune offre fournisseur internationale fiable n’a été identifiée dans les preuves publiques disponibles.", noRetailEvidence: "Aucune référence retail tunisienne fiable n’a été identifiée dans les preuves publiques disponibles.", noWholesaleEvidence: "Aucun prix grossiste tunisien public fiable n’a été identifié dans les preuves publiques disponibles.", noPositiveSignals: "Aucun signal positif supplémentaire n’a été retenu.", noLimitations: "Aucune limite supplémentaire n’a été retenue.", noSources: "Aucune source utilisée dans cette analyse n’est disponible.", unavailable: "Données insuffisantes", estimateOnly: "ESTIMATION", wholesaleAvailable: "Preuve grossiste publique disponible", wholesaleUnavailable: "Aucun prix grossiste public identifié", landedCostUnavailable: "Le coût rendu estimé ne peut pas encore être calculé car un prix source ou une hypothèse d’import manque.", decisionUnavailable: "La recommandation nécessite des preuves supplémentaires."
+    executiveSummary: "Résumé exécutif", productCategory: "Produit / catégorie analysé", internationalSourcing: "Sourcing international", landedCostTitle: "Coût rendu estimé en Tunisie", tunisiaMarket: "Marché tunisien", competition: "Concurrence", commercialPotential: "Potentiel commercial", profitability: "Rentabilité / marge estimée", finalRecommendation: "Recommandation finale GO / NO GO", sourcesEvidence: "Sources & preuves", category: "Catégorie", representativeProduct: "Produit représentatif", targetMarket: "Marché cible", sourcingCountry: "Pays de sourcing", supplierPrice: "Prix fournisseur", landedCost: "Coût rendu estimé", retailRange: "Fourchette de prix de détail en Tunisie", wholesaleStatus: "Statut grossiste Tunisie", estimatedMargin: "Marge estimée", opportunityScore: "Score d’opportunité", confidence: "Confiance", supplier: "Fournisseur", product: "Produit", country: "Pays", price: "Prix", priceUnit: "Unité de prix", moq: "MOQ", source: "Source", dataUsed: "Donnée utilisée", viewSource: "Voir la source", retainedSupplier: "Offre fournisseur retenue", retainedPrice: "Prix retenu", retainedSupplierReason: "Sélectionnée comme offre fournisseur sourcée avec un prix utilisable.", component: "Composant", value: "Valeur", dataStatus: "Statut de donnée", estimatedLandedCost: "Coût rendu estimé", retailPrices: "Prix de détail", seller: "Vendeur", brand: "Marque", volume: "Volume", normalizedPrice: "Prix normalisé", minimumRetailPrice: "Prix de détail minimum", maximumRetailPrice: "Prix de détail maximum", comparableMarketReference: "Référence marché comparable", wholesalePrices: "Prix grossiste Tunisie", wholesalePrice: "Prix grossiste", competitionLevel: "Niveau de concurrence", observedSellers: "Vendeurs observés", observedBrands: "Marques observées", coverageConfidence: "Confiance de couverture", positiveSignals: "Signaux positifs", limitations: "Limites", estimated: "ESTIMÉ", grossMargin: "Marge brute estimée par unité", marginFormula: "Marge brute estimée = référence marché tunisien comparable − coût rendu estimé.", marginUnavailable: "La marge ne peut pas encore être calculée de façon fiable car la référence marché comparable ou le coût rendu manque.", noSupplierEvidence: "Aucune offre fournisseur internationale fiable n’a été identifiée dans les preuves publiques disponibles.", noRetailEvidence: "Aucune référence de prix de détail tunisienne fiable n’a été identifiée dans les preuves publiques disponibles.", noWholesaleEvidence: "Aucun prix grossiste tunisien public fiable n’a été identifié dans les preuves publiques disponibles.", noPositiveSignals: "Aucun signal positif supplémentaire n’a été retenu.", noLimitations: "Aucune limite supplémentaire n’a été retenue.", noSources: "Aucune source utilisée dans cette analyse n’est disponible.", unavailable: "Non communiqué", notFoundPublicly: "Non trouvé publiquement", notCalculable: "Non calculable", insufficientCoverage: "Couverture insuffisante", estimateOnly: "ESTIMATION", wholesaleAvailable: "Preuve grossiste publique disponible", wholesaleUnavailable: "Aucun prix grossiste public identifié", landedCostUnavailable: "Le coût rendu estimé ne peut pas encore être calculé car un prix source ou une hypothèse d’import manque.", decisionUnavailable: "La recommandation nécessite des preuves supplémentaires."
   };
 }
 
@@ -1985,7 +1989,7 @@ function vizyaCompetition(data, confidence) {
   const brands = [...new Set(offers.map((offer) => String(offer.brand || "").trim()).filter(Boolean))];
   const level = String(data.competition_level || "unknown").toLowerCase();
   if (level === "unknown" || (!sellers.size && !brands.length)) {
-    return { level: labels.unavailable, sellers: sellers.size, brands, explanation: currentLanguage === "fr" ? "Données insuffisantes : la couverture observée ne permet pas de conclure sur l’intensité concurrentielle." : "Insufficient data: observed coverage does not support a conclusion on competitive intensity." };
+    return { level: currentLanguage === "fr" ? labels.insufficientCoverage : labels.unavailable, sellers: sellers.size, brands, explanation: currentLanguage === "fr" ? "La couverture observée est insuffisante pour conclure sur l’intensité concurrentielle." : "Insufficient data: observed coverage does not support a conclusion on competitive intensity." };
   }
   const levelLabel = { low: currentLanguage === "fr" ? "Faible" : "Low", medium: currentLanguage === "fr" ? "Moyenne" : "Medium", high: currentLanguage === "fr" ? "Élevée" : "High" }[level] || labels.unavailable;
   return { level: levelLabel, sellers: sellers.size, brands, explanation: currentLanguage === "fr" ? `Lecture basée sur ${sellers.size} vendeur(s) et ${brands.length} marque(s) observés ; confiance de couverture ${confidenceText(confidence).toLowerCase()}.` : `Reading based on ${sellers.size} observed seller(s) and ${brands.length} observed brand(s); coverage confidence ${confidenceText(confidence).toLowerCase()}.` };
@@ -2025,7 +2029,7 @@ function vizyaLubricantNote(product) {
 
 function vizyaSupplierPurchasePrice(offer, product = {}) {
   const labels = vizyaLabels();
-  if (!offer) return labels.unavailable;
+  if (!offer) return labels.notFoundPublicly;
   const price = vizyaOfferPrice(offer);
   const target = parseVolume([product.original_product, product.normalized_product, ...(product.technical_specs || [])].filter(Boolean).join(" "));
   const equivalent = finiteOrNull(offer.equivalent_target_package_price_tnd);
@@ -2039,7 +2043,7 @@ function vizyaOfferPrice(offer) {
   const maximum = finiteOrNull(offer?.price_max_tnd);
   if (minimum !== null) return vizyaRange(minimum, maximum);
   const value = finiteOrNull(offer?.price_min) ?? finiteOrNull(offer?.price_max);
-  if (value === null) return labels.unavailable;
+  if (value === null) return labels.notFoundPublicly;
   return vizyaTnd(value);
 }
 
@@ -2052,14 +2056,15 @@ function vizyaRetailPrice(offer) {
   const range = String(offer?.price_range_tnd || "").trim();
   const numbers = [...range.matchAll(/\d+(?:[.,]\d+)?/g)].map((match) => Number(match[0].replace(",", "."))).filter(Number.isFinite);
   if (numbers.length >= 2) return vizyaRange(Math.min(numbers[0], numbers[1]), Math.max(numbers[0], numbers[1]));
-  return vizyaTnd(finiteOrNull(offer?.price_tnd));
+  const value = finiteOrNull(offer?.price_tnd);
+  return value === null ? vizyaLabels().notFoundPublicly : vizyaTnd(value);
 }
 
 function vizyaAmountRange(minimum, maximum, fallback = null) {
   const low = finiteOrNull(minimum);
   const high = finiteOrNull(maximum);
   if (low !== null) return vizyaRange(low, high);
-  return fallback !== null && fallback !== undefined ? vizyaTnd(fallback) : vizyaLabels().unavailable;
+  return fallback !== null && fallback !== undefined ? vizyaTnd(fallback) : vizyaLabels().notCalculable;
 }
 
 function vizyaCountryLabel(value) {
@@ -2076,7 +2081,7 @@ function vizyaRange(min, max) {
 }
 
 function vizyaTnd(value) {
-  return Number.isFinite(value) ? `${formatNumber(value)} TND` : vizyaLabels().unavailable;
+  return Number.isFinite(value) ? `${formatNumber(value)} TND` : vizyaLabels().notFoundPublicly;
 }
 
 function vizyaUnit(offer) {

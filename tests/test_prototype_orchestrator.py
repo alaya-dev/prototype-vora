@@ -66,6 +66,12 @@ class FakeAnalysisClient:
         return self.analysis
 
 
+class FailingAnalysisClient:
+    async def extract_client_analysis(self, product, evidence, cost_config, quantity_scenarios):
+        from app.services.gemini_client import GeminiClientError
+        raise GeminiClientError("temporary structured extraction failure")
+
+
 class FakeProvider:
     def __init__(self, provider_id: str, sources_by_group: dict[str, list[ProviderRawSource]]) -> None:
         self.provider_id = provider_id
@@ -1017,10 +1023,46 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("T9 vintage hair trimmer", result.localized_analysis.product_description_en)
         self.assertIn("sourcing Chine", result.localized_analysis.price_analysis_en)
-        self.assertIn("références retail en Tunisie", result.localized_analysis.price_analysis_en)
+        self.assertIn("références de prix de détail en Tunisie", result.localized_analysis.price_analysis_en)
         self.assertIn("référence(s) vendeur", result.localized_analysis.market_analysis_en)
         self.assertIn("marge brute estimée est positive", result.localized_analysis.business_reading_en)
         self.assertIn("La marge brute estimée est positive", result.localized_analysis.business_reading_en)
+
+
+    async def test_gemini_extraction_error_never_becomes_empty_business_result(self) -> None:
+        orchestrator = PrototypeResearchOrchestrator(
+            intent_client=FakeIntentClient(),
+            analysis_client=FailingAnalysisClient(),
+            providers=[FakeProvider("firecrawl", {"china_sourcing": [_source("CN", "https://cn.example/t9", "US$2 factory price", "china_sourcing")]})],
+            store=PrototypeStore(_temp_db()),
+            cost_config=CostConfig(),
+        )
+        from app.services.gemini_client import GeminiClientError
+        with self.assertRaises(GeminiClientError):
+            await orchestrator.analyze(PrototypeAnalyzeRequest(product="Vintage T9 hair trimmer"))
+
+    def test_price_ranges_are_converted_and_market_reference_uses_median(self) -> None:
+        product = ProductUnderstanding(original_product="Huile moteur 5W-30 4L", normalized_product="5W-30 engine oil 4L", technical_specs=["5W-30", "4L"])
+        analysis = ProviderAnalysisResult(
+            china_sourcing_offers=[ChinaSourcingOffer(name="Supplier", product_title="5W-30 engine oil 4L bottle", price_range_usd="US$11.35–13.38", price_min_usd_numeric=11.35, price_max_usd_numeric=13.38, price_unit="4L bottle", source_url="https://cn.example/oil", confidence="high", product_match="exact")],
+            tunisia_retail_market=TunisiaRetailMarket(retail_offers=[TunisiaRetailOffer(seller_name=f"Shop {price}", product_title="5W-30 oil 4L", price_range_tnd=f"{price} TND", price_min_tnd_numeric=price, source_url=f"https://shop{price}.tn/oil", confidence="high", product_match="exact") for price in (50, 100, 1000)]),
+        )
+        result = _to_client_response("range-test", product, None, analysis, ProviderEvidence(provider_id="test"), CostConfig(), [], [])
+        profit = result.profitability_estimate
+        self.assertEqual((profit.source_unit_price_min_tnd, profit.source_unit_price_max_tnd), (35.19, 41.48))
+        self.assertEqual((profit.estimated_landed_cost_min_tnd, profit.estimated_landed_cost_max_tnd), (44.71, 51.63))
+        self.assertEqual((profit.estimated_selling_price_min_tnd, profit.estimated_selling_price_max_tnd), (50, 1000))
+        self.assertEqual(profit.estimated_selling_price_tnd, 100)
+        self.assertEqual(profit.gross_margin_min_tnd, -1.63)
+        self.assertEqual(profit.gross_margin_max_tnd, 955.29)
+
+    def test_kg_is_comparable_but_carton_is_not_safely_convertible(self) -> None:
+        kg_product = ProductUnderstanding(original_product="protéine en poudre 2kg", normalized_product="protein powder 2kg")
+        kg_offer = ChinaSourcingOffer(name="KG supplier", product_title="protein powder 2kg bag", price_min_usd_numeric=8, price_unit="unit", source_url="https://cn.example/kg")
+        self.assertEqual(_supplier_target_package_price(kg_offer, CostConfig(), kg_product)[0], 24.8)
+        pack_product = ProductUnderstanding(original_product="capsules 30 pack", normalized_product="capsules 30 pack")
+        carton_offer = ChinaSourcingOffer(name="Carton supplier", product_title="capsules carton", price_min_usd_numeric=8, price_unit="carton", source_url="https://cn.example/carton")
+        self.assertIsNone(_supplier_target_package_price(carton_offer, CostConfig(), pack_product)[0])
 
 
 def _orchestrator(
@@ -1052,48 +1094,6 @@ def _orchestrator(
         store=store or PrototypeStore(_temp_db()),
         cost_config=cost_config or CostConfig(),
     )
-
-
-    def test_price_ranges_are_converted_and_market_reference_uses_median(self) -> None:
-        product = ProductUnderstanding(
-            original_product="Huile moteur 5W-30 4L",
-            normalized_product="5W-30 engine oil 4L",
-            technical_specs=["5W-30", "4L"],
-        )
-        analysis = ProviderAnalysisResult(
-            china_sourcing_offers=[ChinaSourcingOffer(
-                name="Supplier",
-                product_title="5W-30 engine oil 4L bottle",
-                price_range_usd="US$11.35–13.38",
-                price_min_usd_numeric=11.35,
-                price_max_usd_numeric=13.38,
-                price_unit="4L bottle",
-                source_url="https://cn.example/oil",
-                confidence="high",
-                product_match="exact",
-            )],
-            tunisia_retail_market=TunisiaRetailMarket(retail_offers=[
-                TunisiaRetailOffer(seller_name=f"Shop {price}", product_title="5W-30 oil 4L", price_range_tnd=f"{price} TND", price_min_tnd_numeric=price, source_url=f"https://shop{price}.tn/oil", confidence="high", product_match="exact")
-                for price in (50, 100, 1000)
-            ]),
-        )
-        result = _to_client_response("range-test", product, None, analysis, ProviderEvidence(provider_id="test"), CostConfig(), [], [])
-        profit = result.profitability_estimate
-        self.assertEqual((profit.source_unit_price_min_tnd, profit.source_unit_price_max_tnd), (35.19, 41.48))
-        self.assertEqual((profit.estimated_landed_cost_min_tnd, profit.estimated_landed_cost_max_tnd), (44.71, 51.63))
-        self.assertEqual((profit.estimated_selling_price_min_tnd, profit.estimated_selling_price_max_tnd), (50, 1000))
-        self.assertEqual(profit.estimated_selling_price_tnd, 100)
-        self.assertEqual(profit.gross_margin_min_tnd, -1.63)
-        self.assertEqual(profit.gross_margin_max_tnd, 955.29)
-
-    def test_kg_is_comparable_but_carton_is_not_safely_convertible(self) -> None:
-        kg_product = ProductUnderstanding(original_product="protéine en poudre 2kg", normalized_product="protein powder 2kg")
-        kg_offer = ChinaSourcingOffer(name="KG supplier", product_title="protein powder 2kg bag", price_min_usd_numeric=8, price_unit="unit", source_url="https://cn.example/kg")
-        self.assertEqual(_supplier_target_package_price(kg_offer, CostConfig(), kg_product)[0], 24.8)
-        pack_product = ProductUnderstanding(original_product="capsules 30 pack", normalized_product="capsules 30 pack")
-        carton_offer = ChinaSourcingOffer(name="Carton supplier", product_title="capsules carton", price_min_usd_numeric=8, price_unit="carton", source_url="https://cn.example/carton")
-        self.assertIsNone(_supplier_target_package_price(carton_offer, CostConfig(), pack_product)[0])
-
 
 def _analysis(include_tunisia_sourcing: bool = True) -> ProviderAnalysisResult:
     tunisia_sourcing = [

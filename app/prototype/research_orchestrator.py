@@ -140,13 +140,10 @@ class PrototypeResearchOrchestrator:
             analysis_result = await self._extract_analysis(product, evidence, request.quantity_scenarios)
             self.store.log_api_usage(run_id, "gemini_analysis", 1)
         except GeminiClientError:
-            # Research evidence remains usable when the optional narrative call
-            # is rate-limited or temporarily unavailable. Calculations below
-            # are rebuilt from validated evidence and never from Gemini output.
-            analysis_result = ProviderAnalysisResult(
-                warnings=["La synthèse automatique est indisponible ; les preuves exploitables sont conservées pour validation."]
-            )
-            warnings.append("La synthèse automatique est indisponible ; les preuves exploitables sont conservées pour validation.")
+            # Do not turn a technical extraction failure into an empty business
+            # result. The HTTP layer normalizes this exception to a temporary
+            # unavailability response; no score or decision is calculated.
+            raise
         validated = validate_provider_result(_as_provider_analysis(analysis_result), evidence.sources)
         response = _to_client_response(
             run_id=run_id,
@@ -518,7 +515,7 @@ def _response_from_validated(
     selling_max = max(retail_target_prices) if retail_target_prices else None
     selling_price = round(median(retail_target_prices), 2) if retail_target_prices else None
     pricing_basis = (
-        "Prix fournisseur et prix retail comparables normalisés au conditionnement cible."
+        "Prix fournisseur et prix de détail comparables normalisés au conditionnement cible."
         if source_min is not None and selling_price is not None
         else "Référence de prix comparable insuffisante pour calculer une rentabilité fiable."
     )
@@ -877,7 +874,7 @@ def _fallback_localized_analysis(
         f"{product_description or product_name} Cette analyse porte sur {product_name} avec "
         f"{len(validated.china_sourcing_offers)} offre(s) sourcing Chine, "
         f"{len(validated.tunisia_sourcing_offers)} offre(s) grossiste Tunisie et "
-        f"{seller_count} référence(s) retail en Tunisie."
+        f"{seller_count} référence(s) de prix de détail en Tunisie."
     ).strip()
     return LocalizedClientAnalysis(
         product_description_en=product_description_fr,
@@ -937,7 +934,7 @@ def _fallback_price_analysis_fr(
         else "Aucune offre grossiste tunisienne avec prix exploitable n'a été confirmée"
     )
     retail_text = (
-        f"Les références retail en Tunisie se situent autour de {retail_summary.retail_price_range_tnd}"
+        f"Les références de prix de détail en Tunisie se situent autour de {retail_summary.retail_price_range_tnd}"
         if retail_summary.retail_price_range_tnd
         else "Les prix retail en Tunisie restent trop peu visibles"
     )
@@ -980,11 +977,11 @@ def _fallback_market_analysis_fr(
     availability = retail_summary.availability_notes or "Les signaux de disponibilité restent limités aux annonces capturées."
     if seller_count:
         return (
-            f"Pour {product_name}, la vue retail Tunisie inclut actuellement {seller_count} référence(s) vendeur, "
+            f"Pour {product_name}, la vue des prix de détail en Tunisie inclut actuellement {seller_count} référence(s) vendeur, "
             f"ce qui suggère une densité visible {density}. {competition} {availability}"
         )
     return (
-        f"Pour {product_name}, la validation du marché tunisien reste faible car aucune référence retail avec prix confirmé n'a été trouvée. "
+        f"Pour {product_name}, la validation du marché tunisien reste faible car aucune référence de prix de détail avec prix confirmé n'a été trouvée. "
         f"{competition} {availability}"
     )
 
@@ -2522,7 +2519,7 @@ def _reconcile_profitability_market_price(
         gross_profit = round(scalar_margin * ANALYSIS_QUANTITY_UNITS, 2)
         budget = profitability.digital_ad_budget_default_tnd or DIGITAL_AD_BUDGET_DEFAULT_TND
         return profitability.model_copy(update={
-            "estimated_selling_price_tnd": round(median([selling_min, selling_max]), 2),
+            "estimated_selling_price_tnd": profitability.estimated_selling_price_tnd or round(median([selling_min, selling_max]), 2),
             "gross_margin_per_unit_before_marketing_tnd": scalar_margin,
             "gross_margin_min_tnd": margin_min,
             "gross_margin_max_tnd": margin_max,
