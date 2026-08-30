@@ -2595,7 +2595,7 @@ function decisionNoGoDrivers(data, scores) {
 function decisionMainFactors(data) {
   const sourcing = data.sourcing_summary || {};
   const factors = currentLanguage === "fr"
-    ? ["Prix retail en Tunisie", "Scénario de coût rendu", "Économie de campagne", "Compétitivité sourcing", "Différenciation marché"]
+    ? ["Prix de détail en Tunisie", "Scénario de coût rendu", "Économie de campagne", "Compétitivité sourcing", "Différenciation marché"]
     : ["Tunisia retail price range", "Landed-cost scenario", "Campaign economics", "Sourcing competitiveness", "Market differentiation"];
   if (!sourcing.tunisia_wholesale_found) {
     factors[3] = currentLanguage === "fr" ? "Compétitivité sourcing sans grossiste local visible" : "Sourcing competitiveness without visible local wholesale support";
@@ -2657,7 +2657,7 @@ function marketAnalysisText(data) {
   const range = retail.retail_price_range_tnd || priceRangeTnd(retail.retail_min_tnd, retail.retail_max_tnd);
   const offers = (retail.example_retail_prices || []).length;
   if (currentLanguage === "fr") {
-    return `Le marché retail tunisien indique une fourchette visible de ${range}. ${offers} offre(s) de comparaison soutiennent la lecture du positionnement prix. Si la concurrence observée reste trop proche du scénario de coût rendu, il faut améliorer l’offre ou négocier un meilleur prix fournisseur.`;
+    return `Le marché des prix de détail tunisiens indique une fourchette visible de ${range}. ${offers} offre(s) de comparaison soutiennent la lecture du positionnement prix. Si la concurrence observée reste trop proche du scénario de coût rendu, il faut améliorer l’offre ou négocier un meilleur prix fournisseur.`;
   }
   return `The Tunisia retail market shows a visible price range of ${range}. ${offers} comparison offer(s) support the current pricing read. If competitors stay too close to the landed-cost scenario, the opportunity needs a stronger supplier price or a clearer market position.`;
 }

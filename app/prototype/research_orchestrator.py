@@ -1619,7 +1619,7 @@ def _detailed_scoring(validated: ProviderAnalysisResult, profitability: Profitab
     demand_score = min(25, len(unique_sellers) * 5 + min(len(comparable_retail), 5))
     demand_note = (
         f"{len(unique_sellers)} vendeur(s) distinct(s) et {len(comparable_retail)} référence(s) retail comparable(s) observés."
-        if comparable_retail else "Aucune référence retail tunisienne comparable observée."
+        if comparable_retail else "Aucune référence de prix de détail tunisienne comparable observée."
     )
 
     margin_percent = _margin_percent(profitability)
@@ -2054,11 +2054,11 @@ def _conservative_recommendation(
     profitability: ProfitabilityEstimate | None,
 ) -> tuple[str, str]:
     if gross_margin is not None and gross_margin <= 0:
-        return "no_go", "La marge brute estimée est nulle ou négative après prise en compte du coût rendu et de la référence retail comparable."
+        return "no_go", "La marge brute estimée est nulle ou négative après prise en compte du coût rendu et de la référence de prix de détail comparable."
     if profitability and profitability.estimated_landed_cost_per_unit_tnd is None:
         return "investigate_more", "La rentabilité reste à valider car le prix fournisseur retenu ne peut pas être normalisé de façon fiable au conditionnement cible."
     if not validated.tunisia_retail_market.retail_offers:
-        return "investigate_more", "La rentabilité reste à valider car aucune référence retail tunisienne comparable n’a été identifiée."
+        return "investigate_more", "La rentabilité reste à valider car aucune référence de prix de détail tunisienne comparable n’a été identifiée."
     if _has_equivalent_or_weak_china_sourcing(validated):
         return "investigate_more", "La rentabilité reste à valider car les preuves de sourcing comprennent des offres équivalentes ou faiblement correspondantes."
     if gross_margin is None:
