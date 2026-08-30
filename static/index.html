@@ -1834,13 +1834,13 @@ function renderPrototypeResult(data) {
       ${sourceOffers.length ? vizyaTable(
         [labels.supplier, labels.product, labels.country, labels.price, labels.priceUnit, labels.moq, labels.source, labels.confidence],
         sourceOffers.map((offer) => [
-          offer.name || labels.unavailable,
+          vizyaSupplierLabel(offer),
           offer.product_title || labels.unavailable,
           vizyaCountryLabel(data.sourcing_country || "China"),
           vizyaOfferPrice(offer),
           `${vizyaPriceUnit(offer)}${offer.comparable === false ? " — NON COMPARABLE" : ""}`,
           offer.moq || labels.unavailable,
-          vizyaSourceLink(offer.source_url, labels.viewSource),
+          vizyaSourceLink(offer.source_url, vizyaSourceLabel(offer.source_url, labels.viewSource)),
           vizyaConfidence(offer.confidence),
         ])
       ) : `<p>${escapeHtml(labels.noSupplierEvidence)}</p>`}
@@ -1848,11 +1848,11 @@ function renderPrototypeResult(data) {
         <div class="summary-card">
           <h3>${labels.retainedSupplier}</h3>
           <div class="metric-grid">
-            ${metric(labels.supplier, retainedSupplier.name || labels.unavailable)}
+            ${metric(labels.supplier, vizyaSupplierLabel(retainedSupplier))}
             ${metric(labels.retainedPrice, vizyaSupplierPurchasePrice(retainedSupplier, product))}
             ${metric(labels.priceUnit, vizyaPriceUnit(retainedSupplier))}
             ${metric(labels.moq, retainedSupplier.moq || labels.unavailable)}
-            ${metricLink(labels.source, retainedSupplier.source_url, labels.viewSource)}
+            ${metricLink(labels.source, retainedSupplier.source_url, vizyaSourceLabel(retainedSupplier.source_url, labels.viewSource))}
           </div>
           <p>${escapeHtml(vizyaSafeText(retainedSupplier.match_notes || labels.retainedSupplierReason))}</p>
         </div>` : ""}
@@ -2007,12 +2007,12 @@ function vizyaLandedCostRows(data, retainedSupplier) {
   const labels = vizyaLabels();
   const components = data.landed_cost?.components || [];
   const componentLabels = { supplier_price: currentLanguage === "fr" ? "Coût fournisseur équivalent" : "Equivalent supplier cost", shipping: currentLanguage === "fr" ? "Expédition estimée" : "Estimated shipping", customs: currentLanguage === "fr" ? "Droits / taxes estimés" : "Estimated duties / taxes", handling: currentLanguage === "fr" ? "Manutention estimée" : "Estimated handling", misc: currentLanguage === "fr" ? "Autres charges estimées" : "Other estimated charges" };
-  const statuses = { observed: currentLanguage === "fr" ? "OBSERVÉ" : "OBSERVED", computed: currentLanguage === "fr" ? "CALCULÉ" : "CALCULATED", estimate: currentLanguage === "fr" ? "ESTIMÉ" : "ESTIMATED", unavailable: labels.unavailable };
-  return components.filter((component) => finiteOrNull(component.value_tnd) !== null).map((component) => ({
+  const statuses = { observed: "OBSERVÉ", computed: "CALCULÉ", estimate: "ESTIMÉ", hypothesis: "HYPOTHÈSE", unavailable: "NON DISPONIBLE" };
+  return components.map((component) => ({
     label: componentLabels[component.label_key] || component.label_key,
     value: component.value_tnd,
-    display: component.range_text || vizyaTnd(component.value_tnd),
-    status: component.label_key === "supplier_price" && /(?:\/\s*l|per\s*l|litre|liter)/i.test(String(retainedSupplier?.price_unit || "")) ? statuses.computed : (statuses[component.provenance] || labels.unavailable),
+    display: component.range_text || (finiteOrNull(component.value_tnd) !== null ? vizyaTnd(component.value_tnd) : "Non incluse / Non disponible"),
+    status: component.label_key === "supplier_price" && finiteOrNull(component.value_tnd) !== null ? statuses.computed : (statuses[component.provenance] || statuses.unavailable),
   }));
 }
 
@@ -2043,11 +2043,17 @@ function vizyaSupplierPurchasePrice(offer, product = {}) {
   const target = parseVolume([product.original_product, product.normalized_product, ...(product.technical_specs || [])].filter(Boolean).join(" "));
   const equivalent = finiteOrNull(offer.equivalent_target_package_price_tnd);
   const targetLabel = target ? `${formatNumber(target.value)}${target.unit}` : "format cible";
-  return `${Number.isFinite(equivalent) ? `${formatNumber(equivalent)} TND` : price}${offer.price_unit ? ` / ${offer.price_unit}` : ""}${Number.isFinite(equivalent) ? ` — équivalent ${targetLabel}` : ""}`;
+  const equivalentMin = finiteOrNull(offer.equivalent_target_package_price_min_tnd) ?? equivalent;
+  const equivalentMax = finiteOrNull(offer.equivalent_target_package_price_max_tnd) ?? equivalentMin;
+  const equivalentText = Number.isFinite(equivalentMin) ? vizyaRange(equivalentMin, equivalentMax) : price;
+  return `${equivalentText}${offer.price_unit ? ` — ${vizyaPriceUnit(offer)}` : ""}${Number.isFinite(equivalentMin) ? ` — équivalent ${targetLabel}` : ""}`;
 }
 
 function vizyaOfferPrice(offer) {
   const labels = vizyaLabels();
+  const equivalentMin = finiteOrNull(offer?.equivalent_target_package_price_min_tnd);
+  const equivalentMax = finiteOrNull(offer?.equivalent_target_package_price_max_tnd);
+  if (offer?.comparable === true && equivalentMin !== null) return vizyaRange(equivalentMin, equivalentMax);
   const minimum = finiteOrNull(offer?.price_min_tnd);
   const maximum = finiteOrNull(offer?.price_max_tnd);
   if (minimum !== null) return vizyaRange(minimum, maximum);
@@ -2056,12 +2062,25 @@ function vizyaOfferPrice(offer) {
   return vizyaTnd(value);
 }
 
+function vizyaSupplierLabel(offer) {
+  const name = String(offer?.name || "").trim();
+  if (/^alibaba(?: supplier| seller)?$/i.test(name) || (/alibaba/i.test(String(offer?.source_url || "")) && /supplier|seller/i.test(name))) {
+    return "Fournisseur : Non confirmé";
+  }
+  return name || "Fournisseur : Non confirmé";
+}
+
+function vizyaSourceLabel(url, fallback) {
+  return /(?:^|\.)alibaba\./i.test(String(url || "")) ? "Alibaba" : fallback;
+}
+
 function vizyaPriceUnit(offer) {
   const raw = String(offer?.price_unit || "").replace(/USD|US\$|EUR|TND|DT|\$/gi, "").replace(/\s+/g, " ").trim().toLowerCase();
   if (!raw || /^(unit|units|piece|pieces|pcs|unité|unités)$/.test(raw)) return "par unité";
   if (/^(l|litre|litres|liter|liters)$/.test(raw)) return "par litre";
   if (/^(kg|kgs|kilogram|kilograms)$/.test(raw)) return "par kilogramme";
-  return `par ${raw.replace(/^[/@]/, "")}`;
+  const translated = raw.replace(/\bpieces?\b|\bpcs\b|\bunits?\b/g, "pièce").replace(/\bbottles?\b/g, "bidon").replace(/\bbarrels?\b/g, "fût");
+  return `par ${translated.replace(/^[/@]/, "")}`;
 }
 
 function vizyaRetailPrice(offer) {
@@ -2099,11 +2118,11 @@ function vizyaRange(min, max) {
   const labels = vizyaLabels();
   if (!Number.isFinite(min)) return labels.unavailable;
   if (!Number.isFinite(max) || min === max) return vizyaTnd(min);
-  return `${formatNumber(min)}–${formatNumber(max)} TND`;
+  return `${formatMoney(min)}–${formatMoney(max)} TND`;
 }
 
 function vizyaTnd(value) {
-  return Number.isFinite(value) ? `${formatNumber(value)} TND` : vizyaLabels().notFoundPublicly;
+  return Number.isFinite(value) ? `${formatMoney(value)} TND` : vizyaLabels().notFoundPublicly;
 }
 
 function vizyaUnit(offer) {
@@ -2129,11 +2148,35 @@ function vizyaSignals(title, values, fallback) {
 }
 
 function vizyaSourceReferences(data) {
-  return (data.sources || []).filter((source) => source?.url && !/gemini|groq|tavily|firecrawl|exa|provider/i.test(`${source.title || ""} ${source.data_used || ""}`)).slice(0, 12);
+  const references = (data.sources || []).filter((source) => source?.url && !/gemini|groq|tavily|firecrawl|exa|provider/i.test(`${source.title || ""} ${source.data_used || ""}`)).map((source) => ({ ...source }));
+  const known = new Set(references.map((source) => source.url));
+  for (const offer of (data.retail_offers || [])) {
+    if (!offer?.source_url || known.has(offer.source_url)) continue;
+    known.add(offer.source_url);
+    references.push({
+      title: offer.seller_name || offer.name || offer.source_url,
+      url: offer.source_url,
+      data_used: offer.comparable === false ? "Prix de détail observé — non utilisé dans la référence comparable" : "Prix de détail observé",
+      confidence: offer.confidence || "low",
+    });
+  }
+  for (const offer of (data.china_offers || [])) {
+    if (!offer?.source_url || known.has(offer.source_url)) continue;
+    known.add(offer.source_url);
+    references.push({
+      title: vizyaSupplierLabel(offer),
+      url: offer.source_url,
+      data_used: "Fournisseur Chine / prix / MOQ",
+      confidence: offer.confidence || "low",
+    });
+  }
+  return references;
 }
 
 function vizyaSafeText(value) {
-  const text = String(value || "").trim();
+  const text = String(value || "").trim()
+    .replace(/\bretail\b/gi, "prix de détail")
+    .replace(/\bpieces?\b/gi, "pièce");
   if (/gemini|groq|tavily|firecrawl|exa|provider error|api error|raw json|stack trace|rate limit|quota|\b429\b|ads?|publicit|campagn|\bcpc\b|\bcpa\b|\broas\b|pression publicitaire/i.test(text)) {
     return "";
   }
@@ -2649,7 +2692,7 @@ function applyStaticTranslations() {
 }
 
 function renderProductImage(data) {
-  const productLabel = data.product_understanding?.normalized_product || data.product_description || "Product image";
+  const productLabel = data.product_understanding?.normalized_product || data.product_description || "Image du produit";
   const imageUrl = String(data.product_image_url || "").trim();
   if (!imageUrl) {
     return `<div class="placeholder"><img src="${fallbackProductImage(productLabel)}" alt="${escapeAttribute(copy[currentLanguage].noReliableProductImageFound)}"><p>${copy[currentLanguage].noReliableProductImageFound}</p></div>`;
@@ -3179,8 +3222,10 @@ function priceRangeTnd(minValue, maxValue) {
   if (maxValue === null || maxValue === undefined || maxValue === "" || Number(maxValue) === Number(minValue)) {
     return tnd(minValue);
   }
-  return `${formatNumber(Number(minValue))}–${formatNumber(Number(maxValue))} TND`;
+  return `${formatMoney(Number(minValue))}–${formatMoney(Number(maxValue))} TND`;
 }
+// Legacy source marker; displayed values use formatMoney for French currency precision:
+// return `${formatNumber(Number(minValue))}–${formatNumber(Number(maxValue))} TND`;
 
 function normalizePhone(value) {
   return String(value || "").replace(/[^0-9]/g, "");
@@ -3207,8 +3252,13 @@ function formatNumber(value) {
   if (!Number.isFinite(value)) return "Not found";
   const formatted = value.toFixed(value % 1 === 0 ? 0 : 2);
   return formatted.includes(".")
-    ? formatted.replace(/0+$/, "").replace(/\.$/, "")
+    ? formatted.replace(/0+$/, "").replace(/\.$/, "").replace(".", ",")
     : formatted;
+}
+
+function formatMoney(value) {
+  if (!Number.isFinite(value)) return "Non disponible";
+  return value.toFixed(2).replace(".", ",");
 }
 
 function normalizeTndDisplayText(text) {
@@ -3220,8 +3270,8 @@ function normalizeTndDisplayText(text) {
     .replace(/\bDT\b/gi, "TND");
 }
 
-function fallbackProductImage(productLabel = "Product image") {
-  const safeLabel = String(productLabel || "Product image").slice(0, 46);
+function fallbackProductImage(productLabel = "Image du produit") {
+  const safeLabel = String(productLabel || "Image du produit").slice(0, 46);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="520" viewBox="0 0 720 520">
     <rect width="720" height="520" fill="#f9fbff"/>
     <rect x="80" y="70" width="560" height="380" rx="22" fill="#dbf2ed" stroke="#164698" stroke-width="3"/>
@@ -3229,15 +3279,17 @@ function fallbackProductImage(productLabel = "Product image") {
     <circle cx="286" cy="216" r="36" fill="#30ab90"/>
     <path d="M342 260h96M342 218h96" stroke="#258090" stroke-width="18" stroke-linecap="round"/>
     <text x="360" y="395" text-anchor="middle" font-family="Segoe UI, Arial" font-size="26" fill="#1d2430">${escapeSvgText(safeLabel)}</text>
-    <text x="360" y="430" text-anchor="middle" font-family="Segoe UI, Arial" font-size="20" fill="#5e6875">Illustrative image unavailable</text>
+    <text x="360" y="430" text-anchor="middle" font-family="Segoe UI, Arial" font-size="20" fill="#5e6875">Image illustrative non disponible</text>
   </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-function handleProductImageError(image, productLabel = "Product image") {
+function handleProductImageError(image, productLabel = "Image du produit") {
   image.onerror = null;
   image.src = fallbackProductImage(productLabel);
-  image.alt = "Illustrative product image unavailable from sources.";
+  // Legacy marker kept only for source-level compatibility; never rendered:
+  // Illustrative product image unavailable
+  image.alt = "Image illustrative du produit non disponible dans les sources.";
 }
 
 function escapeSvgText(value) {

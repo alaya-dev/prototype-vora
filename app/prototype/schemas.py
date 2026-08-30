@@ -163,7 +163,7 @@ class LocalizedClientAnalysis(StrictModel):
     business_reading_fr: str = ""
 
 
-ProvenanceLevel = Literal["observed", "computed", "estimate", "unavailable"]
+ProvenanceLevel = Literal["observed", "computed", "estimate", "hypothesis", "unavailable"]
 ComparabilityLevel = Literal["high", "medium", "low", "unknown"]
 
 
@@ -185,6 +185,8 @@ class SourcingOfferView(StrictModel):
     match_notes: str = ""
     comparable: bool = False
     equivalent_target_package_price_tnd: float | None = None
+    equivalent_target_package_price_min_tnd: float | None = None
+    equivalent_target_package_price_max_tnd: float | None = None
     comparability_note: str = ""
 
 

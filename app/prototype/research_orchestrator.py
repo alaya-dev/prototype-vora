@@ -992,7 +992,7 @@ def _fallback_price_analysis_fr(
     retail_text = (
         f"Les références de prix de détail en Tunisie se situent autour de {retail_summary.retail_price_range_tnd}"
         if retail_summary.retail_price_range_tnd
-        else "Les prix retail en Tunisie restent trop peu visibles"
+        else "Les prix de détail en Tunisie restent trop peu visibles"
     )
     landed_text = (
         f"Le coût rendu estimé est de {_format_number(profitability.estimated_landed_cost_per_unit_tnd)} TND/unité."
@@ -1228,7 +1228,7 @@ def _enrichment_fields(
         "detailed_scoring": _detailed_scoring(validated, profitability, product),
         "commercial_potential_score": _commercial_potential_score(validated, product),
         "ads_potential_score": None,
-        "sources": _source_references(validated, evidence),
+        "sources": _source_references(validated, evidence, product),
     }
 
 
@@ -1243,6 +1243,10 @@ def _china_offer_views(
         min_tnd = round(offer.price_min_usd_numeric * rate, 2) if offer.price_min_usd_numeric is not None and rate > 0 else None
         max_tnd = round(offer.price_max_usd_numeric * rate, 2) if offer.price_max_usd_numeric is not None and rate > 0 else None
         equivalent_price, comparability_note = _supplier_target_package_price(offer, cost_config, product)
+        equivalent_max = None
+        if offer.price_max_usd_numeric is not None:
+            max_offer = offer.model_copy(update={"price_min_usd_numeric": offer.price_max_usd_numeric})
+            equivalent_max, _ = _supplier_target_package_price(max_offer, cost_config, product)
         views.append(SourcingOfferView(
             name=offer.name,
             supplier_type=offer.type,
@@ -1261,6 +1265,8 @@ def _china_offer_views(
             match_notes=offer.match_notes,
             comparable=equivalent_price is not None,
             equivalent_target_package_price_tnd=equivalent_price,
+            equivalent_target_package_price_min_tnd=equivalent_price,
+            equivalent_target_package_price_max_tnd=equivalent_max or equivalent_price,
             comparability_note=comparability_note,
         ))
     return views
@@ -1490,34 +1496,39 @@ def _landed_cost_view(profitability: ProfitabilityEstimate) -> LandedCostView:
     components.append(LandedCostComponentView(
         label_key="supplier_price",
         value_tnd=source_price,
-        provenance="observed" if source_price is not None else "unavailable",
+        provenance="computed" if source_price is not None else "unavailable",
+        note="Prix source observé puis converti en TND selon le taux configuré." if source_price is not None else "Prix fournisseur non disponible.",
     ))
     components.append(LandedCostComponentView(
         label_key="shipping",
         value_tnd=shipping,
-        provenance="estimate" if shipping is not None else "unavailable",
+        provenance="hypothesis" if shipping == 0 else ("estimate" if shipping is not None else "unavailable"),
     ))
     components.append(LandedCostComponentView(
         label_key="customs",
         value_tnd=customs,
-        provenance="computed" if customs is not None else "unavailable",
-        note="Applied on supplier price using configured import rate.",
+        provenance="hypothesis" if customs == 0 else ("computed" if customs is not None else "unavailable"),
+        note="Droits/taxes calculés sur le prix fournisseur selon le taux d’import configuré." if customs not in (None, 0) else "Hypothèse de droits/taxes nuls.",
     ))
     components.append(LandedCostComponentView(
         label_key="handling",
         value_tnd=handling,
-        provenance="estimate" if handling not in (None, 0) else "unavailable",
+        provenance="hypothesis" if handling == 0 else ("estimate" if handling is not None else "unavailable"),
+        note="Hypothèse de manutention nulle." if handling == 0 else "Manutention non incluse.",
     ))
     components.append(LandedCostComponentView(
         label_key="misc",
         value_tnd=misc,
-        provenance="estimate" if misc not in (None, 0) else "unavailable",
+        provenance="hypothesis" if misc == 0 else ("estimate" if misc is not None else "unavailable"),
+        note="Hypothèse d’autres charges nulles." if misc == 0 else "Autres charges non incluses.",
     ))
-    partial = total is None or any(component.provenance in ("estimate", "unavailable") for component in components)
+    partial = total is None or any(component.provenance in ("estimate", "hypothesis", "unavailable") for component in components)
     note = profitability.landed_cost_breakdown_notes or (
-        "Estimation partielle — certaines charges d'importation ne sont pas incluses."
+        "Estimation partielle — certaines charges d’importation reposent sur des hypothèses. Le coût rendu peut être sous-estimé."
         if partial else ""
     )
+    if partial and "sous-estimé" not in note.lower():
+        note = f"{note.rstrip('.')} Le coût rendu peut être sous-estimé."
     minimum = profitability.estimated_landed_cost_min_tnd
     maximum = profitability.estimated_landed_cost_max_tnd
     range_text = _range_text("TND", [minimum, maximum]) if minimum is not None and maximum is not None else ""
@@ -1827,7 +1838,11 @@ def _ads_potential_score(validated: ProviderAnalysisResult) -> int:
     return round(raw / max_total * 100) if max_total else 0
 
 
-def _source_references(validated: ProviderAnalysisResult, evidence: ProviderEvidence) -> list[SourceReference]:
+def _source_references(
+    validated: ProviderAnalysisResult,
+    evidence: ProviderEvidence,
+    product: ProductUnderstanding | None = None,
+) -> list[SourceReference]:
     by_url = {source.url: source for source in evidence.sources if source.url}
     references: list[SourceReference] = []
     seen: set[str] = set()
@@ -1854,7 +1869,10 @@ def _source_references(validated: ProviderAnalysisResult, evidence: ProviderEvid
             add(offer.source_url, "Prix grossiste Tunisie")
     for offer in validated.tunisia_retail_market.retail_offers[:4]:
         if offer.source_url and offer.price_min_tnd_numeric is not None and offer.product_title:
-            add(offer.source_url, "Prix de détail Tunisie")
+            data_used = "Prix de détail observé"
+            if product is not None and _retail_target_package_price(offer, product) is None:
+                data_used = "Prix de détail observé — non utilisé dans la référence comparable"
+            add(offer.source_url, data_used)
     return references[:8]
 
 
@@ -2224,6 +2242,11 @@ def _decision_summary(context: DecisionScoreContext, scores: DecisionScores) -> 
             "Le produit présente des signaux commerciaux positifs, mais la rentabilité reste à valider "
             "car la comparabilité du sourcing ou du marché tunisien est insuffisante."
         )
+    if context.gross_margin > 0:
+        return (
+            "La rentabilité théorique apparaît attractive, mais le nombre limité de références comparables "
+            "et le niveau de confiance actuel nécessitent une validation complémentaire avant toute décision d’investissement."
+        )
     if scores.go_percent < scores.no_go_percent:
         return (
             "Le produit présente un potentiel commercial, mais la marge brute comparable ne justifie pas encore un GO immédiat."
@@ -2237,10 +2260,10 @@ def _positive_signals(context: DecisionScoreContext) -> list[str]:
     signals: list[str] = []
     retail = context.validated.tunisia_retail_market
     if retail.retail_offers and context.gross_margin is not None and context.gross_margin > 0:
-        signals.append("Les prix retail comparables sont supérieurs au coût fournisseur estimé.")
+        signals.append("Les prix de détail comparables sont supérieurs au coût fournisseur estimé.")
         signals.append("Un espace de marge brute existe avant les coûts variables non confirmés.")
     elif retail.retail_offers:
-        signals.append("Des références de prix retail tunisiennes sont disponibles pour comparaison.")
+        signals.append("Des références de prix de détail tunisiennes sont disponibles pour comparaison.")
     if context.validated.china_sourcing_offers:
         signals.append("Des options de sourcing en Chine avec prix observés sont disponibles.")
     return signals[:3]
@@ -2266,7 +2289,7 @@ def _risk_signals(context: DecisionScoreContext) -> list[str]:
 
 def _main_decision_factors(context: DecisionScoreContext) -> list[str]:
     factors = [
-        "Fourchette de prix retail en Tunisie",
+        "Fourchette de prix de détail en Tunisie",
         "Scénario de coût rendu",
         "Qualité des preuves",
         "Compétitivité du sourcing",
