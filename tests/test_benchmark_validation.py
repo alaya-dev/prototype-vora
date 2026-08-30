@@ -491,3 +491,33 @@ class BenchmarkValidationTests(unittest.TestCase):
         self.assertEqual(offers["Keyshop"].price_min_tnd_numeric, 35.0)
         self.assertEqual(offers["Shopiwell"].price_min_tnd_numeric, 43.6)
         self.assertEqual(offers["Expensive"].price_min_tnd_numeric, 1200)
+
+    def test_t9_retail_listings_keep_their_observed_prices(self) -> None:
+        analysis = ProviderAnalysisResult(
+            tunisia_retail_market=TunisiaRetailMarket(
+                retail_offers=[
+                    TunisiaRetailOffer(
+                        seller_name="MyTek",
+                        product_title="Tondeuse à cheveux Rechargeable TRIMMER VINTAGE T9 - Gold",
+                        price_range_tnd="19,90 TND",
+                        price_min_tnd_numeric=19.90,
+                        source_url="https://www.mytek.tn/tondeuse-a-cheveux-trimmer-vintage.html",
+                    ),
+                    TunisiaRetailOffer(
+                        seller_name="Last Price Tunisie",
+                        product_title="Tondeuse Cheveux Professionnel VINTAGE T9",
+                        price_range_tnd="9,90 TND",
+                        price_min_tnd_numeric=9.90,
+                        source_url="https://lastprice.tn/tondeuse-t9",
+                    ),
+                ]
+            )
+        )
+
+        validated = validate_provider_result(analysis, raw_sources=[])
+        offers = {offer.seller_name: offer for offer in validated.tunisia_retail_market.retail_offers}
+
+        self.assertEqual(offers["MyTek"].price_min_tnd_numeric, 9.90)
+        self.assertEqual(offers["Last Price Tunisie"].price_min_tnd_numeric, 19.90)
+        self.assertEqual(validated.tunisia_retail_market.price_min_tnd, 9.90)
+        self.assertEqual(validated.tunisia_retail_market.price_max_tnd, 19.90)

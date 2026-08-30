@@ -1804,7 +1804,7 @@ function renderPrototypeResult(data) {
       </div>
       <div class="report-facts">
         ${metric(labels.category, category)}
-        ${metric(labels.representativeProduct, product.original_product || product.normalized_product || labels.unavailable)}
+        ${metric(labels.representativeProduct, vizyaDisplayProductName(product.original_product || product.normalized_product || labels.unavailable))}
         ${metric(labels.targetMarket, vizyaCountryLabel(data.target_market || "Tunisia"))}
         ${metric(labels.sourcingCountry, vizyaCountryLabel(data.sourcing_country || "China"))}
         ${metric(labels.supplierPrice, vizyaSupplierPurchasePrice(retainedSupplier, product))}
@@ -1824,7 +1824,7 @@ function renderPrototypeResult(data) {
       <h2>${labels.productCategory}</h2>
       <div class="metric-grid">
         ${metric(labels.category, category)}
-        ${metric(labels.representativeProduct, product.original_product || product.normalized_product || labels.unavailable)}
+        ${metric(labels.representativeProduct, vizyaDisplayProductName(product.original_product || product.normalized_product || labels.unavailable))}
       </div>
       <p>${escapeHtml(vizyaSafeText(productDescription))}</p>
       ${vizyaLubricantNote(product) ? `<p class="hidden-note">${escapeHtml(vizyaLubricantNote(product))}</p>` : ""}
@@ -2030,6 +2030,13 @@ function vizyaCategory(product) {
   return product.product_category || vizyaLabels().unavailable;
 }
 
+function vizyaDisplayProductName(value) {
+  return String(value || "").replace(
+    /\btondeuse(?:\s+à\s+cheveux|\s+cheveux)?\s+t9\s+vintage(?:\s+t9)?\b/gi,
+    "Tondeuse T9 Vintage",
+  );
+}
+
 function vizyaLubricantNote(product) {
   const text = [product.original_product, product.normalized_product].filter(Boolean).join(" ").toLowerCase();
   if (!/(5w-30|huile|oil|lubric)/.test(text)) return "";
@@ -2064,7 +2071,7 @@ function vizyaOfferPrice(offer) {
 
 function vizyaSupplierLabel(offer) {
   const name = String(offer?.name || "").trim();
-  if (/^alibaba(?: supplier| seller)?$/i.test(name) || (/alibaba/i.test(String(offer?.source_url || "")) && /supplier|seller/i.test(name))) {
+  if (/^alibaba(?: supplier| seller)?$/i.test(name) || /^made[- ]in[- ]china(?: supplier| seller)?$/i.test(name) || (/alibaba/i.test(String(offer?.source_url || "")) && /supplier|seller/i.test(name))) {
     return "Fournisseur : Non confirmé";
   }
   return name || "Fournisseur : Non confirmé";
