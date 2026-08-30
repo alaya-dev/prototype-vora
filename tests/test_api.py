@@ -194,7 +194,12 @@ class ApiTests(unittest.TestCase):
 
         analyze_response = TestClient(app).post(
             "/prototype/analyze",
-            json={"product": "Vintage T9 hair trimmer", "quantity_scenarios": [1000]},
+            json={
+                "product": "Vintage T9 hair trimmer",
+                "market": "Tunisia",
+                "sourcing_country": "China",
+                "quantity_scenarios": [1000],
+            },
         )
         reveal_response = TestClient(app).get("/prototype/runs/run_1/reveal")
 
@@ -214,6 +219,32 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(reveal_response.json()["china_sourcing_links"], [])
         self.assertEqual(reveal_response.json()["seller_contacts"][0]["email"], "sales@example.com")
         self.assertNotIn("cn.example", reveal_response.text.lower())
+
+    def test_prototype_analyze_accepts_canonical_market_payload(self) -> None:
+        server_module = importlib.import_module("server")
+        prototype = StubPrototypeOrchestrator()
+        app = server_module.create_app(
+            settings=_settings(),
+            benchmark_pipeline=_benchmark_pipeline(),
+            provider_infos=ProvidersResponse(providers=[]),
+            prototype_orchestrator=prototype,
+        )
+
+        response = TestClient(app).post(
+            "/prototype/analyze",
+            json={
+                "product": "tondeuse cheveux t9 vintage",
+                "market": "Tunisia",
+                "sourcing_country": "China",
+            },
+        )
+
+        self.assertNotEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(prototype.calls), 1)
+        self.assertEqual(prototype.calls[0].product, "tondeuse cheveux t9 vintage")
+        self.assertEqual(prototype.calls[0].market, "Tunisia")
+        self.assertEqual(prototype.calls[0].sourcing_country, "China")
 
     def test_analytics_and_agent_routes_do_not_expose_keys(self) -> None:
         server_module = importlib.import_module("server")

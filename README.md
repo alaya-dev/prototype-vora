@@ -155,6 +155,8 @@ Client prototype analysis:
 POST /prototype/analyze
 {
   "product": "Vintage T9 hair trimmer",
+  "market": "Tunisia",
+  "sourcing_country": "China",
   "quantity_scenarios": [1000]
 }
 ```

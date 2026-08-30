@@ -5,7 +5,9 @@ from pydantic import BaseModel
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.prototype.schemas import PrototypeAnalysisDraft
 from app.services.groq_client import GroqClient, GroqClientError
+from app.services.groq_client import _normalize_client_analysis_payload
 
 
 class Reply(BaseModel):
@@ -103,6 +105,30 @@ class GroqClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, "ok")
         self.assertEqual(sleeps, [2.0])
 
+    async def test_client_analysis_normalizes_known_legacy_shapes_before_strict_validation(self) -> None:
+        client = FakeClient([
+            '{"sourcing_summary":"Aucune offre fiable.",'
+            '"retail_market_summary":"Aucune donnée fiable.",'
+            '"tunisia_retail_market":{"seller_density":null},'
+            '"profitability_estimate":{"source_unit_price_usd":null,"expected_units_sold":null,'
+            '"margin_percent":null,"assumptions_and_risks":"Vérifier le fret."},'
+            '"decision_scores":{"main_decision_factors":"Vérifier la concurrence."},'
+            '"warnings":"Données limitées."}'
+        ])
+        groq = GroqClient("not-logged", "openai/gpt-oss-20b", client=client, jitter=lambda: 0)
+
+        result = await groq.generate_json(
+            "Return the client analysis.",
+            PrototypeAnalysisDraft,
+            payload_normalizer=_normalize_client_analysis_payload,
+        )
+
+        self.assertEqual(result.sourcing_summary.tunisia_wholesale_summary, "Aucune offre fiable.")
+        self.assertEqual(result.retail_market_summary.availability_notes, "Aucune donnée fiable.")
+        self.assertEqual(result.tunisia_retail_market.seller_density, "unknown")
+        self.assertEqual(result.warnings, ["Données limitées."])
+        self.assertEqual(result.profitability_estimate.assumptions, ["Vérifier le fret."])
+
 
 class GroqApiErrorTests(unittest.TestCase):
     def test_prospect_api_hides_provider_details(self) -> None:
@@ -117,7 +143,14 @@ class GroqApiErrorTests(unittest.TestCase):
             prototype_orchestrator=FailingPrototype(),
         )
 
-        response = TestClient(app).post("/prototype/analyze", json={"product": "Huile moteur 5W-30 4L"})
+        response = TestClient(app).post(
+            "/prototype/analyze",
+            json={
+                "product": "Huile moteur 5W-30 4L",
+                "market": "Tunisia",
+                "sourcing_country": "China",
+            },
+        )
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["detail"]["code"], "ANALYSIS_TEMPORARILY_UNAVAILABLE")

@@ -69,6 +69,15 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("product_image_confidence", self.html)
         self.assertIn("No reliable source-backed product image was found.", self.html)
 
+    def test_client_prototype_analysis_uses_canonical_market_payload(self) -> None:
+        analyzer = self.html.split("async function analyzePrototype()", 1)[1].split(
+            "function startAnalysisStepAnimation", 1
+        )[0]
+
+        self.assertIn("market: targetMarket", analyzer)
+        self.assertIn("sourcing_country: sourcingCountry", analyzer)
+        self.assertNotIn("target_market: targetMarket", analyzer)
+
     def test_analysis_loader_replaces_skeleton_during_client_analysis(self) -> None:
         self.assertIn("analysis-loader", self.html)
         self.assertIn("letter-loader", self.html)

@@ -97,7 +97,7 @@ class PrototypeResearchOrchestrator:
         if not intent.is_valid_product or not intent.normalized_product:
             response = PrototypeAnalyzeResponse(
                 run_id=run_id,
-                target_market=request.target_market,
+                target_market=request.market,
                 sourcing_country=request.sourcing_country,
                 product_understanding=_product_dump(intent),
                 product_description="",
@@ -145,7 +145,7 @@ class PrototypeResearchOrchestrator:
             cost_config=self.cost_config,
             quantity_scenarios=request.quantity_scenarios,
             warnings=list(dict.fromkeys(intent.warnings + warnings + validated.warnings)),
-            target_market=request.target_market,
+            target_market=request.market,
             sourcing_country=request.sourcing_country,
         )
         self.store.update_run_payload(

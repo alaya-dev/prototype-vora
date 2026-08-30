@@ -16,7 +16,7 @@ DominantDecisionSide = Literal["go", "no_go", "balanced"]
 
 class PrototypeAnalyzeRequest(StrictModel):
     product: str = Field(default="", max_length=300)
-    target_market: str = Field(default="Tunisia", max_length=80)
+    market: str = Field(default="Tunisia", max_length=80)
     sourcing_country: str = Field(default="China", max_length=80)
     quantity_scenarios: list[int] = Field(default_factory=lambda: [1000])
 

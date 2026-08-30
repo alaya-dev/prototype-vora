@@ -13,8 +13,20 @@ from app.agents.intent_classifier import (
     IntentClassificationPayload,
     _looks_like_blocked_request,
 )
-from app.benchmark.schemas import ProviderAnalysisResult, ProviderEvidence
-from app.prototype.schemas import CostConfig, PrototypeAnalysisDraft
+from app.benchmark.schemas import (
+    ChinaSourcingOffer,
+    ProviderAnalysisResult,
+    ProviderEvidence,
+    TunisiaRetailOffer,
+    TunisiaSourcingOffer,
+)
+from app.prototype.schemas import (
+    CostConfig,
+    ProfitabilityEstimate,
+    PrototypeAnalysisDraft,
+    RetailMarketSummary,
+    SourcingSummary,
+)
 from app.schemas import IntentResult, ProductUnderstanding
 from app.services.gemini_client import (
     _build_analysis_prompt,
@@ -100,6 +112,7 @@ class GroqClient:
         json_mode: bool = True,
         include_schema: bool = False,
         schema_hint: str = "",
+        payload_normalizer: Callable[[object], object] | None = None,
     ) -> T:
         structured_prompt = (
             f"{prompt}\n\n"
@@ -126,7 +139,11 @@ class GroqClient:
                 **request_args,
             )
             try:
-                return response_model.model_validate_json(_completion_content(response))
+                content = _completion_content(response)
+                if payload_normalizer is not None:
+                    payload = payload_normalizer(json.loads(content))
+                    return response_model.model_validate(payload)
+                return response_model.model_validate_json(content)
             except (ValidationError, ValueError) as error:
                 raise _InvalidStructuredResponse from error
 
@@ -233,9 +250,172 @@ class GroqAnalysisClient:
         return await self.structured_client.generate_json(
             _build_client_analysis_prompt(product, analysis_evidence, cost_config, quantity_scenarios),
             PrototypeAnalysisDraft,
-            max_completion_tokens=3500,
+            max_completion_tokens=2400,
             schema_hint=_PROTOTYPE_ANALYSIS_SCHEMA_HINT,
+            payload_normalizer=_normalize_client_analysis_payload,
         )
+
+
+def _normalize_client_analysis_payload(payload: object) -> object:
+    """Adapt known legacy provider shapes before strict draft validation."""
+    if not isinstance(payload, dict):
+        return payload
+
+    normalized = dict(payload)
+    sourcing_summary = normalized.get("sourcing_summary")
+    if isinstance(sourcing_summary, str):
+        normalized["sourcing_summary"] = {"tunisia_wholesale_summary": sourcing_summary}
+
+    retail_summary = normalized.get("retail_market_summary")
+    if isinstance(retail_summary, str):
+        normalized["retail_market_summary"] = {"availability_notes": retail_summary}
+
+    retail_market = normalized.get("tunisia_retail_market")
+    if isinstance(retail_market, dict) and retail_market.get("seller_density") is None:
+        normalized["tunisia_retail_market"] = {**retail_market, "seller_density": "unknown"}
+
+    warnings = normalized.get("warnings")
+    if isinstance(warnings, str):
+        normalized["warnings"] = [warnings]
+
+    profitability = normalized.get("profitability_estimate")
+    if isinstance(profitability, dict):
+        profitability = dict(profitability)
+        legacy_assumptions = profitability.pop("assumptions_and_risks", None)
+        if isinstance(legacy_assumptions, str) and legacy_assumptions.strip():
+            profitability.setdefault("assumptions", []).append(legacy_assumptions)
+        for legacy_key in (
+            "source_unit_price_usd",
+            "landed_cost_tnd",
+            "margin_tnd",
+            "expected_units_sold",
+            "margin_percent",
+            "expected_margin_percent",
+        ):
+            profitability.pop(legacy_key, None)
+        profitability = {
+            key: value for key, value in profitability.items() if key in ProfitabilityEstimate.model_fields
+        }
+        normalized["profitability_estimate"] = profitability
+
+    decision_scores = normalized.get("decision_scores")
+    if isinstance(decision_scores, dict):
+        decision_scores = dict(decision_scores)
+        for list_key in ("main_decision_factors", "why_go_score", "why_no_go_score", "what_would_change_the_decision"):
+            if isinstance(decision_scores.get(list_key), str):
+                decision_scores[list_key] = [decision_scores[list_key]]
+        normalized["decision_scores"] = decision_scores
+
+    for key in ("localized_analysis", "sourcing_summary", "retail_market_summary"):
+        value = normalized.get(key)
+        if isinstance(value, dict):
+            normalized[key] = {
+                field: ("" if field_value is None else field_value)
+                for field, field_value in value.items()
+            }
+
+    sourcing_summary = normalized.get("sourcing_summary")
+    if isinstance(sourcing_summary, dict):
+        sourcing_summary = dict(sourcing_summary)
+        if "china_sourcing" in sourcing_summary and "china_price_range" not in sourcing_summary:
+            sourcing_summary["china_price_range"] = sourcing_summary.pop("china_sourcing")
+        if "tunisia_sourcing" in sourcing_summary and "tunisia_wholesale_summary" not in sourcing_summary:
+            sourcing_summary["tunisia_wholesale_summary"] = sourcing_summary.pop("tunisia_sourcing")
+        sourcing_summary.pop("tunisia_retail", None)
+        normalized["sourcing_summary"] = {
+            key: value for key, value in sourcing_summary.items() if key in SourcingSummary.model_fields
+        }
+
+    retail_summary = normalized.get("retail_market_summary")
+    if isinstance(retail_summary, dict):
+        retail_summary = dict(retail_summary)
+        for old_key, new_key in {
+            "price_min_tnd": "retail_min_tnd",
+            "price_max_tnd": "retail_max_tnd",
+            "price_avg_tnd": "retail_avg_tnd",
+        }.items():
+            if old_key in retail_summary and new_key not in retail_summary:
+                retail_summary[new_key] = retail_summary.pop(old_key)
+        normalized["retail_market_summary"] = {
+            key: value for key, value in retail_summary.items() if key in RetailMarketSummary.model_fields
+        }
+
+    normalized["china_sourcing_offers"] = [
+        _normalize_offer(offer, ChinaSourcingOffer, includes_moq=True)
+        for offer in normalized.get("china_sourcing_offers", [])
+    ]
+    normalized["tunisia_sourcing_offers"] = [
+        _normalize_offer(offer, TunisiaSourcingOffer, includes_moq=False)
+        for offer in normalized.get("tunisia_sourcing_offers", [])
+    ]
+
+    retail_market = normalized.get("tunisia_retail_market")
+    if isinstance(retail_market, dict):
+        retail_market = dict(retail_market)
+        retail_market["retail_offers"] = [
+            _normalize_offer(offer, TunisiaRetailOffer, includes_moq=False)
+            for offer in retail_market.get("retail_offers", [])
+        ]
+        for key in ("competition_notes", "availability_notes"):
+            if retail_market.get(key) is None:
+                retail_market[key] = ""
+        for key in ("unique_sellers_count", "retail_sources_count"):
+            if retail_market.get(key) is None:
+                retail_market[key] = 0
+        normalized["tunisia_retail_market"] = retail_market
+
+    return normalized
+
+
+def _normalize_offer(payload: object, model: type[BaseModel], *, includes_moq: bool) -> object:
+    if not isinstance(payload, dict):
+        return payload
+    normalized = dict(payload)
+    evidence_level = normalized.get("evidence_level")
+    if evidence_level in {"high", "medium", "low"}:
+        normalized["evidence_level"] = {"high": "direct", "medium": "indirect", "low": "weak"}[evidence_level]
+    for key in ("price_evidence", "moq_evidence"):
+        if key not in model.model_fields:
+            continue
+        value = normalized.get(key)
+        if isinstance(value, bool):
+            normalized[key] = "direct" if value else "not_found"
+    product_match = normalized.get("product_match")
+    if isinstance(product_match, bool):
+        normalized["product_match"] = "close" if product_match else "weak"
+    confidence = normalized.get("confidence")
+    if confidence not in {"high", "medium", "low"}:
+        normalized["confidence"] = "low"
+    for key in model.model_fields:
+        if key in {"source_url", "price_normalization_notes", "match_notes", "notes"} and normalized.get(key) is None:
+            normalized[key] = ""
+    if includes_moq and normalized.get("moq_evidence") is None:
+        normalized["moq_evidence"] = "not_found"
+    if model is TunisiaRetailOffer:
+        normalized["seller_type"] = {
+            "retail": "retail_store",
+            "shop": "local_shop",
+            "store": "retail_store",
+            "online_store": "retail_store",
+            "individual": "classified",
+        }.get(normalized.get("seller_type"), normalized.get("seller_type", "unknown"))
+        normalized["source_price_type"] = {
+            "detail": "single",
+            "single_price": "single",
+            "listed_price": "single",
+        }.get(normalized.get("source_price_type"), normalized.get("source_price_type", "unknown"))
+        normalized["source_page_type"] = {
+            "product_page": "product",
+            "listing": "category_or_listing",
+            "post": "category_or_listing",
+        }.get(normalized.get("source_page_type"), normalized.get("source_page_type", "unknown"))
+        if normalized["seller_type"] not in {"marketplace", "local_shop", "retail_store", "classified", "social_listing", "unknown"}:
+            normalized["seller_type"] = "unknown"
+        if normalized["source_price_type"] not in {"single", "range", "unknown"}:
+            normalized["source_price_type"] = "unknown"
+        if normalized["source_page_type"] not in {"product", "category_or_listing", "unknown"}:
+            normalized["source_page_type"] = "unknown"
+    return {key: value for key, value in normalized.items() if key in model.model_fields}
 
 
 def _completion_content(response: object) -> str:
