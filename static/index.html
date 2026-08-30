@@ -1732,6 +1732,7 @@ function renderPrototypeResult(data) {
   const labels = vizyaLabels();
   const retail = vizyaRetailMarket(data);
   const profit = data.profitability_estimate || {};
+  const product = data.product_understanding || {};
   const retainedSupplier = vizyaRetainedSupplier(data);
   const landedCost = finiteOrNull(data.landed_cost?.total_tnd ?? profit.estimated_landed_cost_per_unit_tnd);
   const marketReference = finiteOrNull(profit.estimated_selling_price_tnd);
@@ -1743,7 +1744,6 @@ function renderPrototypeResult(data) {
     : null;
   const confidence = data.decision_scores?.confidence || data.sourcing_summary?.evidence_confidence || "low";
   const recommendation = vizyaRecommendation(data, confidence);
-  const product = data.product_understanding || {};
   const category = vizyaCategory(product);
   const sourceOffers = vizyaSupplierOffers(data);
   const wholesaleOffers = (data.tunisia_wholesale_offers || []).filter((offer) => offer.source_url);
@@ -1770,7 +1770,7 @@ function renderPrototypeResult(data) {
         ${metric(labels.representativeProduct, product.original_product || product.normalized_product || labels.unavailable)}
         ${metric(labels.targetMarket, data.target_market || "Tunisia")}
         ${metric(labels.sourcingCountry, data.sourcing_country || "China")}
-        ${metric(labels.supplierPrice, vizyaSupplierPurchasePrice(retainedSupplier))}
+        ${metric(labels.supplierPrice, vizyaSupplierPurchasePrice(retainedSupplier, product))}
         ${metric(labels.landedCost, vizyaTnd(landedCost))}
         ${metric(labels.retailRange, vizyaRange(retail.min, retail.max))}
         ${metric(labels.wholesaleStatus, wholesaleOffers.length ? labels.wholesaleAvailable : labels.wholesaleUnavailable)}
@@ -1801,7 +1801,7 @@ function renderPrototypeResult(data) {
           offer.product_title || labels.unavailable,
           data.sourcing_country || "China",
           vizyaOfferPrice(offer),
-          offer.price_unit || labels.unavailable,
+          `${offer.price_unit || labels.unavailable}${offer.comparable === false ? " — NON COMPARABLE" : ""}`,
           offer.moq || labels.unavailable,
           vizyaSourceLink(offer.source_url, labels.viewSource),
           vizyaConfidence(offer.confidence),
@@ -1812,7 +1812,7 @@ function renderPrototypeResult(data) {
           <h3>${labels.retainedSupplier}</h3>
           <div class="metric-grid">
             ${metric(labels.supplier, retainedSupplier.name || labels.unavailable)}
-            ${metric(labels.retainedPrice, vizyaSupplierPurchasePrice(retainedSupplier))}
+            ${metric(labels.retainedPrice, vizyaSupplierPurchasePrice(retainedSupplier, product))}
             ${metric(labels.priceUnit, retainedSupplier.price_unit || labels.unavailable)}
             ${metric(labels.moq, retainedSupplier.moq || labels.unavailable)}
             ${metricLink(labels.source, retainedSupplier.source_url, labels.viewSource)}
@@ -1842,7 +1842,7 @@ function renderPrototypeResult(data) {
           offer.product_title || labels.unavailable,
           offer.volume_text || labels.unavailable,
           vizyaTnd(offer.price_tnd),
-          offer.normalized_price_text || (Number.isFinite(offer.normalized_price_per_unit_tnd) ? `${formatNumber(offer.normalized_price_per_unit_tnd)} TND/${vizyaUnit(offer)}` : labels.unavailable),
+          offer.normalized_price_text || (Number.isFinite(offer.normalized_price_per_unit_tnd) ? `${formatNumber(offer.normalized_price_per_unit_tnd)} TND/${vizyaUnit(offer)}` : (offer.comparability_note || labels.unavailable)),
           vizyaSourceLink(offer.source_url, labels.viewSource),
           vizyaConfidence(offer.confidence),
         ])
@@ -1934,20 +1934,22 @@ function vizyaSupplierOffers(data) {
 
 function vizyaRetainedSupplier(data) {
   const offers = vizyaSupplierOffers(data);
-  const exact = offers.filter((offer) => offer.product_match === "exact");
-  const candidates = exact.length ? exact : offers;
+  const comparable = offers.filter((offer) => offer.comparable === true);
+  const exact = comparable.filter((offer) => offer.product_match === "exact");
+  const candidates = exact.length ? exact : comparable;
   const reliable = candidates.filter((offer) => ["high", "medium"].includes(String(offer.confidence || "").toLowerCase()));
   return (reliable.length ? reliable : candidates).sort((left, right) => (finiteOrNull(left.price_min) ?? Infinity) - (finiteOrNull(right.price_min) ?? Infinity))[0] || null;
 }
 
 function vizyaRetailMarket(data) {
   const offers = (data.retail_offers || []).filter((offer) => offer?.source_url && finiteOrNull(offer.price_tnd) !== null).slice(0, 8);
-  const prices = offers.map((offer) => finiteOrNull(offer.price_tnd)).filter((value) => value !== null);
+  const comparableOffers = offers.filter((offer) => offer.comparable === true);
+  const prices = comparableOffers.map((offer) => finiteOrNull(offer.comparable_target_price_tnd ?? offer.price_tnd)).filter((value) => value !== null);
   const summary = data.retail_market_summary || {};
   return {
     offers,
-    min: prices.length ? Math.min(...prices) : finiteOrNull(summary.retail_min_tnd),
-    max: prices.length ? Math.max(...prices) : finiteOrNull(summary.retail_max_tnd),
+    min: finiteOrNull(summary.retail_min_tnd) ?? (prices.length ? Math.min(...prices) : null),
+    max: finiteOrNull(summary.retail_max_tnd) ?? (prices.length ? Math.max(...prices) : null),
   };
 }
 
@@ -1995,11 +1997,14 @@ function vizyaLubricantNote(product) {
   return currentLanguage === "fr" ? "L’huile moteur 5W-30 4L est utilisée comme SKU représentatif pour cette pré-étude des lubrifiants automobiles. Elle ne constitue pas une étude exhaustive de l’ensemble de la catégorie." : "Engine oil 5W-30 4L is used as a representative SKU for this initial automotive-lubricants pre-study. It is not an exhaustive study of the whole category.";
 }
 
-function vizyaSupplierPurchasePrice(offer) {
+function vizyaSupplierPurchasePrice(offer, product = {}) {
   const labels = vizyaLabels();
   if (!offer) return labels.unavailable;
   const price = vizyaOfferPrice(offer);
-  return offer.price_unit ? `${price} / ${offer.price_unit}` : price;
+  const target = parseVolume([product.original_product, product.normalized_product, ...(product.technical_specs || [])].filter(Boolean).join(" "));
+  const equivalent = finiteOrNull(offer.equivalent_target_package_price_tnd);
+  const targetLabel = target ? `${formatNumber(target.value)}${target.unit}` : "format cible";
+  return `${offer.price_unit ? `${price} / ${offer.price_unit}` : price}${Number.isFinite(equivalent) ? ` — équivalent ${targetLabel}: ${formatNumber(equivalent)} TND` : ""}`;
 }
 
 function vizyaOfferPrice(offer) {

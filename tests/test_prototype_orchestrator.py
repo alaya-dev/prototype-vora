@@ -18,6 +18,7 @@ from app.prototype.research_orchestrator import (
     _detailed_scoring,
     _image_source_matches_product,
     _response_from_validated,
+    _to_client_response,
 )
 from app.prototype.schemas import (
     CostConfig,
@@ -491,6 +492,162 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(profit.estimated_customs_per_unit_tnd, 1.86)
         self.assertEqual(profit.estimated_landed_cost_per_unit_tnd, 26.46)
 
+    def test_non_convertible_bulk_supplier_is_not_retained_for_target_package(self) -> None:
+        product = ProductUnderstanding(
+            original_product="Huile moteur 5W-30 4L",
+            normalized_product="5W-30 engine oil 4L",
+            technical_specs=["5W-30", "4L"],
+        )
+        analysis = ProviderAnalysisResult(
+            china_sourcing_offers=[
+                ChinaSourcingOffer(
+                    name="Bulk Barrel Supplier",
+                    product_title="5W-30 engine oil barrel",
+                    price_range_usd="US$5-10",
+                    price_min_usd_numeric=5,
+                    price_max_usd_numeric=10,
+                    price_unit="barrel",
+                    moq="6 barrels",
+                    source_url="https://cn.example/barrel",
+                    confidence="high",
+                    product_match="exact",
+                ),
+                ChinaSourcingOffer(
+                    name="Bottle Supplier",
+                    product_title="5W-30 engine oil 4L bottle",
+                    price_range_usd="US$12",
+                    price_min_usd_numeric=12,
+                    price_max_usd_numeric=12,
+                    price_unit="4L bottle",
+                    moq="100 bottles",
+                    source_url="https://cn.example/bottle",
+                    confidence="medium",
+                    product_match="exact",
+                ),
+            ],
+            tunisia_retail_market=TunisiaRetailMarket(
+                retail_offers=[
+                    TunisiaRetailOffer(
+                        seller_name="Yacco Tunisia",
+                        product_title="Yacco 5W-30 4L",
+                        price_range_tnd="117 TND",
+                        price_min_tnd_numeric=117,
+                        source_url="https://yacco.tn/4l",
+                        confidence="high",
+                        product_match="close",
+                    ),
+                    TunisiaRetailOffer(
+                        seller_name="Shell Tunisia",
+                        product_title="Shell 5W-30 4L",
+                        price_range_tnd="140 TND",
+                        price_min_tnd_numeric=140,
+                        source_url="https://shell.tn/4l",
+                        confidence="high",
+                        product_match="close",
+                    ),
+                    TunisiaRetailOffer(
+                        seller_name="Liqui Moly Tunisia",
+                        product_title="Liqui Moly 5W-30",
+                        price_range_tnd="48.9 TND",
+                        price_min_tnd_numeric=48.9,
+                        source_url="https://liqui-moly.tn/no-volume",
+                        confidence="high",
+                        product_match="close",
+                    ),
+                ]
+            ),
+        )
+
+        result = _to_client_response(
+            "run-data-quality",
+            product,
+            None,
+            analysis,
+            ProviderEvidence(provider_id="test"),
+            CostConfig(),
+            [],
+            [],
+        )
+
+        by_name = {offer.name: offer for offer in result.china_offers}
+        self.assertFalse(by_name["Bulk Barrel Supplier"].comparable)
+        self.assertIsNone(by_name["Bulk Barrel Supplier"].equivalent_target_package_price_tnd)
+        self.assertTrue(by_name["Bottle Supplier"].comparable)
+        self.assertEqual(result.profitability_estimate.source_unit_price_tnd, 37.2)
+        self.assertEqual(result.profitability_estimate.source_price_unit, "4L bottle")
+        self.assertEqual(result.retail_market_summary.retail_min_tnd, 117)
+        self.assertEqual(result.retail_market_summary.retail_max_tnd, 140)
+        self.assertEqual(result.retail_market_summary.retail_avg_tnd, 128.5)
+        retail_by_seller = {offer.seller_name: offer for offer in result.retail_offers}
+        self.assertFalse(retail_by_seller["Liqui Moly Tunisia"].comparable)
+        self.assertIsNone(retail_by_seller["Liqui Moly Tunisia"].comparable_target_price_tnd)
+        self.assertEqual(result.profitability_estimate.estimated_selling_price_tnd, 128.5)
+        self.assertEqual(result.profitability_estimate.gross_margin_per_unit_before_marketing_tnd, 81.58)
+        self.assertEqual(result.competition_level, "medium")
+        self.assertLessEqual(len(result.sources), 8)
+
+    def test_missing_comparable_prices_do_not_create_profitability_or_negative_conclusion(self) -> None:
+        product = ProductUnderstanding(
+            original_product="Huile moteur 5W-30 4L",
+            normalized_product="5W-30 engine oil 4L",
+            technical_specs=["5W-30", "4L"],
+        )
+        analysis = ProviderAnalysisResult(
+            china_sourcing_offers=[
+                ChinaSourcingOffer(
+                    name="Bulk Supplier",
+                    product_title="5W-30 engine oil barrel",
+                    price_min_usd_numeric=5,
+                    price_unit="barrel",
+                    moq="6 barrels",
+                    source_url="https://cn.example/barrel",
+                    confidence="high",
+                    product_match="exact",
+                )
+            ],
+            tunisia_retail_market=TunisiaRetailMarket(
+                retail_offers=[
+                    TunisiaRetailOffer(
+                        seller_name="Unknown volume seller",
+                        product_title="5W-30 engine oil",
+                        price_min_tnd_numeric=48.9,
+                        price_range_tnd="48.9 TND",
+                        source_url="https://tn.example/unknown-volume",
+                        confidence="high",
+                        product_match="close",
+                    )
+                ]
+            ),
+        )
+
+        result = _to_client_response(
+            "run-no-profit",
+            product,
+            None,
+            analysis,
+            ProviderEvidence(provider_id="test"),
+            CostConfig(),
+            [],
+            [],
+        )
+
+        profit = result.profitability_estimate
+        self.assertIsNone(profit.source_unit_price_tnd)
+        self.assertIsNone(profit.estimated_landed_cost_per_unit_tnd)
+        self.assertIsNone(profit.estimated_selling_price_tnd)
+        self.assertIsNone(profit.gross_margin_per_unit_before_marketing_tnd)
+        self.assertEqual(result.recommendation, "investigate_more")
+        client_text = " ".join([
+            result.decision_summary,
+            result.recommendation_reason,
+            *result.positive_signals,
+            *result.risk_signals,
+            result.decision_scores.score_explanation,
+        ]).lower()
+        self.assertIn("rentabilité reste à valider", client_text)
+        self.assertNotIn("margin buffer", client_text)
+        self.assertFalse(result.retail_offers[0].comparable)
+
     async def test_recommendation_is_conservative_for_equivalent_oem_or_weak_evidence(self) -> None:
         analysis = _analysis()
         analysis.china_sourcing_offers[0] = analysis.china_sourcing_offers[0].model_copy(
@@ -538,7 +695,7 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("requires shipping/import/handling assumptions", profit.landed_cost_breakdown_notes)
         self.assertLessEqual(result.decision_scores.go_percent, 25)
         self.assertEqual(result.recommendation, "investigate_more")
-        self.assertIn("margin buffer", result.decision_scores.score_explanation.lower())
+        self.assertIn("rentabilité reste à valider", result.decision_scores.score_explanation.lower())
 
     async def test_negative_margin_lowers_go_score(self) -> None:
         analysis = _analysis()
@@ -555,7 +712,7 @@ class PrototypeOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(result.decision_scores.go_percent, 15)
         self.assertEqual(result.decision_scores.go_percent + result.decision_scores.no_go_percent, 100)
         self.assertEqual(result.decision_scores.dominant_side, "no_go")
-        self.assertTrue(any("not attractive enough" in reason.lower() for reason in result.decision_scores.why_no_go_score))
+        self.assertTrue(any("pas suffisamment attractif" in reason.lower() for reason in result.decision_scores.why_no_go_score))
         self.assertTrue(result.decision_scores.main_decision_factors)
 
     async def test_seller_density_is_low_for_one_or_two_unique_retail_sellers(self) -> None:

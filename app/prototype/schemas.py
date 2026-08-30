@@ -70,6 +70,7 @@ class ExampleRetailPrice(StrictModel):
     source_page_type: str = "unknown"
     source_url: str | None = None
     confidence: str = "low"
+    comparable: bool = True
 
 
 class SourcingSummary(StrictModel):
@@ -172,6 +173,9 @@ class SourcingOfferView(StrictModel):
     confidence: str = "low"
     product_match: str = "broad"
     match_notes: str = ""
+    comparable: bool = False
+    equivalent_target_package_price_tnd: float | None = None
+    comparability_note: str = ""
 
 
 class RetailOfferView(StrictModel):
@@ -190,6 +194,9 @@ class RetailOfferView(StrictModel):
     source_url: str = ""
     confidence: str = "low"
     product_match: str = "broad"
+    comparable: bool = False
+    comparable_target_price_tnd: float | None = None
+    comparability_note: str = ""
 
 
 class LandedCostComponentView(StrictModel):
