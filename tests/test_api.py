@@ -2,6 +2,7 @@ import importlib
 import tempfile
 import unittest
 
+import bcrypt
 from fastapi.testclient import TestClient
 
 from app.benchmark.schemas import (
@@ -22,6 +23,10 @@ from app.prototype.schemas import (
 )
 from app.prototype.storage import PrototypeStore
 from app.schemas import IntentResult, ProductAnalysisResponse
+
+
+TEST_AUTH_PASSWORD = "test-only-password"
+TEST_AUTH_HASH = bcrypt.hashpw(TEST_AUTH_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 class StubBenchmarkPipeline:
@@ -196,9 +201,12 @@ class ApiTests(unittest.TestCase):
             benchmark_pipeline=_benchmark_pipeline(),
             provider_infos=ProvidersResponse(providers=[]),
             prototype_orchestrator=prototype,
+            prototype_store=PrototypeStore(_temp_db()),
         )
 
-        analyze_response = TestClient(app).post(
+        client = TestClient(app)
+        _login(client)
+        analyze_response = client.post(
             "/prototype/analyze",
             json={
                 "product": "Vintage T9 hair trimmer",
@@ -207,7 +215,7 @@ class ApiTests(unittest.TestCase):
                 "quantity_scenarios": [1000],
             },
         )
-        reveal_response = TestClient(app).get("/prototype/runs/run_1/reveal")
+        reveal_response = client.get("/prototype/runs/run_1/reveal")
 
         self.assertEqual(analyze_response.status_code, 200)
         self.assertTrue(analyze_response.json()["links_hidden"])
@@ -234,9 +242,12 @@ class ApiTests(unittest.TestCase):
             benchmark_pipeline=_benchmark_pipeline(),
             provider_infos=ProvidersResponse(providers=[]),
             prototype_orchestrator=prototype,
+            prototype_store=PrototypeStore(_temp_db()),
         )
 
-        response = TestClient(app).post(
+        client = TestClient(app)
+        _login(client)
+        response = client.post(
             "/prototype/analyze",
             json={
                 "product": "tondeuse cheveux t9 vintage",
@@ -259,9 +270,12 @@ class ApiTests(unittest.TestCase):
             benchmark_pipeline=_benchmark_pipeline(),
             provider_infos=ProvidersResponse(providers=[]),
             prototype_orchestrator=FailingPrototypeOrchestrator(),
+            prototype_store=PrototypeStore(_temp_db()),
         )
 
-        response = TestClient(app).post(
+        client = TestClient(app)
+        _login(client)
+        response = client.post(
             "/prototype/analyze",
             json={"product": "Huile moteur 5W-30 4L", "market": "Tunisia", "sourcing_country": "China"},
         )
@@ -360,11 +374,24 @@ def _settings(**overrides) -> Settings:
         search_results_per_query=10,
         search_queries_per_region=4,
         max_raw_sources_per_provider=20,
+        nexora_user1_email="info@stt.tn",
+        nexora_user1_password_hash=TEST_AUTH_HASH,
+        nexora_user2_email="vizyaconsulting@gmail.com",
+        nexora_user2_password_hash=TEST_AUTH_HASH,
+        nexora_admin_email="admin@gmail.com",
+        nexora_admin_password_hash=TEST_AUTH_HASH,
+        session_secret="test-session-secret",
+        session_cookie_secure=False,
     )
     values.update(overrides)
     return Settings(
         **values
     )
+
+
+def _login(client: TestClient, email: str = "info@stt.tn") -> None:
+    response = client.post("/auth/login", json={"email": email, "password": TEST_AUTH_PASSWORD})
+    assert response.status_code == 200
 
 
 def _temp_db() -> str:

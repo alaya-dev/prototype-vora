@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -91,9 +92,137 @@ class PrototypeStore:
                     notes TEXT NOT NULL DEFAULT '',
                     active INTEGER NOT NULL DEFAULT 1
                 );
+                CREATE TABLE IF NOT EXISTS auth_quota_accounts (
+                    email TEXT PRIMARY KEY,
+                    quota_total INTEGER NOT NULL,
+                    quota_used INTEGER NOT NULL DEFAULT 0,
+                    quota_reserved INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS auth_quota_reservations (
+                    reservation_id TEXT PRIMARY KEY,
+                    email TEXT NOT NULL,
+                    reserved_at TEXT NOT NULL
+                );
                 """
             )
             _ensure_column(connection, "prototype_runs", "contact_metrics_json", "TEXT NOT NULL DEFAULT '{}'")
+
+    @contextmanager
+    def _immediate_connection(self):
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def ensure_auth_quota_account(self, email: str, quota_total: int = 3) -> None:
+        with self._connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO auth_quota_accounts (email, quota_total)
+                VALUES (?, ?)
+                ON CONFLICT(email) DO NOTHING
+                """,
+                (email.strip().lower(), quota_total),
+            )
+
+    def get_auth_quota(self, email: str) -> dict[str, int]:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT quota_total, quota_used, quota_reserved FROM auth_quota_accounts WHERE email = ?",
+                (email.strip().lower(),),
+            ).fetchone()
+        if row is None:
+            raise KeyError(email)
+        quota_total = int(row["quota_total"])
+        quota_used = int(row["quota_used"])
+        quota_reserved = int(row["quota_reserved"])
+        return {
+            "quota_total": quota_total,
+            "quota_used": quota_used,
+            "quota_remaining": max(0, quota_total - quota_used - quota_reserved),
+        }
+
+    def reserve_auth_quota(self, email: str) -> str | None:
+        normalized_email = email.strip().lower()
+        reservation_id = uuid.uuid4().hex
+        with self._immediate_connection() as connection:
+            self._release_expired_auth_reservations(connection)
+            updated = connection.execute(
+                """
+                UPDATE auth_quota_accounts
+                SET quota_reserved = quota_reserved + 1
+                WHERE email = ? AND quota_used + quota_reserved < quota_total
+                """,
+                (normalized_email,),
+            ).rowcount
+            if updated != 1:
+                return None
+            connection.execute(
+                "INSERT INTO auth_quota_reservations (reservation_id, email, reserved_at) VALUES (?, ?, ?)",
+                (reservation_id, normalized_email, datetime.now(timezone.utc).isoformat()),
+            )
+        return reservation_id
+
+    def confirm_auth_quota_reservation(self, reservation_id: str) -> None:
+        with self._immediate_connection() as connection:
+            row = connection.execute(
+                "SELECT email FROM auth_quota_reservations WHERE reservation_id = ?",
+                (reservation_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(reservation_id)
+            connection.execute(
+                """
+                UPDATE auth_quota_accounts
+                SET quota_reserved = MAX(0, quota_reserved - 1), quota_used = quota_used + 1
+                WHERE email = ?
+                """,
+                (row["email"],),
+            )
+            connection.execute(
+                "DELETE FROM auth_quota_reservations WHERE reservation_id = ?",
+                (reservation_id,),
+            )
+
+    def release_auth_quota_reservation(self, reservation_id: str) -> None:
+        with self._immediate_connection() as connection:
+            row = connection.execute(
+                "SELECT email FROM auth_quota_reservations WHERE reservation_id = ?",
+                (reservation_id,),
+            ).fetchone()
+            if row is None:
+                return
+            connection.execute(
+                "UPDATE auth_quota_accounts SET quota_reserved = MAX(0, quota_reserved - 1) WHERE email = ?",
+                (row["email"],),
+            )
+            connection.execute(
+                "DELETE FROM auth_quota_reservations WHERE reservation_id = ?",
+                (reservation_id,),
+            )
+
+    @staticmethod
+    def _release_expired_auth_reservations(connection: sqlite3.Connection) -> None:
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+        expired = connection.execute(
+            "SELECT reservation_id, email FROM auth_quota_reservations WHERE reserved_at < ?",
+            (cutoff,),
+        ).fetchall()
+        for row in expired:
+            connection.execute(
+                "UPDATE auth_quota_accounts SET quota_reserved = MAX(0, quota_reserved - 1) WHERE email = ?",
+                (row["email"],),
+            )
+            connection.execute(
+                "DELETE FROM auth_quota_reservations WHERE reservation_id = ?",
+                (row["reservation_id"],),
+            )
 
     def save_cost_config(self, config: CostConfig) -> CostConfig:
         with self._connection() as connection:

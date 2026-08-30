@@ -75,6 +75,21 @@ class FrontendTests(unittest.TestCase):
         self.assertIn('<details class="benchmark-compat" hidden>', self.html)
         self.assertIn('const SHOW_PDF_EXPORT = false;', self.html)
 
+    def test_login_gates_the_client_dashboard_without_frontend_passwords(self) -> None:
+        self.assertIn('id="loginScreen"', self.html)
+        self.assertIn('id="loginForm"', self.html)
+        self.assertIn('fetch("/auth/login"', self.html)
+        self.assertIn('fetch("/auth/me"', self.html)
+        self.assertIn('fetch("/auth/logout"', self.html)
+        self.assertIn('id="appShell"', self.html)
+        self.assertIn('id="accountQuota"', self.html)
+        self.assertIn('Votre quota de 3 analyses est épuisé.', self.html)
+        self.assertNotIn('info@stt.tn', self.html)
+        self.assertNotIn('vizyaconsulting@gmail.com', self.html)
+        self.assertNotIn('admin@gmail.com', self.html)
+        self.assertNotIn('localStorage', self.html)
+        self.assertNotIn('sessionStorage', self.html)
+
     def test_client_prototype_analysis_uses_canonical_market_payload(self) -> None:
         analyzer = self.html.split("async function analyzePrototype()", 1)[1].split(
             "function startAnalysisStepAnimation", 1
@@ -234,7 +249,7 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("adminPasswordInput", self.html)
         self.assertIn("x-admin-password", self.html)
         self.assertIn("unlockAnalytics", self.html)
-        self.assertIn("Nexora_admin_password", self.html)
+        self.assertNotIn("localStorage", self.html)
 
     def test_frontend_has_no_removed_marketplace_reference(self) -> None:
         removed_marketplace = "Ju" + "mia"

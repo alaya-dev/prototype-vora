@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import HTMLResponse, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.agents.china_supplier_research import GeminiChinaSupplierResearchAgent
 from app.agents.intent_classifier import IntentClassifierAgent
@@ -23,6 +24,14 @@ from app.benchmark.schemas import (
 from app.config import Settings
 from app.pipeline import PipelineError, PipelineTimeoutError, ProductAnalysisPipeline
 from app.prototype.research_orchestrator import PrototypeResearchOrchestrator
+from app.prototype.auth import (
+    AuthAccount,
+    AuthMeResponse,
+    AuthUnauthenticatedResponse,
+    LoginRequest,
+    LoginResponse,
+    PrototypeAuthService,
+)
 from app.prototype.schemas import (
     AnalyticsRunDetail,
     AnalyticsRunSummary,
@@ -76,7 +85,8 @@ def create_app(
         analysis_client,
     )
     resolved_pipeline = pipeline or _build_pipeline_or_none(resolved_settings)
-    resolved_store = prototype_store or PrototypeStore()
+    resolved_store = prototype_store or PrototypeStore(resolved_settings.prototype_db_path)
+    auth_service = PrototypeAuthService(resolved_settings, resolved_store)
     resolved_prototype_orchestrator = prototype_orchestrator or _build_prototype_orchestrator(
         resolved_settings,
         resolved_store,
@@ -85,6 +95,14 @@ def create_app(
     )
 
     app = FastAPI(title="VORA API", version="2.0.0")
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=resolved_settings.session_secret or "prototype-development-only-session-secret",
+        session_cookie="nexora_session",
+        max_age=resolved_settings.session_max_age_seconds,
+        same_site="lax",
+        https_only=resolved_settings.session_cookie_secure,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -97,9 +115,52 @@ def create_app(
         if expected and x_admin_password != expected:
             raise HTTPException(status_code=401, detail="Analytics password required.")
 
+    def require_auth_configuration() -> None:
+        if not auth_service.configured:
+            raise HTTPException(status_code=503, detail="Authentication configuration is unavailable.")
+
+    def require_authenticated_user(request: Request) -> AuthAccount:
+        email = request.session.get("email")
+        if not email:
+            request.session.clear()
+            raise HTTPException(status_code=401, detail="Authentication required.")
+        require_auth_configuration()
+        account = auth_service.account_for_email(email)
+        if account is None:
+            request.session.clear()
+            raise HTTPException(status_code=401, detail="Authentication required.")
+        return account
+
     @app.get("/health")
     async def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.post("/auth/login", response_model=LoginResponse)
+    async def auth_login(payload: LoginRequest, request: Request) -> LoginResponse:
+        require_auth_configuration()
+        account = auth_service.authenticate(payload.email, payload.password)
+        if account is None:
+            raise HTTPException(status_code=401, detail="Email ou mot de passe invalide.")
+        request.session.clear()
+        request.session["email"] = account.email
+        return LoginResponse()
+
+    @app.get("/auth/me", response_model=AuthMeResponse | AuthUnauthenticatedResponse)
+    async def auth_me(request: Request) -> AuthMeResponse | AuthUnauthenticatedResponse:
+        email = request.session.get("email")
+        if not email or not auth_service.configured:
+            request.session.clear()
+            return AuthUnauthenticatedResponse()
+        account = auth_service.account_for_email(email)
+        if account is None:
+            request.session.clear()
+            return AuthUnauthenticatedResponse()
+        return auth_service.profile(account)
+
+    @app.post("/auth/logout")
+    async def auth_logout(request: Request) -> dict[str, bool]:
+        request.session.clear()
+        return {"authenticated": False}
 
     @app.get("/providers", response_model=ProvidersResponse)
     async def providers() -> ProvidersResponse:
@@ -135,26 +196,50 @@ def create_app(
     @app.post("/prototype/analyze", response_model=PrototypeAnalyzeResponse)
     async def prototype_analyze(
         request: PrototypeAnalyzeRequest,
-    ) -> PrototypeAnalyzeResponse:
+        account: AuthAccount = Depends(require_authenticated_user),
+    ) -> PrototypeAnalyzeResponse | JSONResponse:
+        reservation_id = auth_service.reserve_analysis(account)
+        if reservation_id is None:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "code": "ANALYSIS_QUOTA_EXHAUSTED",
+                    "message": "Votre quota de 3 analyses est épuisé.",
+                },
+            )
         try:
             resolved_prototype_orchestrator.cost_config = resolved_store.get_cost_config()
-            return await resolved_prototype_orchestrator.analyze(request)
+            response = await resolved_prototype_orchestrator.analyze(request)
         except (GeminiClientError, GeminiSearchClientError) as error:
+            auth_service.release_analysis(reservation_id)
             _log_analysis_failure(error)
             raise HTTPException(status_code=503, detail=ANALYSIS_TEMPORARILY_UNAVAILABLE) from error
         except RuntimeError as error:
+            auth_service.release_analysis(reservation_id)
             _log_analysis_failure(error)
             raise HTTPException(status_code=503, detail=ANALYSIS_TEMPORARILY_UNAVAILABLE) from error
+        except Exception:
+            auth_service.release_analysis(reservation_id)
+            raise
+        auth_service.confirm_analysis(reservation_id)
+        return response
 
     @app.get("/prototype/runs/{run_id}/reveal", response_model=PrototypeRevealResponse)
-    async def prototype_reveal(run_id: str) -> PrototypeRevealResponse:
+    async def prototype_reveal(
+        run_id: str,
+        _: AuthAccount = Depends(require_authenticated_user),
+    ) -> PrototypeRevealResponse:
         try:
             return await resolved_prototype_orchestrator.reveal(run_id)
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Prototype run not found.") from error
 
     @app.post("/prototype/runs/{run_id}/pdf")
-    async def prototype_pdf(run_id: str, request: PrototypePdfRequest) -> Response:
+    async def prototype_pdf(
+        run_id: str,
+        request: PrototypePdfRequest,
+        _: AuthAccount = Depends(require_authenticated_user),
+    ) -> Response:
         if request.report.run_id != run_id:
             raise HTTPException(status_code=400, detail="PDF report does not match the requested run.")
         try:

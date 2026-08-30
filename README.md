@@ -30,8 +30,11 @@ Client responses hide direct China product offer links until the GO reveal endpo
 
 ## Main Routes
 
-- `GET /` - client prototype UI.
-- `POST /prototype/analyze` - client-facing product opportunity analysis.
+- `GET /` - login page, then client prototype UI after authentication.
+- `POST /auth/login` - server-side login; credentials are never stored in the frontend.
+- `GET /auth/me` - current authenticated profile and quota.
+- `POST /auth/logout` - clears the secure session cookie.
+- `POST /prototype/analyze` - authenticated client-facing product opportunity analysis.
 - `GET /prototype/runs/{run_id}/reveal` - GO reveal for hidden sourcing links and configured sourcing agents.
 - `GET /analytics` - internal analytics/admin UI.
 - `GET /api/analytics/summary` - analytics summary.
@@ -47,6 +50,12 @@ Client responses hide direct China product offer links until the GO reveal endpo
 - `POST /benchmark/analyze` - provider benchmark analysis.
 - `POST /analyze` - legacy compatibility route.
 - `GET /health` - health check.
+
+## Prototype authentication and quota
+
+The demonstration accounts and their password hashes are configured only through server environment variables. Client accounts have three successful analyses each; the administrator role is unlimited. Sessions use an HttpOnly, SameSite=Lax cookie and production cookies are Secure.
+
+Quota is implemented in prototype mode with the existing SQLite store. It may be reset when a Vercel deployment or instance restart replaces the temporary prototype storage.
 
 ## Provider Stack
 

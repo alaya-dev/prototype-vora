@@ -1,11 +1,14 @@
+import tempfile
 import unittest
 from types import SimpleNamespace
 
+import bcrypt
 from pydantic import BaseModel
 from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.prototype.schemas import PrototypeAnalysisDraft
+from app.prototype.storage import PrototypeStore
 from app.services.gemini_client import GeminiClientError
 from app.services.groq_client import GroqClient, GroqClientError
 from app.services.groq_client import _normalize_client_analysis_payload
@@ -139,12 +142,33 @@ class GroqApiErrorTests(unittest.TestCase):
             async def analyze(self, _request):
                 raise GeminiClientError("429 rate_limit_exceeded secret-key")
 
+        password = "test-only-password"
+        password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        db.close()
         app = server.create_app(
-            settings=Settings(gemini_api_key="", gemini_model="", analysis_timeout_seconds=45),
+            settings=Settings(
+                gemini_api_key="",
+                gemini_model="",
+                analysis_timeout_seconds=45,
+                nexora_user1_email="info@stt.tn",
+                nexora_user1_password_hash=password_hash,
+                nexora_user2_email="vizyaconsulting@gmail.com",
+                nexora_user2_password_hash=password_hash,
+                nexora_admin_email="admin@gmail.com",
+                nexora_admin_password_hash=password_hash,
+                session_secret="test-session-secret",
+            ),
             prototype_orchestrator=FailingPrototype(),
+            prototype_store=PrototypeStore(db.name),
         )
 
-        response = TestClient(app).post(
+        client = TestClient(app)
+        self.assertEqual(
+            client.post("/auth/login", json={"email": "info@stt.tn", "password": password}).status_code,
+            200,
+        )
+        response = client.post(
             "/prototype/analyze",
             json={
                 "product": "Huile moteur 5W-30 4L",

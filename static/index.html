@@ -48,6 +48,39 @@
     gap: 18px;
   }
 
+  #appShell[hidden],
+  #loginScreen[hidden] { display: none !important; }
+
+  .login-screen {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+
+  .login-card {
+    width: min(440px, 100%);
+    display: grid;
+    gap: 18px;
+    padding: 30px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+
+  .login-brand {
+    display: grid;
+    gap: 12px;
+    justify-items: start;
+  }
+
+  .login-brand img { width: 180px; height: auto; }
+  .login-error { min-height: 22px; color: var(--danger); font-weight: 700; }
+  .account-summary { display: grid; gap: 3px; text-align: right; color: #f8fbff; font-size: 12px; }
+  .account-summary strong { font-size: 13px; }
+  .quota-notice { margin-top: 10px; color: var(--danger); font-weight: 800; }
+
   .analysis-hero,
   .panel,
   .result-band,
@@ -1177,7 +1210,26 @@
 </style>
 </head>
 <body>
-  <div class="app-layout">
+  <section id="loginScreen" class="login-screen">
+    <form id="loginForm" class="login-card">
+      <div class="login-brand">
+        <img src="/logo/Nexora_logo_transparent_clean_cropped.png" alt="Nexora logo">
+        <div class="eyebrow">Nexora</div>
+        <h1>Connexion</h1>
+        <p>Accédez à votre espace d’analyse Nexora</p>
+      </div>
+      <label class="field" for="loginEmail">Email
+        <input id="loginEmail" type="email" autocomplete="email" required>
+      </label>
+      <label class="field" for="loginPassword">Mot de passe
+        <input id="loginPassword" type="password" autocomplete="current-password" required>
+      </label>
+      <p id="loginError" class="login-error" role="alert" aria-live="polite"></p>
+      <button id="loginButton" class="button-primary" type="submit">Se connecter</button>
+    </form>
+  </section>
+
+  <div id="appShell" class="app-layout" hidden>
     <main class="shell">
       <section id="clientPage" class="page active">
         <section class="topbar">
@@ -1192,6 +1244,11 @@
             </div>
           </div>
           <div class="topbar-actions">
+            <div id="accountSummary" class="account-summary" hidden>
+              <strong id="accountEmail"></strong>
+              <span id="accountQuota"></span>
+            </div>
+            <button id="logoutButton" class="button-secondary" type="button">Déconnexion</button>
             <div id="languageToggle" class="language-toggle language-segment" aria-label="Langue">
                                 <button id="languageEnButton" class="language-option" type="button" aria-pressed="false" aria-label="English" title="English" onclick='setLanguage("en")'>
                     <svg class="flag-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 30">
@@ -1245,6 +1302,7 @@
             <div class="action-row">
               <button id="prototypeAnalyzeButton" class="button-primary" type="button" data-i18n="analyzeButton">Analyze product</button>
             </div>
+            <p id="quotaNotice" class="quota-notice" hidden></p>
           </div>
           <div id="productPhoto" class="photo-slot">
             <div class="placeholder" data-i18n="initialImagePlaceholder">No reliable product image found.</div>
@@ -1348,6 +1406,18 @@
   </div>
 
 <script>
+const loginScreen = document.getElementById("loginScreen");
+const appShell = document.getElementById("appShell");
+const loginForm = document.getElementById("loginForm");
+const loginEmail = document.getElementById("loginEmail");
+const loginPassword = document.getElementById("loginPassword");
+const loginButton = document.getElementById("loginButton");
+const loginError = document.getElementById("loginError");
+const accountSummary = document.getElementById("accountSummary");
+const accountEmail = document.getElementById("accountEmail");
+const accountQuota = document.getElementById("accountQuota");
+const logoutButton = document.getElementById("logoutButton");
+const quotaNotice = document.getElementById("quotaNotice");
 const prototypeProductInput = document.getElementById("prototypeProductInput");
 const targetMarketInput = document.getElementById("targetMarketInput");
 const sourcingCountryInput = document.getElementById("sourcingCountryInput");
@@ -1378,9 +1448,10 @@ let agentsPage = 1;
 const agentsPageSize = 5;
 let analyticsRunsCache = [];
 let selectedAnalyticsRunId = null;
-let adminPassword = localStorage.getItem("Nexora_admin_password") || "";
+let adminPassword = "";
 let currentLanguage = "fr";
 let currentPrototypeData = null;
+let currentAuth = null;
 
 productPhoto.addEventListener("click", (event) => {
   const image = event.target.closest("img");
@@ -1609,6 +1680,8 @@ const copy = {
 };
 
 prototypeAnalyzeButton.addEventListener("click", analyzePrototype);
+loginForm.addEventListener("submit", login);
+logoutButton.addEventListener("click", logout);
 prototypeProductInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") analyzePrototype();
 });
@@ -1631,12 +1704,107 @@ agentsNextButton.addEventListener("click", () => {
 exportPdfButton.hidden = !SHOW_PDF_EXPORT;
 if (SHOW_PDF_EXPORT) exportPdfButton.addEventListener("click", exportOpportunityPdf);
 applyStaticTranslations();
-if (window.location.pathname === "/analytics") {
-  showPage("analyticsPage");
-  adminPasswordInput.value = adminPassword;
-  unlockAnalytics();
-} else {
-  showPage("clientPage");
+bootstrapAuthentication();
+
+async function bootstrapAuthentication() {
+  try {
+    const response = await fetch("/auth/me");
+    if (!response.ok) {
+      showLogin();
+      return;
+    }
+    const profile = await response.json();
+    if (!profile.authenticated) {
+      showLogin();
+      return;
+    }
+    showAuthenticated(profile);
+  } catch (_error) {
+    showLogin();
+  }
+}
+
+async function login(event) {
+  event.preventDefault();
+  loginError.textContent = "";
+  loginButton.disabled = true;
+  try {
+    const response = await fetch("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: loginEmail.value.trim(), password: loginPassword.value }),
+    });
+    if (!response.ok) {
+      loginError.textContent = "Email ou mot de passe invalide.";
+      return;
+    }
+    loginPassword.value = "";
+    await bootstrapAuthentication();
+  } catch (_error) {
+    loginError.textContent = "La connexion est temporairement indisponible.";
+  } finally {
+    loginButton.disabled = false;
+  }
+}
+
+async function logout() {
+  try {
+    await fetch("/auth/logout", { method: "POST" });
+  } finally {
+    showLogin();
+  }
+}
+
+function showAuthenticated(profile) {
+  currentAuth = profile;
+  loginScreen.hidden = true;
+  appShell.hidden = false;
+  accountSummary.hidden = false;
+  accountEmail.textContent = profile.email;
+  accountQuota.textContent = profile.unlimited
+    ? "Analyses : Illimitées"
+    : `Analyses restantes : ${profile.quota_remaining} / ${profile.quota_total}`;
+  const quotaExhausted = !profile.unlimited && profile.quota_remaining <= 0;
+  prototypeAnalyzeButton.disabled = quotaExhausted;
+  quotaNotice.hidden = !quotaExhausted;
+  quotaNotice.textContent = quotaExhausted ? "Votre quota de 3 analyses est épuisé." : "";
+  if (window.location.pathname === "/analytics") {
+    showPage("analyticsPage");
+    adminPasswordInput.value = adminPassword;
+    unlockAnalytics();
+  } else {
+    showPage("clientPage");
+  }
+}
+
+function showLogin() {
+  currentAuth = null;
+  currentRunId = null;
+  currentPrototypeData = null;
+  appShell.hidden = true;
+  loginScreen.hidden = false;
+  accountSummary.hidden = true;
+  quotaNotice.hidden = true;
+  prototypeProductInput.value = "";
+  productPhoto.innerHTML = `<div class="placeholder">${escapeHtml(copy[currentLanguage].initialImagePlaceholder)}</div>`;
+  prototypeResult.innerHTML = `<div class="result-band wide"><h2>${escapeHtml(copy[currentLanguage].waitingTitle)}</h2><p>${escapeHtml(copy[currentLanguage].waitingBody)}</p></div>`;
+  loginPassword.value = "";
+  loginEmail.focus();
+}
+
+async function refreshAuthProfile() {
+  const response = await fetch("/auth/me");
+  if (!response.ok) {
+    showLogin();
+    return null;
+  }
+  const profile = await response.json();
+  if (!profile.authenticated) {
+    showLogin();
+    return null;
+  }
+  showAuthenticated(profile);
+  return profile;
 }
 
 function showPage(pageId) {
@@ -1652,7 +1820,6 @@ function adminHeaders(extra = {}) {
 
 async function unlockAnalytics() {
   adminPassword = adminPasswordInput.value.trim();
-  localStorage.setItem("Nexora_admin_password", adminPassword);
   await loadAnalytics();
 }
 
@@ -1672,6 +1839,16 @@ let analysisStepTimer = null;
 let analysisDelayTimer = null;
 
 async function analyzePrototype() {
+  if (!currentAuth) {
+    showLogin();
+    return;
+  }
+  if (!currentAuth.unlimited && currentAuth.quota_remaining <= 0) {
+    quotaNotice.hidden = false;
+    quotaNotice.textContent = "Votre quota de 3 analyses est épuisé.";
+    prototypeAnalyzeButton.disabled = true;
+    return;
+  }
   const product = prototypeProductInput.value.trim();
   if (!product) {
     prototypeProductInput.focus();
@@ -1695,10 +1872,22 @@ async function analyzePrototype() {
       })
     });
     stopAnalysisStepAnimation();
+    if (response.status === 401) {
+      showLogin();
+      return;
+    }
+    if (response.status === 403) {
+      const quotaError = await response.json().catch(() => ({}));
+      quotaNotice.hidden = false;
+      quotaNotice.textContent = quotaError.message || "Votre quota de 3 analyses est épuisé.";
+      await refreshAuthProfile();
+      return;
+    }
     const data = await readJson(response);
     currentRunId = data.run_id;
     currentPrototypeData = data;
     renderPrototypeResult(data);
+    await refreshAuthProfile();
     if (window.location.pathname === "/analytics" && adminPassword) loadAnalytics();
   } catch (error) {
     stopAnalysisStepAnimation();
@@ -1712,7 +1901,7 @@ async function analyzePrototype() {
     `;
     document.getElementById("retryPrototypeAnalysisButton")?.addEventListener("click", analyzePrototype);
   } finally {
-    prototypeAnalyzeButton.disabled = false;
+    prototypeAnalyzeButton.disabled = Boolean(currentAuth && !currentAuth.unlimited && currentAuth.quota_remaining <= 0);
   }
 }
 

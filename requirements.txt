@@ -2,6 +2,8 @@ fastapi
 uvicorn[standard]
 python-dotenv
 pydantic
+bcrypt>=4,<6
+itsdangerous>=2.2,<3
 google-genai>=2.10.0
 groq>=0.31,<1
 httpx

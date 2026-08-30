@@ -39,6 +39,16 @@ class Settings:
     search_queries_per_group: int = 4
     max_raw_sources_per_provider: int = 20
     admin_dashboard_password: str = ""
+    nexora_user1_email: str = ""
+    nexora_user1_password_hash: str = ""
+    nexora_user2_email: str = ""
+    nexora_user2_password_hash: str = ""
+    nexora_admin_email: str = ""
+    nexora_admin_password_hash: str = ""
+    session_secret: str = ""
+    session_max_age_seconds: int = 43_200
+    session_cookie_secure: bool = False
+    prototype_db_path: str = "/tmp/data/vora_prototype.db"
 
     @property
     def effective_search_queries_per_group(self) -> int:
@@ -112,6 +122,23 @@ class Settings:
                 minimum=1,
             ),
             admin_dashboard_password=_read_str("ADMIN_DASHBOARD_PASSWORD"),
+            nexora_user1_email=_read_str("NEXORA_USER1_EMAIL"),
+            nexora_user1_password_hash=_read_str("NEXORA_USER1_PASSWORD_HASH"),
+            nexora_user2_email=_read_str("NEXORA_USER2_EMAIL"),
+            nexora_user2_password_hash=_read_str("NEXORA_USER2_PASSWORD_HASH"),
+            nexora_admin_email=_read_str("NEXORA_ADMIN_EMAIL"),
+            nexora_admin_password_hash=_read_str("NEXORA_ADMIN_PASSWORD_HASH"),
+            session_secret=_read_str("SESSION_SECRET"),
+            session_max_age_seconds=_read_int(
+                "SESSION_MAX_AGE_SECONDS",
+                default=43_200,
+                minimum=300,
+            ),
+            session_cookie_secure=_read_bool(
+                "SESSION_COOKIE_SECURE",
+                default=bool(os.getenv("VERCEL")),
+            ),
+            prototype_db_path=_read_str("PROTOTYPE_DB_PATH", "/tmp/data/vora_prototype.db"),
         )
 
 
@@ -128,3 +155,10 @@ def _read_int(name: str, default: int, minimum: int) -> int:
     if value < minimum:
         raise SettingsError(f"{name} must be greater than or equal to {minimum}.")
     return value
+
+
+def _read_bool(name: str, default: bool) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
